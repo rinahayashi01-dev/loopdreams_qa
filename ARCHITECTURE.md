@@ -948,3 +948,91 @@ first version of this doc and manually worked around every round since
   directory) confirmed to exit 2 with a clear message rather than a
   traceback.
 
+### Tech-debt pass (Jul 2, 2026) — corner-clause silent guess for a compound stitch
+Closed the third item from the same tech-debt discussion (`stitch_parser.py`'s
+corner-clause `produces=(prod or 1) * count`), which was the one place in the
+codebase that guessed instead of reporting "can't verify" for a compound
+stitch. Never triggered by real data -- every corner seen across all 9+ real
+sample batches so far is plain `sc` -- but inconsistent with how every other
+compound-stitch clause shape (`each_st_across`/`each_st_around`, etc.)
+already handles this.
+
+- **Fix**: `_stitch_lookup` always returns `prod=None` for any compound
+  stitch (confirmed by reading it directly), so the fix is exactly the
+  same `is_compound` branch already used everywhere else: `produces =
+  None if is_compound else (prod or 1) * count`, plus the matching
+  `unverifiable_reason` message. A compound stitch's produced count for
+  N corner repeats genuinely isn't knowable without a stated ratio, so
+  this correctly falls through to the standard "cannot verify" path
+  instead of confidently asserting 1-per-repeat.
+- **Not attempted, and deliberately so**: resolving a compound corner
+  stitch's ratio via the existing `ratio_overrides` mechanism (the
+  algebraic solver from the Jun 29 bobble batch). `_zone_sum` adds
+  `ratio_overrides[stitch]` once per clause with no multiplier, so even
+  if a ratio were resolved elsewhere, a corner's explicit count > 1
+  would still need dedicated multiplication logic that doesn't exist
+  yet. Building that now, with zero real samples ever exercising a
+  compound stitch in a corner, would be exactly the kind of speculative
+  work against no test data the project avoids -- left as a known,
+  documented gap for if/when a real sample needs it.
+- **Regression tests added** (`tests/test_stitch_parser.py`, the first
+  direct unit tests of `stitch_parser.tokenize_round` in this project --
+  everything before this was tested indirectly via full-pattern parsing):
+  a plain-sc corner (`"3 sc in corner"`) still resolves `produces=3`
+  exactly as before; a synthetic compound-stitch corner (`"3 bo in
+  corner"`, since no real sample has ever done this) now correctly
+  leaves `produces=None` with a specific `unverifiable_reason` instead of
+  silently returning `3`. Full suite passes (10 tests, 1 skip); all 10
+  live Jul 2 throw-blanket files re-verified byte-identical to before
+  this change.
+- **Remaining open tech-debt item at the time, addressed next**: single
+  repeat group per row / no nested repeat groups -- see below. Turned out
+  not to be as purely theoretical as first thought.
+
+### Tech-debt pass (Jul 2, 2026) — second repeat group per row wasn't actually caught
+The last item from the same tech-debt discussion was framed as "a
+structural V1 limitation, never violated by any real sample so far, worth
+keeping in mind as a ceiling" -- i.e. assumed to be a documented, inert
+gap. Checking it properly (rather than leaving it as a note) found it
+wasn't inert: the "flagged as unsupported rather than guessed" behavior
+`ARCHITECTURE.md`'s own V1-limitations list has claimed since the very
+first version of this doc was **not actually implemented** -- a row with
+two separate repeat groups could silently produce a confidently wrong
+PASS instead.
+
+- **Reproduced the actual (mis)behavior** with a synthetic row (`"*Sc in
+  next st; rep from *. *Dc in next st; rep from *."`, no other real
+  sample has ever needed this shape): `_check_row` only ever locates the
+  FIRST `*` opener and the FIRST `repeat_close` after it
+  (`checks/stitch_count.py`'s `opener_idx`/`closer_idx`), then hands
+  everything from the first closer onward to `_check_repeat_group` as a
+  flat "post" zone via `_zone_sum`. Critically, `_zone_sum` explicitly
+  **skips any `repeat_close` clause as a no-op** rather than checking its
+  `consumes` value (which is always `None` on that clause type) --
+  meaning a second, unrecognized repeat group's own opener/body/closer
+  gets summed as if it were flat, one-time literal content instead of
+  being flagged as an unhandled shape. With the right declared row count
+  (constructed so "19 reps of the first group + 1 literal occurrence of
+  the second" arithmetically totals the declared count), this returned a
+  clean, confident PASS with zero warnings -- numerically self-consistent
+  but meaningless, since the second group was never actually verified as
+  a repeat construct at all.
+- **Fixed**: `_check_row` now checks for a second `*` opener anywhere
+  after the first repeat group's closer *before* dispatching to
+  `_check_repeat_group`, and returns a specific "more than one repeat
+  group... currently unsupported" warning instead of attempting the
+  flawed flat-sequence math. This makes the actual behavior match what
+  `ARCHITECTURE.md` has claimed all along, rather than changing the
+  claim to match the (wrong) behavior.
+- **Regression tests added** (`tests/test_multiple_repeat_groups.py`):
+  confirms the ordinary single-repeat-group shape still verifies cleanly
+  (no regression), and that the two-repeat-group shape above is now
+  caught with a clear warning instead of silently passing. Full suite
+  passes (12 tests, 1 skip); all 10 live Jul 2 throw-blanket files
+  re-verified byte-identical to before this change (none of them use
+  more than one repeat group per row).
+- **Not attempted, and correctly so**: actually parsing/verifying
+  multiple or nested repeat groups. Zero real samples have ever needed
+  this; the fix here is scoped to detecting the unsupported shape
+  honestly, not building support for it speculatively.
+

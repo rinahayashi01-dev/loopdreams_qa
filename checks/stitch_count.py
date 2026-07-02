@@ -287,6 +287,30 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
         closer_idx = next((i for i in range(opener_idx, len(clauses)) if clauses[i].clause_type == "repeat_close"), None)
 
     if opener_idx is not None and closer_idx is not None:
+        # Only one repeat group per row is supported (see ARCHITECTURE.md's
+        # V1 scope). A second '*' opener anywhere after the first group
+        # closes must be caught HERE, before falling through to
+        # _check_repeat_group: that function treats everything after the
+        # first closer as flat, one-time "post" content via _zone_sum,
+        # which SKIPS repeat_close clauses entirely as no-ops rather than
+        # flagging them -- so a second, unrecognized repeat group's own
+        # opener/body/closer would silently get summed as if it occurred
+        # exactly once, which can happen to produce a numerically
+        # consistent (but meaningless) confident PASS instead of the
+        # "unsupported" warning this was always supposed to be.
+        second_opener_idx = next(
+            (i for i in range(closer_idx + 1, len(clauses)) if clauses[i].raw.strip().startswith("*")),
+            None,
+        )
+        if second_opener_idx is not None:
+            return [Issue(
+                category="stitch_count", severity="warning", location=row.label,
+                message=(
+                    f"{row.label} appears to contain more than one repeat group (a second '*...' "
+                    f"marker found after the first repeat group closes). Only one repeat group per "
+                    f"row is currently supported, so this row's stitch-count math can't be verified."
+                ),
+            )]
         return _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label, ratio_overrides)
 
     each_st = next((c for c in clauses if c.clause_type in ("each_st_across", "each_st_around")), None)
