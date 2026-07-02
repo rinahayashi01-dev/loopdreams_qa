@@ -1036,3 +1036,46 @@ PASS instead.
   this; the fix here is scoped to detecting the unsupported shape
   honestly, not building support for it speculatively.
 
+## Tenth real-sample batch (Jul 2, 2026, regenerated) — same 10 throw-blanket
+## variants (sedge, waffle, linen, moss, bobble, shell, tr, dc, hdc, sc)
+Same filenames as the Jul 2 batch, but regenerated content -- first real
+use of the batch runner (`python -m loopdreams_qa.batch`) built two
+tech-debt passes ago. It immediately paid for itself: **moss regressed
+from PASS to REVIEW**, caught instantly by the summary table rather than
+requiring a manual per-file eyeball comparison against the prior round.
+
+- **Investigated the moss regression -- new phrasing, not a new defect**:
+  moss and linen's repeat unit changed from the earlier "*ch 1, skip 1
+  st, sc in next st*" / "*ch 1, skip ch-1 sp, SC in next SC*" ordering to
+  "*ch 1, sc in next ch-1 sp, skip next st*" -- the chain-1 space itself
+  is now the stitch's target noun, and the skip comes after rather than
+  before. Neither half of this new ordering matched any existing clause
+  shape, so both fell through to "unrecognized clause" and correctly
+  turned the row unverifiable -- a real tool gap, not a false alarm, but
+  also not a pattern defect: hand-verified using the existing moss/linen
+  "chains count inside the repeat unit" convention (from the Jun 27
+  batch) that 241 sts in resolves cleanly to 241 sts out with this
+  phrasing, exactly as the older phrasing did.
+- **Fixed two clause-shape gaps in `stitch_parser.py`**:
+  - New `stitch_in_ch1_space` pattern: `"<stitch> in (first|next|last)
+    ch-1 sp(ace)"` -- same semantics as the existing `simple_positional`
+    clause (one previous-row slot in, the stitch's own produces out),
+    just a different noun (a chain-1 space instead of an actual
+    previous-row stitch).
+  - `_RE_SKIP_POSITIONAL` previously only matched `"skip (the) first
+    <noun>"`; broadened to use the shared `_POS` group so `"skip next
+    st"` and `"skip last st"` are recognized too, not just `"first"`.
+- **Regression tests added** (`tests/test_stitch_parser.py`): both new
+  clause shapes tokenize correctly in isolation, `"skip next/last st"`
+  now resolves (previously only `"first"` did), and a full synthetic
+  moss-style row using the new phrasing verifies end-to-end with zero
+  stitch-count issues. Full suite passes (15 tests, 1 skip); moss
+  confirmed back to PASS, linen back down to just its one pre-existing
+  Row 1 warning (same known unverifiable mixed-foundation-row shape as
+  every prior round, not new), shell's pre-existing centre-dc warning
+  unchanged -- all other files re-verified byte-identical.
+- **Batch result**: sedge, waffle, moss, bobble, tr, dc, hdc, sc -- all
+  PASS. linen, shell -- REVIEW (both pre-existing, known, non-blocking
+  warnings). 8 PASS / 2 REVIEW / 0 FAIL, matching the healthiest prior
+  round once the phrasing gap was closed.
+

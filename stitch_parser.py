@@ -43,7 +43,7 @@ _RE_JOIN = re.compile(r"^join\b", re.I)
 _RE_SETUP = re.compile(r"^with (rs|ws) facing\b", re.I)
 _RE_REP_FROM = re.compile(r"^rep(?:eat)? from \*\s*(.*)$", re.I)
 _RE_SKIP = re.compile(r"^sk(?:ip)?\s+(\d+)", re.I)
-_RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+(?:the\s+)?first\s+{_NOUN}$", re.I)
+_RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+{_POS}\s+{_NOUN}$", re.I)
 # "skip (the) ch-1 sp(ace)" -- skips a chain-1 SPACE created by an earlier
 # 'ch 1' in the pattern, not a real previous-row stitch (e.g. linen/moss
 # stitch's "*ch 1, skip the ch-1 space, sc in next sc*"). Distinct from
@@ -78,7 +78,7 @@ class _Patterns:
         "counts_as_chain", "foundation_into_chain", "each_st_across", "each_st_around",
         "corner", "literal_next", "each_of_position", "side_edge", "cluster_same_spot",
         "centre_dc", "around_post", "top_of_chain", "simple_positional",
-        "foundation_ordinal_single",
+        "stitch_in_ch1_space", "foundation_ordinal_single",
     )
 
     def __init__(self, stitch_alt: str):
@@ -118,6 +118,19 @@ class _Patterns:
         self.top_of_chain = re.compile(rf"^({stitch_alt})\s+in\s+top\s+of\s+(?:the\s+)?ch(?:-\d+)?$", re.I)
         # Generic single-instance positional clause: "<stitch> in (first|next|last) st"
         self.simple_positional = re.compile(rf"^({stitch_alt})\s+in\s+{_POS}\s+{_NOUN}$", re.I)
+        # "<stitch> in (first|next|last) ch-1 sp(ace)" -- linen/moss-stitch
+        # style, working into a chain-1 SPACE left by the previous row
+        # rather than into an actual previous-row stitch. New phrasing found
+        # on a real sample (Jul 2, third throw-blanket batch): earlier
+        # samples wrote this as "skip the ch-1 space, sc in next st/sc" (the
+        # skip and the stitch-target are separate clauses); this phrasing
+        # instead makes the ch-1 space itself the stitch's target noun.
+        # Semantically the same "one previous-row slot in, one stitch out"
+        # shape as simple_positional -- just a different noun -- so it gets
+        # the same consumes=1 (that slot), produces=stitch's own ratio.
+        self.stitch_in_ch1_space = re.compile(
+            rf"^({stitch_alt})\s+in\s+{_POS}\s+ch-?1\s+sp(?:ace)?$", re.I
+        )
         # "<stitch> in 2nd ch from hook" WITHOUT a following "and each ch
         # across" -- a standalone foundation-start clause that's part of a
         # mixed row (e.g. linen/moss stitch: one ordinal stitch, then a
@@ -424,6 +437,18 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         # stitch leaves behind -- 1 for a plain substitute, more for a
         # fanned-out construction) genuinely depends on the stitch itself
         # and can't be assumed.
+        consumes = c if c is not None else 1
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
+                             consumes=consumes, produces=prod, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    m = patterns.stitch_in_ch1_space.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        # Same shape as simple_positional above -- one previous-row slot in
+        # (here, a chain-1 space left by the previous row, rather than an
+        # actual previous-row stitch), one stitch's own produces out.
         consumes = c if c is not None else 1
         return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
                              consumes=consumes, produces=prod, is_compound=is_compound,

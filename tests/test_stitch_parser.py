@@ -1,6 +1,68 @@
 import unittest
 
+from loopdreams_qa.pattern_parser import parse
+from loopdreams_qa.checks import stitch_count
 from loopdreams_qa.stitch_parser import tokenize_round
+
+
+class TestStitchInChain1Space(unittest.TestCase):
+    def test_stitch_in_next_ch1_space_recognized(self):
+        # Real phrasing found on a real sample (Jul 2, third throw-blanket
+        # batch): moss/linen stitch's repeat unit written as "sc in next
+        # ch-1 sp" (the chain-1 space itself as the stitch's target noun)
+        # plus a separate "skip next st", instead of the earlier-seen
+        # "skip the ch-1 space, sc in next sc" ordering. Neither half of
+        # this new ordering matched any prior clause shape, which
+        # regressed a previously-clean moss sample to an "unrecognized
+        # clause" warning.
+        clauses = tokenize_round(
+            "Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * across"
+        )
+        types = [c.clause_type for c in clauses]
+        self.assertEqual(types, ["positional_single", "chain", "positional_single", "skip", "repeat_close"])
+        stitch_clause = clauses[2]
+        self.assertEqual(stitch_clause.stitch, "sc")
+        self.assertEqual(stitch_clause.consumes, 1)
+        self.assertEqual(stitch_clause.produces, 1)
+        skip_clause = clauses[3]
+        self.assertEqual(skip_clause.consumes, 1)
+        self.assertEqual(skip_clause.produces, 0)
+
+    def test_skip_next_st_recognized_not_just_skip_first(self):
+        # _RE_SKIP_POSITIONAL previously only matched "skip (the) first
+        # st" -- "skip next st"/"skip last st" fell through to unknown.
+        for word in ("first", "next", "last"):
+            clauses = tokenize_round(f"skip {word} st")
+            self.assertEqual(len(clauses), 1)
+            self.assertEqual(clauses[0].clause_type, "skip")
+            self.assertEqual(clauses[0].consumes, 1)
+            self.assertEqual(clauses[0].produces, 0)
+
+    def test_moss_style_row_with_new_phrasing_verifies_end_to_end(self):
+        # Confirms the fix doesn't just tokenize correctly in isolation --
+        # the full stitch-count check resolves this new phrasing cleanly
+        # using the existing moss/linen "chains count inside the repeat
+        # unit" convention, exactly as it did for the older phrasing.
+        raw = (
+            "Test Blanket\n"
+            "MATERIALS\n"
+            "Gauge: 18 sc x 20 rows = 4 in [10 cm]\n"
+            "Terminology: US\n"
+            "Yarn: Test yarn\n"
+            "Hook: 4.0 mm\n"
+            "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 22, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (21 sts)\n"
+            "Row 2: Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * across. Ch 1, turn. (21 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        issues = stitch_count.check(pattern)
+        row2_issues = [i for i in issues if i.location == "Row 2"]
+        self.assertEqual(row2_issues, [])
 
 
 class TestCornerClause(unittest.TestCase):
