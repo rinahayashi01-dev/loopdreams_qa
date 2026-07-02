@@ -297,8 +297,21 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if m:
         count = int(m.group(1)) if m.group(1) else 1
         canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        # A compound stitch has no fixed ratio (prod is always None from
+        # _stitch_lookup for these), so its total produced count for N
+        # corner repeats isn't knowable either -- leave unverifiable
+        # rather than guessing 1 per repeat, same as every other
+        # compound-stitch clause shape (each_st_across/around, etc.).
+        # Note this is also why resolving via a solved ratio_overrides
+        # value wouldn't be safe to add here on its own: _zone_sum adds
+        # ratio_overrides[stitch] once per clause with no multiplier, so
+        # a corner's explicit count > 1 would still need dedicated
+        # handling before this could resolve to a real number.
+        produces = None if is_compound else (prod or 1) * count
         return StitchClause(raw=raw_part, stitch=canon, clause_type="corner", explicit_count=count,
-                             consumes=0, produces=(prod or 1) * count, is_compound=is_compound)
+                             consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if not is_compound else
+                             f"'{canon}' has no fixed consumes/produces ratio; construction not defined")
 
     m = patterns.side_edge.match(p)
     if m:

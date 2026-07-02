@@ -948,3 +948,46 @@ first version of this doc and manually worked around every round since
   directory) confirmed to exit 2 with a clear message rather than a
   traceback.
 
+### Tech-debt pass (Jul 2, 2026) — corner-clause silent guess for a compound stitch
+Closed the third item from the same tech-debt discussion (`stitch_parser.py`'s
+corner-clause `produces=(prod or 1) * count`), which was the one place in the
+codebase that guessed instead of reporting "can't verify" for a compound
+stitch. Never triggered by real data -- every corner seen across all 9+ real
+sample batches so far is plain `sc` -- but inconsistent with how every other
+compound-stitch clause shape (`each_st_across`/`each_st_around`, etc.)
+already handles this.
+
+- **Fix**: `_stitch_lookup` always returns `prod=None` for any compound
+  stitch (confirmed by reading it directly), so the fix is exactly the
+  same `is_compound` branch already used everywhere else: `produces =
+  None if is_compound else (prod or 1) * count`, plus the matching
+  `unverifiable_reason` message. A compound stitch's produced count for
+  N corner repeats genuinely isn't knowable without a stated ratio, so
+  this correctly falls through to the standard "cannot verify" path
+  instead of confidently asserting 1-per-repeat.
+- **Not attempted, and deliberately so**: resolving a compound corner
+  stitch's ratio via the existing `ratio_overrides` mechanism (the
+  algebraic solver from the Jun 29 bobble batch). `_zone_sum` adds
+  `ratio_overrides[stitch]` once per clause with no multiplier, so even
+  if a ratio were resolved elsewhere, a corner's explicit count > 1
+  would still need dedicated multiplication logic that doesn't exist
+  yet. Building that now, with zero real samples ever exercising a
+  compound stitch in a corner, would be exactly the kind of speculative
+  work against no test data the project avoids -- left as a known,
+  documented gap for if/when a real sample needs it.
+- **Regression tests added** (`tests/test_stitch_parser.py`, the first
+  direct unit tests of `stitch_parser.tokenize_round` in this project --
+  everything before this was tested indirectly via full-pattern parsing):
+  a plain-sc corner (`"3 sc in corner"`) still resolves `produces=3`
+  exactly as before; a synthetic compound-stitch corner (`"3 bo in
+  corner"`, since no real sample has ever done this) now correctly
+  leaves `produces=None` with a specific `unverifiable_reason` instead of
+  silently returning `3`. Full suite passes (10 tests, 1 skip); all 10
+  live Jul 2 throw-blanket files re-verified byte-identical to before
+  this change.
+- **Remaining open tech-debt item, not addressed this pass**: single
+  repeat group per row / no nested repeat groups (structural V1
+  limitation, never violated by any real sample so far) -- discussed as
+  a "keep in mind as a ceiling" item rather than something with a
+  concrete fix to make without a real trigger case.
+
