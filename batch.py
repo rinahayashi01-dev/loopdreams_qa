@@ -10,6 +10,11 @@ way, in a shell for-loop), then appends one combined summary table.
 --json mode suppresses the per-file prints and emits a single combined
 JSON document instead, since N separate JSON blobs on stdout isn't
 something a script can consume cleanly.
+
+Also runs cross_variant.check() across every parsed pattern in the batch
+-- a check that inherently can't live in checks/ (which all operate on
+one pattern at a time) since it compares sibling files against each
+other. See cross_variant.py's own docstring for why/how.
 """
 import argparse
 import json
@@ -17,6 +22,9 @@ import os
 import sys
 
 from . import cli
+from . import cross_variant
+from .extraction import extract_text
+from .pattern_parser import parse
 
 PATTERN_EXTENSIONS = (".pdf", ".docx")
 
@@ -38,7 +46,7 @@ def _batch_summary(results: dict) -> dict:
     }
 
 
-def _summary_text(results: dict, summary: dict) -> str:
+def _summary_text(results: dict, summary: dict, cross_variant_issues: list) -> str:
     lines = ["", "=" * 60, "BATCH SUMMARY", "=" * 60]
     name_width = max((len(n) for n in results), default=4)
     for name, report in results.items():
@@ -52,6 +60,13 @@ def _summary_text(results: dict, summary: dict) -> str:
         f"{summary['files_checked']} file(s) checked: {summary['pass']} PASS, "
         f"{summary['review']} REVIEW, {summary['fail']} FAIL"
     )
+    if cross_variant_issues:
+        lines.append("")
+        lines.append("=" * 60)
+        lines.append("CROSS-VARIANT CONSISTENCY")
+        lines.append("=" * 60)
+        for issue in cross_variant_issues:
+            lines.append(f"[{issue.severity.upper()}] {issue.location}: {issue.message}")
     return "\n".join(lines)
 
 
@@ -59,19 +74,30 @@ def run_batch(dir_path: str, json_output: bool = False) -> dict:
     paths = discover_patterns(dir_path)
 
     results = {}
+    patterns = {}
     for path in paths:
         name = os.path.basename(path)
         # quiet during the per-file call when we're going to emit one
         # combined JSON document at the end instead of per-file printing.
         results[name] = cli.run(path, json_output=False, quiet=json_output)
+        # Re-parsed separately (rather than threading the Pattern object
+        # out of cli.run()) so cli.run()'s existing single-file contract
+        # stays untouched -- these files are small, re-parsing is cheap.
+        patterns[name] = parse(extract_text(path))
+
+    cross_variant_issues = cross_variant.check(patterns)
 
     summary = _batch_summary(results)
-    combined = {"files": results, "batch_summary": summary}
+    combined = {
+        "files": results,
+        "cross_variant_issues": [i.to_dict() for i in cross_variant_issues],
+        "batch_summary": summary,
+    }
 
     if json_output:
         print(json.dumps(combined, indent=2))
     else:
-        print(_summary_text(results, summary))
+        print(_summary_text(results, summary, cross_variant_issues))
 
     return combined
 

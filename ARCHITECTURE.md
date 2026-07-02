@@ -1079,3 +1079,70 @@ requiring a manual per-file eyeball comparison against the prior round.
   warnings). 8 PASS / 2 REVIEW / 0 FAIL, matching the healthiest prior
   round once the phrasing gap was closed.
 
+### linen's recurring Row 1 warning resolved via external reference -- new check added (Jul 2, 2026)
+Asked directly: a real crochet-technique tutorial video (moss stitch)
+shows foundation chain -> a full plain sc row across -> THEN the
+alternating chain-1 pattern begins. moss.pdf does exactly this. linen.pdf
+does not -- it starts the alternating pattern immediately in Row 1, with
+no separate plain setup row. Is linen actually missing a step, and if so,
+why didn't the QA tool catch it as an error?
+
+- **Why the tool only ever flagged this as an ambiguity, not an error**:
+  this exact Row 1 shape (starting the alternating chain-1 pattern
+  immediately, no plain setup row) is, on its own, ALSO a legitimate and
+  common way real patterns write linen stitch -- plenty of published
+  patterns do it this way. The tool has correctly refused to call it
+  wrong in isolation every round so far (the recurring "cannot verify
+  Row 1" warning), because doing so would require an external
+  ground-truth reference for "the one true way to make stitch X", which
+  the tool has no access to and shouldn't fabricate.
+- **What actually makes THIS case resolvable, though**: LoopDreams' own
+  generated Stitch Guide text for both files explicitly claims
+  equivalence -- linen's guide says "Also called the moss stitch",
+  moss's says "Also called the linen stitch". Given the pattern set
+  itself asserts these are the same construction, they SHOULD match each
+  other, and demonstrably don't (moss has the setup row, linen doesn't).
+  The external video reference confirms which one is correct (moss's
+  setup-row version), but the tool doesn't need the video to detect the
+  *inconsistency* -- only LoopDreams' own claim of equivalence, which is
+  already present in every generated file.
+- **Added `cross_variant.py`** (new top-level module, not inside
+  `checks/`, since every existing check operates on ONE pattern and this
+  inherently compares sibling files against each other): extracts each
+  pattern's Stitch Guide heading name and any "Also called the X stitch"
+  aliases; for any two files in a batch whose names/aliases claim mutual
+  equivalence, compares whether Row 1 starts the alternating pattern
+  immediately (`*` opener present) or has a separate plain setup row
+  first. Disagreement -> a completeness-category warning naming both
+  files and which one has the setup row. Deliberately scoped to the
+  pattern's OWN claims, not an external hardcoded "correct" convention --
+  this is what keeps it from false-positiving on genuinely-correct
+  patterns that legitimately skip the setup row (e.g. it correctly leaves
+  sedge/shell alone despite sedge's guide loosely referencing "the shell
+  cluster stitch", since that's a different name than shell's own
+  "shell", not an exact match).
+- **Wired into `batch.py`**: `run_batch()` now also re-parses each file
+  (separately from `cli.run()`'s own internal parse, so `cli.run()`'s
+  single-file contract stays untouched -- these files are small, the
+  extra parse is cheap) purely to build the `{name: Pattern}` map
+  `cross_variant.check()` needs. Results append a new `CROSS-VARIANT
+  CONSISTENCY` section to the text summary and a `cross_variant_issues`
+  key to the combined JSON document.
+- **Tests**: `tests/test_cross_variant.py` covers the real mismatched
+  case, a matching (not-flagged) case, an unrelated-stitches case
+  (confirms no false positive on sedge/shell despite loose naming
+  overlap), and a no-Stitch-Guide-section case. `tests/test_batch.py`
+  adds a true end-to-end `run_batch()` integration test with
+  `extract_text` mocked per-filename (no real PDF fixtures needed,
+  matching this project's existing synthetic-text testing convention) --
+  confirms the cross-variant section actually surfaces correctly through
+  the full batch pipeline, not just in the standalone check function.
+  Full suite passes (21 tests, 1 skip).
+- **Not attempted**: actually determining which side of a mismatch is
+  "correct" -- the check only reports that two claimed-equivalent files
+  disagree, exactly as the real case required a human (with an external
+  video reference) to resolve which one was actually right. Building
+  that judgment into the tool would mean encoding a crochet-technique
+  knowledge base, which is a fundamentally different and much larger
+  scope than anything else this project does.
+
