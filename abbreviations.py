@@ -1,123 +1,106 @@
 """
-Crochet abbreviation reference data.
+US/UK crochet abbreviation tables and basic stitch math.
 
-Two things live here:
-1. Per-stitch "math" — how many stitches a stitch operation consumes from
-   the previous round/row, and how many it produces — used by the stitch
-   count checker.
-2. The US/UK term ladder — used by the terminology checker.
-
-IMPORTANT ASYMMETRY, read before changing this file:
-Several abbreviations exist in BOTH systems but mean different stitches
-(e.g. "dc" is single crochet's UK name AND US double crochet's own name).
-Those are *ambiguous* on their own and are deliberately left out of the
-"unambiguous" marker sets below. Only abbreviations that exist in exactly
-one system are safe to use as proof that a pattern is using that system.
+Decisions (see ARCHITECTURE.md):
+- Only genuinely unambiguous abbreviations are used as proof of US vs UK
+  convention: US_ONLY and UK_ONLY below. Bare dc/tr/dtr/dc2tog/tr2tog exist
+  in both systems with DIFFERENT meanings (US dc == UK tr, etc.) and are
+  deliberately NOT used as standalone proof of mixing -- using them that
+  way would produce false positives any time a pattern just legitimately
+  uses dc in a self-consistently-US (or self-consistently-UK) pattern.
+- STITCH_MATH covers simple stitches with a fixed, universal consumes/
+  produces ratio per instance (1 worked stitch consumes N previous-row
+  stitches and produces M current-row stitches).
+- COMPOUND_STITCHES are named/decorative stitches (shell, cluster, popcorn,
+  puff, bobble, etc.) that have NO fixed universal consumes/produces ratio
+  -- it depends entirely on how the individual pattern defines them (e.g.
+  "shell = 5 dc in same st, skip 2 sts" vs "shell = 3 dc"). These can only
+  be checked if the pattern itself defines the construction somewhere
+  (abbreviation key, a "Special Stitches" note, or inline). If undefined,
+  the stitch-count checker must flag rows using them as unverifiable
+  rather than guess at a ratio.
 """
 
-from __future__ import annotations
+# Unambiguous US-only abbreviations (proof of US convention if present)
+US_ONLY = {"sc", "hdc", "sc2tog", "hdc2tog"}
 
-from dataclasses import dataclass
+# Unambiguous UK-only abbreviations (proof of UK convention if present)
+UK_ONLY = {"htr", "ttr", "htr2tog", "dtr2tog"}
 
+# Exist in both systems with DIFFERENT meanings -- never used alone as proof
+AMBIGUOUS_BOTH_SYSTEMS = {"dc", "tr", "dtr", "dc2tog", "tr2tog"}
 
-@dataclass(frozen=True)
-class StitchInfo:
-    abbr: str
-    name: str
-    consumes: int  # stitches consumed from the previous round/row, per occurrence
-    produces: int  # stitches produced, per occurrence
-    counts_toward_total: bool = True  # turning chains / slip stitches usually don't
+# Neutral abbreviations -- same meaning/spelling in both systems, never
+# diagnostic of US vs UK either way.
+NEUTRAL = {"ch", "sl st", "rep", "rs", "ws", "fo", "mr", "fpdc", "bpdc", "inc", "dec", "st", "sts"}
 
-
-# Stitch math is the same regardless of what a stitch is *called* — a US "sc"
-# and a UK "dc" both consume 1 and produce 1, they're the same physical stitch.
-# So we key this by a canonical stitch "shape", and let the term tables below
-# map abbreviations (US or UK) onto a shape.
+# Simple stitches: (stitches consumed from previous row, stitches produced
+# in current row) for ONE instance of the stitch worked into ONE previous
+# stitch. inc/dec are themselves already net operations.
 STITCH_MATH = {
-    "single_tall":   StitchInfo("", "single crochet height", 1, 1),
-    "half_double":   StitchInfo("", "half double crochet height", 1, 1),
-    "double_tall":   StitchInfo("", "double crochet height", 1, 1),
-    "treble":        StitchInfo("", "treble crochet height", 1, 1),
-    "double_treble": StitchInfo("", "double treble height", 1, 1),
-    "post_stitch":   StitchInfo("", "post stitch", 1, 1),
-    "inc":           StitchInfo("inc", "increase", 1, 2),
-    "dec":           StitchInfo("dec", "decrease", 2, 1),
-    "skip":          StitchInfo("skip", "skipped stitch", 1, 0),
-    "ch":            StitchInfo("ch", "chain", 0, 1, counts_toward_total=False),
-    "sl_st":         StitchInfo("sl st", "slip stitch", 1, 1, counts_toward_total=False),
-    "no_op":         StitchInfo("", "marker / no stitch math", 0, 0, counts_toward_total=False),
+    "sc": (1, 1),
+    "hdc": (1, 1),
+    "dc": (1, 1),
+    "tr": (1, 1),
+    "dtr": (1, 1),
+    "htr": (1, 1),
+    "ttr": (1, 1),
+    "fpdc": (1, 1),
+    "bpdc": (1, 1),
+    "inc": (1, 2),
+    "dec": (2, 1),
+    "sc2tog": (2, 1),
+    "hdc2tog": (2, 1),
+    "dc2tog": (2, 1),
+    "tr2tog": (2, 1),
+    "htr2tog": (2, 1),
+    "dtr2tog": (2, 1),
 }
 
-# US terms -> canonical shape
-US_TERMS = {
-    "sc": "single_tall",
-    "hdc": "half_double",
-    "dc": "double_tall",
-    "tr": "treble",
-    "dtr": "double_treble",
-    "fpdc": "post_stitch",
-    "bpdc": "post_stitch",
-    "sc2tog": "dec",
-    "hdc2tog": "dec",
-    "dc2tog": "dec",
-    "tr2tog": "dec",
-    "inc": "inc",
-    "dec": "dec",
-    "ch": "ch",
-    "sl st": "sl_st",
-    "mr": "no_op",
-    "fo": "no_op",
+# Named/compound decorative stitches with no fixed universal ratio.
+# Presence of one of these tokens (or a custom abbreviation key entry whose
+# DEFINITION text contains one of these words) marks a stitch as needing an
+# explicit construction definition before stitch-count math can be verified.
+COMPOUND_STITCH_WORDS = {
+    "shell", "sh st", "cluster", "cl", "popcorn", "pc", "bobble", "puff",
+    "v-st", "v st", "picot", "star st",
 }
 
-# UK terms -> canonical shape
-UK_TERMS = {
-    "dc": "single_tall",     # UK dc = US sc
-    "htr": "half_double",    # UK htr = US hdc
-    "tr": "double_tall",     # UK tr = US dc
-    "dtr": "treble",         # UK dtr = US tr
-    "ttr": "double_treble",  # UK ttr = US dtr
-    "fpdc": "post_stitch",
-    "bpdc": "post_stitch",
-    "dc2tog": "dec",
-    "htr2tog": "dec",
-    "tr2tog": "dec",
-    "dtr2tog": "dec",
-    "inc": "inc",
-    "dec": "dec",
-    "ch": "ch",
-    "sl st": "sl_st",
-    "mr": "no_op",
-    "fo": "no_op",
-}
+KNOWN_SIMPLE_TOKENS = set(STITCH_MATH.keys())
+ALL_KNOWN_TOKENS = KNOWN_SIMPLE_TOKENS | US_ONLY | UK_ONLY | AMBIGUOUS_BOTH_SYSTEMS | NEUTRAL
 
-# Terms that exist in exactly one system — safe to use as proof of which
-# convention a pattern is actually using. See module docstring for why "dc",
-# "tr", "dtr", "dc2tog", "tr2tog" are deliberately excluded.
-UNAMBIGUOUS_US_ONLY = {"sc", "hdc", "sc2tog", "hdc2tog"}
-UNAMBIGUOUS_UK_ONLY = {"htr", "ttr", "htr2tog", "dtr2tog"}
+import re as _re
 
-# All known abbreviations across both systems, for tokenizing round/row text.
-ALL_KNOWN_TERMS = sorted(set(US_TERMS) | set(UK_TERMS), key=len, reverse=True)
-
-# Terms whose stitch math doesn't depend on system (used identically, same meaning).
-SHARED_TERMS = {"ch", "sl st", "inc", "dec", "mr", "fo", "fpdc", "bpdc"}
+_COMPOUND_WORD_RE = _re.compile(
+    r"\b(" + "|".join(_re.escape(w) for w in COMPOUND_STITCH_WORDS) + r")\b", _re.I
+)
 
 
-def shape_for_term(term: str, system: str) -> str | None:
-    """Look up the canonical stitch shape for an abbreviation under a given
-    system ("US" or "UK"). Falls back to checking the other system's table
-    if not found, since shared terms (ch, sl st, inc, dec...) are identical
-    either way."""
-    term = term.lower()
-    table = US_TERMS if system == "US" else UK_TERMS
-    if term in table:
-        return table[term]
-    other = UK_TERMS if system == "US" else US_TERMS
-    return other.get(term)
+def custom_compound_tokens(abbr_key: dict) -> frozenset:
+    """A pattern can define its OWN short abbreviation for a named/decorative
+    stitch (e.g. 'bo = bobble (5 incomplete dc in same st, ...)') instead of
+    writing the compound-stitch word itself in the instructions. Neither the
+    stitch tokenizer nor the completeness checks previously had any way to
+    recognize that custom token as a stitch at all unless we look at what
+    its OWN definition text names. Real gap found on a real sample (bobble
+    tote bag, Jun 29 batch): 'bo' was used throughout the body but never
+    matched any known stitch word, so every row using it silently became
+    "unrecognized clause" noise instead of a proper "compound stitch, no
+    fixed ratio" flag -- and the completeness check never saw it as a
+    stitch at all, so it couldn't even confirm the construction was
+    (correctly) stated.
 
-
-def stitch_info_for_term(term: str, system: str) -> StitchInfo | None:
-    shape = shape_for_term(term, system)
-    if shape is None:
-        return None
-    return STITCH_MATH[shape]
+    Returns the set of abbreviation-key tokens (already lowercased) whose
+    definition text names one of COMPOUND_STITCH_WORDS, so callers can treat
+    that token exactly like a hardcoded compound-stitch word: no fixed
+    consumes/produces ratio, construction-required per the digit heuristic.
+    Tokens that are already a recognized simple/system/neutral abbreviation
+    are skipped -- a pattern redefining e.g. 'sc' is not this case.
+    """
+    found = set()
+    for abbr, definition in abbr_key.items():
+        if abbr in ALL_KNOWN_TOKENS:
+            continue
+        if _COMPOUND_WORD_RE.search(definition):
+            found.add(abbr)
+    return frozenset(found)
