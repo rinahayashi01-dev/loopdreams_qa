@@ -1,57 +1,51 @@
-"""Report assembly: turns a Pattern + list of Issues into a serializable report."""
-
-from __future__ import annotations
-from .models import Pattern, Issue
+import json
 
 
-def build_report(pattern: Pattern, issues: list[Issue]) -> dict:
+def build_report(pattern, issues: list) -> dict:
+    by_category = {"stitch_count": [], "terminology": [], "completeness": []}
+    for issue in issues:
+        by_category.setdefault(issue.category, []).append(issue.to_dict())
+
+    n_errors = sum(1 for i in issues if i.severity == "error")
+    n_warnings = sum(1 for i in issues if i.severity == "warning")
+
     return {
-        "source": pattern.source_path,
+        "title": pattern.title,
         "declared_system": pattern.declared_system,
         "declared_system_source": pattern.declared_system_source,
-        "rounds_parsed": len(pattern.rounds),
-        "sections_found": sorted(pattern.sections.keys()),
-        "extraction_warnings": pattern.extraction_warnings,
-        "issue_counts": {
-            "error": sum(1 for i in issues if i.severity == "error"),
-            "warning": sum(1 for i in issues if i.severity == "warning"),
-            "info": sum(1 for i in issues if i.severity == "info"),
+        "foundation_chain": pattern.foundation_chain,
+        "row_count": len(pattern.rows),
+        "summary": {
+            "errors": n_errors,
+            "warnings": n_warnings,
+            "status": "FAIL" if n_errors else ("REVIEW" if n_warnings else "PASS"),
         },
-        "issues": [
-            {"check": i.check, "severity": i.severity, "location": i.location, "message": i.message}
-            for i in issues
-        ],
+        "issues": by_category,
     }
 
 
-_SEVERITY_ORDER = {"error": 0, "warning": 1, "info": 2}
+def to_json(report: dict) -> str:
+    return json.dumps(report, indent=2)
 
 
-def render_text_report(report: dict) -> str:
+def to_text(report: dict) -> str:
     lines = []
-    lines.append(f"QA report: {report['source']}")
-    lines.append(
-        f"Declared system: {report['declared_system'] or 'not determined'} "
-        f"({report['declared_system_source']})"
-    )
-    lines.append(f"Sections found: {', '.join(report['sections_found']) or 'none'}")
-    lines.append(f"Rounds/rows parsed: {report['rounds_parsed']}")
-
-    if report["extraction_warnings"]:
-        lines.append("Extraction warnings:")
-        for w in report["extraction_warnings"]:
-            lines.append(f"  - {w}")
-
-    counts = report["issue_counts"]
+    title = report.get("title") or "(untitled pattern)"
+    lines.append(f"QA Report: {title}")
+    lines.append(f"Declared terminology: {report['declared_system']} (source: {report['declared_system_source']})")
+    lines.append(f"Status: {report['summary']['status']}  "
+                 f"({report['summary']['errors']} error(s), {report['summary']['warnings']} warning(s))")
     lines.append("")
-    lines.append(f"Issues: {counts['error']} error(s), {counts['warning']} warning(s), {counts['info']} info")
-    lines.append("")
-
-    issues = sorted(report["issues"], key=lambda i: _SEVERITY_ORDER.get(i["severity"], 9))
-    if not issues:
-        lines.append("No issues found.")
-    else:
-        for i in issues:
-            lines.append(f"[{i['severity'].upper()}] ({i['check']}) {i['location']}: {i['message']}")
-
+    for category in ("stitch_count", "terminology", "completeness"):
+        cat_issues = report["issues"].get(category, [])
+        label = {"stitch_count": "STITCH-COUNT MATH", "terminology": "TERMINOLOGY",
+                 "completeness": "COMPLETENESS"}[category]
+        lines.append(f"== {label} ==")
+        if not cat_issues:
+            lines.append("  No issues found.")
+        else:
+            for issue in cat_issues:
+                tag = issue["severity"].upper()
+                lines.append(f"  [{tag}] {issue['location']}: {issue['message']}")
+        lines.append("")
     return "\n".join(lines)

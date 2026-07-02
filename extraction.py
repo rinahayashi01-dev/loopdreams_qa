@@ -1,92 +1,72 @@
 """
-Text extraction for pattern documents.
+PDF / Word text extraction.
 
-Word (.docx): python-docx, paragraphs + table cells in document order.
-PDF (.pdf): pdfplumber for the native text layer; any page that comes back
-near-empty is treated as scanned/image-based and re-rendered to an image
-(pdf2image) for OCR (pytesseract). Each OCR'd page is noted in warnings so
-the report can tell the user "page 3 was OCR'd, double-check it."
+- .docx -> python-docx, paragraph text joined with newlines (tables flattened
+  row-by-row, cells joined with " | ").
+- .pdf -> pdfplumber per-page text extraction. If a page yields no/near-empty
+  text (scanned/image-based page), fall back to OCR for that page only via
+  pdf2image -> pytesseract.
 """
-
-from __future__ import annotations
 import os
 
-OCR_MIN_CHARS = 20  # below this, a PDF page is treated as having no real text layer
+MIN_CHARS_BEFORE_OCR_FALLBACK = 20
 
 
-def extract_text(path: str) -> tuple[str, list[str]]:
-    """Returns (full_text, warnings). Raises ValueError for unsupported file types."""
-    lower = path.lower()
-    if lower.endswith(".docx"):
+def extract_text(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".docx":
         return _extract_docx(path)
-    if lower.endswith(".pdf"):
+    elif ext == ".pdf":
         return _extract_pdf(path)
-    raise ValueError(f"Unsupported file type: {os.path.basename(path)} (expected .pdf or .docx)")
+    else:
+        raise ValueError(f"Unsupported file type: {ext} (expected .pdf or .docx)")
 
 
-def _extract_docx(path: str) -> tuple[str, list[str]]:
+def _extract_docx(path: str) -> str:
     import docx
 
-    doc = docx.Document(path)
-    warnings: list[str] = []
-    parts: list[str] = []
-
-    for para in doc.paragraphs:
-        if para.text.strip():
-            parts.append(para.text)
-
-    for table in doc.tables:
+    d = docx.Document(path)
+    lines = []
+    for para in d.paragraphs:
+        lines.append(para.text)
+    for table in d.tables:
         for row in table.rows:
             cells = [c.text.strip() for c in row.cells]
-            if any(cells):
-                parts.append(" | ".join(cells))
-
-    if not parts:
-        warnings.append("No extractable text found in this Word document.")
-
-    return "\n".join(parts), warnings
+            lines.append(" | ".join(cells))
+    return "\n".join(lines)
 
 
-def _extract_pdf(path: str) -> tuple[str, list[str]]:
+def _extract_pdf(path: str) -> str:
     import pdfplumber
 
-    warnings: list[str] = []
-    page_texts: list[str] = []
-    ocr_pages: list[int] = []
-
+    pages_text = []
+    ocr_pages = []
     with pdfplumber.open(path) as pdf:
-        for i, page in enumerate(pdf.pages, start=1):
+        for i, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
-            if len(text.strip()) < OCR_MIN_CHARS:
-                ocr_text = _ocr_page(path, i)
-                if ocr_text.strip():
-                    page_texts.append(ocr_text)
-                    ocr_pages.append(i)
-                else:
-                    page_texts.append(text)
+            if len(text.strip()) < MIN_CHARS_BEFORE_OCR_FALLBACK:
+                ocr_pages.append(i)
+                pages_text.append(None)  # placeholder, filled in below
             else:
-                page_texts.append(text)
+                pages_text.append(text)
 
     if ocr_pages:
-        pages_str = ", ".join(str(p) for p in ocr_pages)
-        warnings.append(
-            f"Page(s) {pages_str} had little or no extractable text layer and were "
-            f"read with OCR instead -- double-check those pages, OCR can misread "
-            f"stitch counts and abbreviations."
-        )
+        ocr_results = _ocr_pages(path, ocr_pages)
+        for idx, text in zip(ocr_pages, ocr_results):
+            pages_text[idx] = text
 
-    full_text = "\n\n".join(page_texts)
-    if not full_text.strip():
-        warnings.append("No extractable text found anywhere in this PDF, including via OCR.")
-
-    return full_text, warnings
+    return "\n".join(t or "" for t in pages_text)
 
 
-def _ocr_page(path: str, page_number: int) -> str:
+def _ocr_pages(path: str, page_indices) -> list:
     from pdf2image import convert_from_path
     import pytesseract
 
-    images = convert_from_path(path, first_page=page_number, last_page=page_number, dpi=300)
-    if not images:
-        return ""
-    return pytesseract.image_to_string(images[0])
+    results = []
+    for idx in page_indices:
+        images = convert_from_path(path, first_page=idx + 1, last_page=idx + 1, dpi=300)
+        if images:
+            results.append(pytesseract.image_to_string(images[0]))
+        else:
+            results.append("")
+    return results
