@@ -3,7 +3,7 @@ import sys
 
 from .extraction import extract_text
 from .pattern_parser import parse
-from .checks import stitch_count, terminology, completeness
+from .checks import stitch_count, terminology, completeness, known_constructions
 from .report import build_report, to_text, to_json
 
 
@@ -15,6 +15,7 @@ def run(path: str, json_output: bool = False, quiet: bool = False) -> dict:
     issues.extend(stitch_count.check(pattern))
     issues.extend(terminology.check(pattern))
     issues.extend(completeness.check(pattern))
+    issues.extend(known_constructions.check(pattern))
 
     report = build_report(pattern, issues)
     if not quiet:
