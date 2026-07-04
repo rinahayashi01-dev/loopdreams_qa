@@ -1146,3 +1146,111 @@ why didn't the QA tool catch it as an error?
   knowledge base, which is a fundamentally different and much larger
   scope than anything else this project does.
 
+## Eleventh real-sample batch (Jul 4, 2026) — tote bag (waffle stitch)
+One file. Two real, unrelated findings -- a genuine parser gap (new row-
+shorthand phrasing) and a genuine content defect (wrong chain-skip
+convention for the named stitch), the latter requiring three rounds of
+back-and-forth with an external source before landing on the right
+answer. Worth reading in full if a similar "the video says X" claim comes
+up again -- the first two attempts to resolve it were each wrong in a
+different, instructive way.
+
+### Parser gap: "Repeat Rows P-Q x N more times." with no row-range label
+Running the QA tool immediately produced a false `"No instructions are
+given for Rows 4-79"` error. The pattern used `"Repeat Rows 2-3 x 38 more
+times."` as a standalone sentence -- unlike the previously-supported
+`"Rows 4-79: Repeat Row 2."` shorthand, this has NO leading row-range
+label at all, only a repeat count. **Fixed** in `pattern_parser.py`: a
+new regex anchors immediately after the LAST already-parsed occurrence of
+the referenced range's own last row (e.g. Row 3), spanning `N * (Q-P+1)`
+more rows; if no such anchor exists (e.g. a typo referencing a row that
+was never parsed), it's left unrecognized rather than guessed. Hand-
+verified the row math first (1 + 1 + 1 + 38×2 + 1 = 80 rows, ending
+correctly on the row type the guide describes). Tests in
+`tests/test_pattern_parser.py`. With this fixed, the pattern's own
+stitch-count math is fully clean using its existing "4th ch from hook"
+Row 1 wording -- which turned out to matter a lot for the next part.
+
+### Content defect: wrong chain-skip convention for Waffle Stitch's Row 1 -- three rounds to resolve
+The user flagged, from a YouTube video, that Row 1 should skip only 1
+chain ("2nd ch from hook"), not 3 ("4th ch from hook" as generated).
+
+**Round 1 (wrong on my end)**: pointed out that "4th ch from hook" is the
+generic US double-crochet convention (skip 3, matching a ch-3 turning-
+chain-equivalent), and that switching to "2nd ch from hook" would break
+the row's own stated count (72 chain - 1 = 71 sts, not the declared 69).
+Both true, but beside the point -- I was defending the *generic* dc
+convention without checking whether THIS specific named, sourced
+technique actually follows it.
+
+**Round 2 (closer, still wrong)**: identified the video as Bella Coco's
+"How to crochet the Waffle Stitch" -- confirmed via `oembed` (full video
+pages don't render through WebFetch, but oembed reliably returns title/
+author) -- and via web search that her patterns are written in **UK
+terminology**, where "double crochet" is a different, shorter stitch
+than the US term (UK dc = US sc). Correctly concluded the video's "dc"
+and this pattern's US "dc" aren't the same stitch. But a search-result
+snippet paraphrase claimed her tutorial specifies "third chain, not
+second" -- and when the user then handwrote out Row 2/Row 3 from memory
+based on the video, Row 3's stitch math (checked the same way as Round
+1's foundation-row check) didn't divide evenly. Flagged this discrepancy
+directly instead of accepting the recalled description at face value --
+the right move, since the exact wording mattered and secondhand
+paraphrase/memory wasn't precise enough to resolve it.
+
+**Round 3 (resolved)**: the user provided a screenshot of Bella Coco's
+actual published written pattern (blog.bellacococrochet.com/waffle-
+stitch/), in UK terms. Translating precisely (UK tr -> US dc, UK FPtr ->
+US FPdc) and checking the arithmetic:
+- Row 1: `dc in 3rd ch from hook (skipped 2-ch does not count as st)` --
+  skip 2, not skip 3 as LoopDreams generated, and not skip 1 as the
+  user's first video-recall suggested either.
+- Row 2/Row 3 translated exactly (not the user's earlier from-memory
+  version) both resolve cleanly: 69 sts - 3 (edges) = 66, / 3 = exactly
+  22 repeats each.
+- Critically: the canonical construction requires the foundation chain
+  to be `3n + 2` for the resulting stitch count to be a clean multiple of
+  3 (needed for Row 2/3's own repeat math). LoopDreams' foundation of
+  Ch 72 does NOT satisfy this (72 isn't `3n+2` for any integer n) -- with
+  the *canonical* skip of 2, Ch 72 gives 70 sts, which does NOT divide
+  cleanly for Row 2/3 (66.67). LoopDreams' actual "skip 3" choice is what
+  makes Ch 72 produce a workable 69 stitches (a clean multiple of 3) --
+  an internally self-consistent variant, but not a faithful reproduction
+  of the named, sourced technique. **Confirmed real defect**: both Row 1's
+  wording and the foundation chain count need to change together (e.g.
+  Ch 71 -> 69 sts with the corrected "3rd ch from hook", leaving Rows
+  2-80 unchanged since 69 sts still resolves the same way).
+- **The lesson**: neither "internally self-consistent" nor "matches
+  generic stitch-family convention" is sufficient to confirm a named,
+  sourced stitch is constructed correctly -- only checking against the
+  actual verified source settled it, and it took three passes (generic-
+  convention defense, video-title + secondhand-paraphrase, actual
+  published-pattern screenshot) to get there. Each intermediate step was
+  reasoned about carefully rather than accepted at face value, and each
+  wrong conclusion was caught by the same discipline that's been used
+  throughout this project: check the arithmetic before trusting an
+  answer, whichever direction it points.
+
+**Tool addition**: `checks/known_constructions.py` -- a small, explicit
+reference table of verified stitch constructions (currently one entry:
+Waffle Stitch, sourced to Bella Coco's published pattern), checked
+against any pattern whose own Stitch Guide heading names a stitch in the
+table. Flags (a) a Row 1 chain-skip that doesn't match the verified skip,
+and (b) a foundation chain that doesn't satisfy the verified stitch
+multiple. Both as warnings, not errors, since a pattern can still be
+internally self-consistent while deviating from the named technique --
+this is a "worth confirming" flag, not a hard failure, the same posture
+as the cross-variant check. Deliberately kept small: entries are only
+added after a real, human-verified case, never speculatively, to avoid
+false-positiving on legitimate variants of a stitch family that share a
+name loosely. Tests in `tests/test_known_constructions.py` cover the real
+mismatched case (both warnings fire), the corrected/canonical case (no
+warnings), an unrelated stitch name (not checked), and no-Stitch-Guide-
+section (not checked). Wired into `cli.run()` directly (not just
+`batch.py`, since this check operates on one pattern at a time, unlike
+`cross_variant.py`). Full suite passes (27 tests, 1 skip).
+- **Not attempted**: broader coverage of other named stitches. This
+  table is intentionally minimal and grows only from real, sourced cases
+  -- the same discipline as `cross_variant.py`'s "don't add features
+  beyond a verified real case" approach.
+

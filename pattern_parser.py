@@ -180,6 +180,38 @@ def _parse_instructions(section: Section, pattern: Pattern):
                       referenced_rows=referenced)
         found_rows.append(rr)
 
+    # "Repeat Rows P[-Q] x N more times." -- a standalone repeat instruction
+    # with NO leading "Rows A-B:" label at all (unlike repeat_ref_re above,
+    # which requires one). Real phrasing found on a real sample (tote bag,
+    # Jul 4 batch): "Repeat Rows 2-3 x 38 more times." following explicit
+    # Row 2/Row 3 entries, with Row 80 appearing next. Since there's no
+    # explicit target row-range in the text itself, it has to be inferred:
+    # anchored immediately after the LAST already-parsed occurrence of the
+    # referenced range's own last row (e.g. Row 3), spanning N more full
+    # repeats of the P-Q cycle. Without this pass, this phrase is invisible
+    # to found_rows entirely, and the checker sees a hard gap between the
+    # last explicit row and the next explicit row after it.
+    repeat_n_more_re = re.compile(
+        r"Repeat\s+Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\s*(?:x|×)\s*(\d+)\s+more\s+times?\.?",
+        re.I,
+    )
+    for m in repeat_n_more_re.finditer(blob):
+        ref_start = int(m.group(1))
+        ref_end = int(m.group(2)) if m.group(2) else ref_start
+        n_more = int(m.group(3))
+        cycle_len = ref_end - ref_start + 1
+        anchor = max((r.row_end for r in found_rows if r.row_end == ref_end), default=None)
+        if anchor is None:
+            continue  # can't anchor to a known occurrence -- leave unrecognized rather than guess
+        new_start = anchor + 1
+        new_end = anchor + n_more * cycle_len
+        referenced = list(range(ref_start, ref_end + 1))
+        label = f"Row {new_start}" if new_start == new_end else f"Rows {new_start}-{new_end}"
+        rr = RoundRow(label=label, row_start=new_start, row_end=new_end,
+                      raw_text=f"[repeats Row(s) {ref_start}-{ref_end}, {n_more} more time(s)]",
+                      referenced_rows=referenced)
+        found_rows.append(rr)
+
     found_rows.sort(key=lambda r: r.row_start)
 
     # Resolve "Repeat Row(s) P-Q" rows' declared_count from whichever
