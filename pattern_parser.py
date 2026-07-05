@@ -26,6 +26,22 @@ SECTION_HEADERS = {
     "finishing": "finishing",
     "notes": "notes",
     "confidence summary": "ignored_meta",  # LoopDreams' own auto-QA output -- not pattern content
+    # Real sample found (tote bag, Jul 5 batch): "TESTER EXPECTATIONS" is a
+    # different heading than the "TESTER FEEDBACK" seen on the Jul 4 tote
+    # bag, but the same kind of content -- a request for the human tester's
+    # own notes back to the designer, not pattern content to check.
+    "tester feedback": "ignored_meta",
+    "tester expectations": "ignored_meta",
+    # Real sample found (tote bag, Jul 5 batch): without its own recognized
+    # heading, this section's construction instructions (and everything
+    # after them, including the tester-notes section above) got silently
+    # absorbed into "finishing"'s raw_text, which broke the Handles
+    # component's own "(N sts)" extraction (that regex anchors to the end
+    # of the whole blob to find the trailing count -- with unrelated
+    # trailing content glued on, the real count was no longer at the end).
+    # See _check_zipper_liner_section in completeness.py for what's
+    # actually verified about this section's own content.
+    "adding a zipper & liner": "zipper_liner",
 }
 
 _RE_PAGE_HEADER = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4},\s*\d{1,2}:\d{2}\s*[AP]M\b.*$")

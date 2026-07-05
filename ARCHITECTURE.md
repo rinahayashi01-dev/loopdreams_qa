@@ -1254,3 +1254,78 @@ section (not checked). Wired into `cli.run()` directly (not just
   -- the same discipline as `cross_variant.py`'s "don't add features
   beyond a verified real case" approach.
 
+## Twelfth real-sample batch (Jul 5, 2026) — tote bag with lining + zipper
+First LoopDreams sample to add a lining/zipper component on top of the
+crocheted body (previous tote bags stopped at handles). Also the first
+sample whose PDF genuinely needed OCR and didn't have it available --
+surfaced a real extraction crash, a real parser gap, and a real content
+defect, all in the same file.
+
+- **Extraction crash, fixed**: this PDF's trailing screenshot/confidence-
+  summary pages have ZERO embedded text at all -- unlike every prior
+  sample, which always had at least a URL/timestamp footer keeping those
+  pages above `MIN_CHARS_BEFORE_OCR_FALLBACK`. That pushed them into the
+  OCR fallback path, and this environment doesn't have `pdf2image`
+  installed, so `extract_text()` crashed with `ModuleNotFoundError`
+  instead of returning the (perfectly readable) real pattern content on
+  the earlier text-layer pages. **Fixed**: `_ocr_pages` now catches
+  `ImportError` (broadened from a narrower `ModuleNotFoundError` catch,
+  to also cover a partially-broken install) and returns empty strings
+  for the affected pages with a printed warning, instead of crashing the
+  whole extraction. OCR is a fallback for genuinely scanned pages, not
+  something that should hard-crash QA of an otherwise-fine PDF just
+  because it's unavailable in a given environment. Tests in
+  `tests/test_extraction.py` simulate the missing-dependency case
+  deterministically (via mocking `__import__`) rather than depending on
+  whatever happens to be installed wherever the suite runs.
+- **Parser gap, fixed**: neither `"Adding a Zipper & Liner"` nor
+  `"TESTER EXPECTATIONS"` (a new heading wording, distinct from the Jul 4
+  batch's `"TESTER FEEDBACK"`) were recognized `SECTION_HEADERS`. Both
+  got silently absorbed into `"finishing"`'s `raw_text`, which broke the
+  Handles component's own `"(N sts)"` extraction -- that regex anchors to
+  the end of the whole blob to find the trailing count, and with
+  unrelated trailing content (zipper/liner instructions, then the entire
+  tester questionnaire) glued on, the real count was no longer at the
+  true end. Produced a false "Handles gives real stitch construction
+  instructions but never states an expected stitch count" warning on a
+  pattern that actually states one. **Fixed**: added both headings to
+  `SECTION_HEADERS` -- `"tester feedback"`/`"tester expectations"` as
+  `ignored_meta` (same treatment as `"confidence summary"`: a request for
+  the human tester's own notes, not pattern content), `"adding a zipper &
+  liner"` as its own new `"zipper_liner"` section type (real pattern
+  content that needs its own completeness check -- see below, not just a
+  boundary fix). Tests in `tests/test_pattern_parser.py`.
+- **Content defect, confirmed and now caught automatically**: the
+  `"zipper_liner"` section's own heading explicitly promises both a
+  zipper AND a liner, but the body only ever gave liner installation
+  instructions -- the word "zipper" appears exactly twice in the whole
+  document (the Materials list heading, and this section's own title)
+  and never again in any actual instructional sentence. A tester
+  literally has no way to complete the zipper step from this pattern as
+  written. **Added** `_check_zipper_liner_section` to
+  `checks/completeness.py`: flags (as an error, same severity as a
+  missing Materials/Finishing section) when a `"zipper_liner"` section
+  exists but its body is missing "zipper" and/or "liner"/"lining"
+  content. Tests in `tests/test_zipper_liner_check.py` cover missing-
+  zipper (the real case), missing-liner (for symmetry), both-present
+  (not flagged), and no-such-section (not checked).
+- **Liner technique spot-checked against a user-provided reference**
+  (Mason Jar Yarn Designs, "Adding A Fabric Lining to your Crochet Bag")
+  and found consistent, not defective: both use the same core sequence
+  (fold fabric right-sides-together, sew the side seams, turn right-side
+  out, nest inside the finished bag, hand-stitch the folded top hem to
+  the bag's top edge). LoopDreams' specific fixed hem/seam-allowance
+  numbers (0.5in side seam, 0.75in top hem) are a reasonable
+  simplification of the reference's "size it to your actual bag" approach,
+  not a contradiction. Fabric cut dimensions (15in x 33.5in) independently
+  verified against the pattern's own stated 14in x 16in finished size:
+  14+1=15 and 2(16)+1.5=33.5, both exact. No defect found here --
+  included to record that the comparison was actually done, not skipped,
+  given the user had proactively gathered reference material for this
+  exact scenario.
+- **Final result**: was previously uncheckable at all (crashed before
+  reaching the checks). After all three fixes: **FAIL** (1 error -- the
+  real missing-zipper-instructions defect; 0 warnings; stitch-count math,
+  terminology, and the linen-stitch body -- using the ch-1-space
+  phrasing fixed two batches ago -- all verify cleanly).
+

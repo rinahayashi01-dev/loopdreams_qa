@@ -33,6 +33,7 @@ def check(pattern) -> list:
     issues.extend(_check_non_stitch_rows(pattern))
     issues.extend(_check_missing_component_count(pattern))
     issues.extend(_check_stitch_guide_body_mismatch(pattern))
+    issues.extend(_check_zipper_liner_section(pattern))
     return issues
 
 
@@ -455,5 +456,39 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
             f"that stitch. The pattern body appears to be written for a completely different stitch than the "
             f"guide describes -- this looks like the wrong stitch guide was generated or attached for this "
             f"pattern variant."
+        ),
+    )]
+
+
+def _check_zipper_liner_section(pattern) -> list:
+    """A section whose own heading is "Adding a Zipper & Liner" (parsed as
+    section name "zipper_liner", see pattern_parser.SECTION_HEADERS)
+    explicitly promises BOTH a zipper and a liner. Real sample found (tote
+    bag, Jul 5 batch): the section's body only ever gave liner instructions
+    -- "zipper" appeared nowhere in it at all, meaning the section's own
+    title is a promise the content never keeps. This is a hard completeness
+    gap (a tester literally has no instructions for a step the pattern's
+    own Materials list -- "Zipper & Liner: ..." -- and section heading both
+    say is part of this bag), not a stitch-count or math issue."""
+    zl = next((s for s in pattern.sections if s.name == "zipper_liner"), None)
+    if not zl:
+        return []
+
+    body_lower = zl.raw_text.lower()
+    has_zipper = "zipper" in body_lower
+    has_liner = "liner" in body_lower or "lining" in body_lower
+    missing = [name for name, present in (("zipper", has_zipper), ("liner", has_liner)) if not present]
+    if not missing:
+        return []
+
+    present = [name for name in ("zipper", "liner") if name not in missing]
+    coverage = "neither is actually covered" if not present else f"only {present[0]} content is present"
+    return [Issue(
+        category="completeness", severity="error",
+        location="Adding a Zipper & Liner",
+        message=(
+            f"This section's own heading promises both a zipper and a liner, but the body never actually "
+            f"gives {' or '.join(missing)} installation instructions -- {coverage}. A tester has no way to "
+            f"complete the missing step(s) from this pattern as written."
         ),
     )]

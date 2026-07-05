@@ -76,5 +76,49 @@ class TestRepeatNMoreTimesShorthand(unittest.TestCase):
         self.assertNotIn("Rows 4-13", labels)
 
 
+class TestZipperLinerSectionBoundary(unittest.TestCase):
+    def test_zipper_liner_and_tester_headings_dont_bleed_into_finishing(self):
+        # Real bug (tote bag, Jul 5 batch): neither "Adding a Zipper &
+        # Liner" nor "TESTER EXPECTATIONS" were recognized section
+        # headings, so their content (and everything after) got silently
+        # absorbed into "finishing"'s raw_text. That broke the Handles
+        # component's own "(N sts)" extraction, which anchors to the end
+        # of the whole blob to find the trailing count -- with unrelated
+        # trailing content glued on, the real count was no longer at the
+        # true end, producing a false "missing stitch count" warning on a
+        # pattern that actually states one.
+        raw = (
+            "Test Tote Bag\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 22, turn.\n"
+            "Row 1: SC in 2nd ch from hook and in each ch across. Ch 1, turn. (21 sts)\n"
+            "Finishing\n"
+            "Assembly: Fold panel in half. Seam both side edges.\n"
+            "Creating Handles\n"
+            "Handles (make 2): Ch 21. SC in 2nd ch from hook and each ch across. Ch 1, turn. "
+            "Fasten off. (20 sts)\n"
+            "Adding a Zipper & Liner\n"
+            "Adding a Liner: Cut fabric to size. Sew the liner and whip stitch it in place.\n"
+            "TESTER EXPECTATIONS\n"
+            "Thank you for testing! Did the stitch counts work out?\n"
+        )
+        pattern = parse(raw)
+
+        section_names = [s.name for s in pattern.sections]
+        self.assertIn("zipper_liner", section_names)
+        self.assertIn("ignored_meta", section_names)
+
+        finishing = next(s for s in pattern.sections if s.name == "finishing")
+        self.assertNotIn("Zipper", finishing.raw_text)
+        self.assertNotIn("TESTER", finishing.raw_text.upper())
+
+        issues = completeness.check(pattern)
+        component_count_issues = [i for i in issues if "Handles" in i.location and "never states" in i.message]
+        self.assertEqual(component_count_issues, [])
+
+
 if __name__ == "__main__":
     unittest.main()
