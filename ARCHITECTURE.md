@@ -1329,3 +1329,47 @@ defect, all in the same file.
   terminology, and the linen-stitch body -- using the ch-1-space
   phrasing fixed two batches ago -- all verify cleanly).
 
+## Thirteenth real-sample batch (Jul 6, 2026) — same 10 throw-blanket
+## variants, regenerated
+Best batch result yet: 9 PASS / 1 REVIEW / 0 FAIL. Notably, this batch
+confirms **two previously-reported real content defects were actually
+fixed on LoopDreams' side**, not just internal tool changes -- the first
+direct evidence this feedback loop (QA finding -> reported -> LoopDreams
+regenerates -> re-verify) is working end to end.
+
+- **Waffle Stitch's chain-skip defect is fixed**: Row 1 now reads "Dc in
+  3rd ch from hook (skipped 2-ch does not count as st) and in each ch
+  across", on a Ch 242 foundation. This is *exactly* the corrected
+  construction verified against Bella Coco's published pattern (tote bag,
+  Jul 4 batch): skip 2 (not 3), and 242 satisfies the required "multiple
+  of 3, plus 2" ((242-2)/3 = 80 clean). `checks/known_constructions.py`
+  confirms both independently -- no warnings from that check on this
+  file.
+- **Linen's missing setup row is fixed**: Linen's own Stitch Guide
+  "Foundation:" line now reads "SC in 2nd ch from hook and in each ch
+  across" (the same plain, unambiguous whole-row shape Moss has always
+  used) followed by a separate Row 2 for the alternating pattern --
+  instead of the old ambiguous "SC in 2nd ch from hook, *ch 1, skip 1 ch,
+  SC in next ch; rep from * to end" mixed shape that jumped straight into
+  alternating with no setup row (the exact inconsistency `cross_variant.py`
+  was built to catch, Jul 2 batch tenth round). The body's own Row 1
+  matches the guide change. Result: Linen now resolves with zero
+  warnings for the first time across every batch this project has QA'd --
+  the recurring "Row 1 cannot verify" warning is gone because the
+  underlying ambiguous construction itself is gone, not because the tool
+  changed.
+- **Tool gap found and fixed**: the corrected Waffle Row 1 introduced a
+  new clause shape our own `foundation_into_chain` regex didn't allow --
+  a parenthetical clarification ("(skipped 2-ch does not count as st)")
+  inserted between the ordinal clause and "and in each ch across". This
+  fell through to unrecognized, which cascaded into a false "Row 1 reads
+  like non-stitch content" completeness warning on an otherwise-already-
+  fixed, correct row. **Fixed**: the regex now optionally allows any
+  parenthetical there. Tests in `tests/test_stitch_parser.py` cover both
+  the new phrasing and confirm the plain shape (no parenthetical) still
+  works unchanged.
+- **Batch result**: sedge, waffle, linen, moss, bobble, tr, dc, hdc, sc --
+  all PASS. shell -- REVIEW (1 warning, the same pre-existing "centre dc
+  of next shell" landmark-reference math limitation from the Jun 27
+  batch, unchanged and expected). Full suite passes (36 tests, 1 skip).
+
