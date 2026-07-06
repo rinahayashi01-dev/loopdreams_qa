@@ -65,6 +65,33 @@ class TestStitchInChain1Space(unittest.TestCase):
         self.assertEqual(row2_issues, [])
 
 
+class TestFoundationIntoChainParenthetical(unittest.TestCase):
+    def test_inline_skip_clarification_recognized(self):
+        # Real phrasing found on a real sample (waffle, Jul 6 batch):
+        # "Dc in 3rd ch from hook (skipped 2-ch does not count as st) and
+        # in each ch across." -- LoopDreams applying the exact corrected
+        # Waffle Stitch convention from checks/known_constructions.py, but
+        # with a new parenthetical clarification inserted between the
+        # ordinal clause and "and in each ch across" that the previous
+        # regex didn't allow for, which fell through to unrecognized and
+        # produced a false "non-stitch row" warning on an otherwise
+        # correct, already-fixed row.
+        clauses = tokenize_round(
+            "Dc in 3rd ch from hook (skipped 2-ch does not count as st) and in each ch across"
+        )
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "foundation_into_chain")
+        self.assertEqual(c.stitch, "dc")
+        self.assertEqual(c.explicit_count, 3)
+
+    def test_plain_shape_without_parenthetical_still_works(self):
+        clauses = tokenize_round("Sc in 2nd ch from hook and in each ch across")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "foundation_into_chain")
+        self.assertEqual(clauses[0].explicit_count, 2)
+
+
 class TestCornerClause(unittest.TestCase):
     def test_simple_stitch_corner_produces_count(self):
         # A plain stitch in a corner (every real sample seen so far, always

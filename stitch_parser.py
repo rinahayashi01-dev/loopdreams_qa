@@ -83,8 +83,17 @@ class _Patterns:
 
     def __init__(self, stitch_alt: str):
         self.counts_as_chain = re.compile(rf"^ch\s+(\d+)\s*\(counts\s+as\s+({stitch_alt})\)$", re.I)
+        # Optional parenthetical clarification between the ordinal clause and
+        # "and (in) each ch across" -- real phrasing found on a real sample
+        # (waffle, Jul 6 batch): "Dc in 3rd ch from hook (skipped 2-ch does
+        # not count as st) and in each ch across." This is LoopDreams
+        # explicitly stating the skip-count convention inline, matching
+        # exactly the verified canonical Waffle Stitch construction from
+        # checks/known_constructions.py -- the row itself is correct; only
+        # the clause shape was new.
         self.foundation_into_chain = re.compile(
-            rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook\s+and\s+(?:in\s+)?each\s+ch\s+across$", re.I
+            rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook\s*(?:\([^)]*\)\s*)?"
+            rf"and\s+(?:in\s+)?each\s+ch\s+across$", re.I
         )
         self.each_st_across = re.compile(rf"^\*?({stitch_alt})\s+in\s+each\s+st\s+across\b\s*(.*)$", re.I)
         self.each_st_around = re.compile(rf"^\*?({stitch_alt})\s+in\s+each\s+st\s+around\b\s*(.*)$", re.I)
