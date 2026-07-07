@@ -77,7 +77,13 @@ def check(pattern) -> list:
 
         in_count = prev_count if prev_count is not None else pattern.foundation_chain
         in_label = prev_label
-        is_foundation_transition = prev_count is None
+        # A magic-ring foundation (continuous-spiral/amigurumi-style, real
+        # sample: mittens Jul 7 batch) has no turning-chain-skip concept at
+        # all -- stitches are worked directly into the ring, so there's no
+        # "which numbered chain to start in" ambiguity the way there is for
+        # a real chain foundation. Only flag the transition ambiguity when
+        # the foundation actually came from a chain.
+        is_foundation_transition = prev_count is None and not pattern.foundation_is_magic_ring
 
         row_issues = _check_row(row, in_count, in_label, is_foundation_transition, ratio_overrides)
         issues.extend(row_issues)
@@ -281,6 +287,54 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
                                                  "its own foundation chain stated in this row")
         return _check_foundation_into_chain(row, foundation_clause, in_count, in_label)
 
+    # Terminal drawstring-cinch closure (real shape, mittens Jul 7 batch:
+    # "Fasten off, leaving a long tail. Thread the tail through the front
+    # loop of each remaining stitch, pull tight to close..., and weave in
+    # the end."). A row whose only real content is fasten_off/closure/note
+    # clauses doesn't produce or consume stitches in the normal sense --
+    # it gathers up whatever's left and closes the piece. The declared
+    # count here just restates how many stitches existed going INTO the
+    # closure, not something the row itself produces, so the normal
+    # consumed/produced-vs-declared check doesn't apply; the only
+    # meaningful invariant is that the restated count matches what was
+    # actually carried in from the previous row.
+    real_types = {"fasten_off", "closure", "note"}
+    if clauses and all(c.clause_type in real_types for c in clauses):
+        if in_count is not None and row.declared_count is not None and in_count != row.declared_count:
+            return [Issue(
+                category="stitch_count", severity="error", location=row.label,
+                message=(
+                    f"Stitch-count mismatch at {row.label}: {in_label} has {in_count} sts, but this closing "
+                    f"row states {row.declared_count} sts going into the closure."
+                ),
+            )]
+        return []
+
+    # Gusset-transition round: sets some stitches aside on a holder, bridges
+    # the gap with a chain, and completes the round by folding that chain's
+    # stitches back in (real shape found on a real sample, mittens Jul 7
+    # batch, thumb gusset). The total math is knowable even though exactly
+    # where the held stitches fall within the round isn't stated as a
+    # number: produced = (in_count - held) + bridge, regardless of the
+    # split -- see _check_gusset_transition.
+    held_clause = next((c for c in clauses if c.clause_type == "held_aside"), None)
+    bridge_clause = next((c for c in clauses if c.clause_type == "bridge_chain"), None)
+    if held_clause is not None and bridge_clause is not None:
+        return _check_gusset_transition(row, held_clause, bridge_clause, in_count, in_label)
+
+    # A row resuming stitches set aside by an earlier gusset-transition row
+    # (e.g. starting the thumb from held gusset stitches) is its OWN fresh
+    # sub-round, not a continuation of the immediately-preceding row's
+    # count -- that preceding row is usually a different part of the piece
+    # entirely (e.g. the fingertip closure). The held count and any newly
+    # picked-up stitches are both stated explicitly in THIS row's own
+    # clauses, so the inherited in_count isn't relevant -- and would be
+    # actively wrong to check against. Falls through to the normal
+    # dispatch below with in_count=None, which still verifies
+    # produced == declared_count via _check_flat_sequence.
+    if any(c.clause_type == "held_gusset_resume" for c in clauses):
+        in_count = None
+
     opener_idx = next((i for i, c in enumerate(clauses) if c.raw.strip().startswith("*")), None)
     closer_idx = None
     if opener_idx is not None:
@@ -315,6 +369,31 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
 
     each_st = next((c for c in clauses if c.clause_type in ("each_st_across", "each_st_around")), None)
     if each_st is not None:
+        idx = clauses.index(each_st)
+        pre, post = clauses[:idx], clauses[idx + 1:]
+        if pre or post:
+            # Literal clauses surround the "each st across/around" clause --
+            # e.g. short-row increases before finishing the rest of the
+            # round plainly (mittens, Jul 7 batch, thumb gusset shaping:
+            # "2 sc in each of next 2 sts, sc in each of next 2 sts, sc in
+            # each st around to end"). Previously this branch ignored
+            # everything except the each_st clause itself and treated the
+            # WHOLE row as if it were bare "<stitch> in each st
+            # across/around" from the very start -- a confidently WRONG
+            # answer (the pre/post clauses' own stitches were neither
+            # subtracted from in_count nor added to the total), not just an
+            # unverifiable gap. Sum pre/post explicitly and feed the
+            # adjusted numbers through.
+            pre_p, pre_c, pre_r = _zone_sum(pre, ratio_overrides=ratio_overrides)
+            post_p, post_c, post_r = _zone_sum(post, ratio_overrides=ratio_overrides)
+            reasons = pre_r + post_r
+            if reasons:
+                return [Issue(
+                    category="stitch_count", severity="warning", location=row.label,
+                    message=f"Cannot verify stitch-count math for {row.label}: {'; '.join(reasons)}.",
+                )]
+            return _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, ratio_overrides,
+                                   pre_consumes=pre_c + post_c, pre_produces=pre_p + post_p)
         return _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, ratio_overrides)
 
     # No repeat group, no each-st clause: a flat, non-repeating sequence of
@@ -411,7 +490,8 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
     return []
 
 
-def _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, ratio_overrides):
+def _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, ratio_overrides,
+                    pre_consumes=0, pre_produces=0):
     produces = each_st.produces
     if produces is None and each_st.is_compound and each_st.stitch in ratio_overrides:
         produces = ratio_overrides[each_st.stitch]
@@ -441,16 +521,19 @@ def _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, r
             ),
         )]
 
-    expected = in_count * produces if in_count is not None else None
+    remaining = (in_count - pre_consumes) if in_count is not None else None
+    expected = (remaining * produces + pre_produces) if remaining is not None else None
     if expected is not None and row.declared_count is not None and expected != row.declared_count:
-        return [Issue(
-            category="stitch_count", severity="error", location=row.label,
-            message=(
-                f"Stitch-count mismatch at {row.label}: {in_label} has {in_count} sts; working "
-                f"'{each_st.stitch}' across should produce {expected} sts, but the pattern declares "
-                f"{row.declared_count} sts."
-            ),
-        )]
+        detail = (
+            f" ({pre_consumes} consumed by other clauses earlier in this row, {remaining} remaining)"
+            if pre_consumes else ""
+        )
+        message = (
+            f"Stitch-count mismatch at {row.label}: {in_label} has {in_count} sts{detail}; working "
+            f"'{each_st.stitch}' across the remainder should produce {expected} sts total, but the pattern "
+            f"declares {row.declared_count} sts."
+        )
+        return [Issue(category="stitch_count", severity="error", location=row.label, message=message)]
     return []
 
 
@@ -497,6 +580,49 @@ def _check_foundation_into_chain(row, clause, foundation_chain, in_label):
                 f"{'st' if clause.explicit_count == 1 else 'nd' if clause.explicit_count == 2 else 'rd' if clause.explicit_count == 3 else 'th'} "
                 f"chain from the hook on a {foundation_chain}-chain foundation should produce {expected} sts, "
                 f"but the pattern declares {row.declared_count} sts."
+            ),
+        )]
+    return []
+
+
+def _check_gusset_transition(row, held_clause, bridge_clause, in_count, in_label):
+    """A round that sets N stitches aside on a holder (held_aside) and
+    bridges the gap with M chain stitches (bridge_chain), later folded back
+    in by a round-completion clause. Real shape found on a real sample
+    (mittens, Jul 7 batch, thumb gusset transition): "Sc in each st to the
+    marked gusset sts. Place the next 10 sts on a holder... Ch 2 to bridge
+    the gap, then sc in each remaining st around, working the last 2 sts of
+    the round into the 2 ch just made."
+
+    The row's two "each st ..." clauses (one stopping at the marker, one
+    finishing the round) each cover an UNKNOWN, unstated number of
+    stitches individually -- but their sum is always exactly
+    (in_count - N), regardless of exactly where the split falls, since
+    together they account for every non-held stitch in the round. Total
+    produced = (in_count - N) [the two each-st clauses, both plain 1:1] +
+    M [the bridge stitches folded in by the completion clause]. This is
+    knowable and checked directly, without needing to know the split."""
+    if in_count is None:
+        return [Issue(
+            category="stitch_count", severity="warning", location=row.label,
+            message=f"Cannot verify stitch-count math for {row.label}: no usable starting count from {in_label}.",
+        )]
+    held = held_clause.explicit_count
+    bridge = bridge_clause.explicit_count
+    if held is None or bridge is None:
+        return [Issue(
+            category="stitch_count", severity="warning", location=row.label,
+            message=f"Cannot verify stitch-count math for {row.label}: held-aside or bridge-chain count not "
+                     f"stated as a number.",
+        )]
+    expected = in_count - held + bridge
+    if row.declared_count is not None and expected != row.declared_count:
+        return [Issue(
+            category="stitch_count", severity="error", location=row.label,
+            message=(
+                f"Stitch-count mismatch at {row.label}: starting from {in_label} ({in_count} sts), setting "
+                f"aside {held} st(s) and bridging with {bridge} chain st(s) should produce {expected} sts, but "
+                f"the pattern declares {row.declared_count} sts."
             ),
         )]
     return []

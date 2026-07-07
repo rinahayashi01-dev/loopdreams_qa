@@ -48,6 +48,8 @@ class Pattern:
     declared_system: Optional[str] = None                  # "US" | "UK" | None
     declared_system_source: Optional[str] = None            # "explicit_field" | "heuristic" | None
     foundation_chain: Optional[int] = None
+    foundation_is_magic_ring: bool = False  # True when foundation_chain came from "magic ring. N sc in ring"
+                                             # rather than "Ch N" -- no turning-chain-skip ambiguity applies
     rows: list = field(default_factory=list)                # list[RoundRow]
 
 

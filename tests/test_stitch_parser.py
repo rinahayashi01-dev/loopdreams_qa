@@ -125,5 +125,120 @@ class TestCornerClause(unittest.TestCase):
         self.assertIn("bo", c.unverifiable_reason)
 
 
+class TestMittensClauseShapes(unittest.TestCase):
+    """New clause shapes found on a real sample (mittens, Jul 7 batch) --
+    the first continuous-spiral/amigurumi-style construction this project
+    has QA'd, with a thumb gusset and drawstring cinch closures."""
+
+    def test_back_loop_only_each_st_around(self):
+        clauses = tokenize_round("Sc in the back loop only of each st around")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "each_st_around")
+        self.assertEqual(c.stitch, "sc")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 1)
+
+    def test_each_remaining_st_around(self):
+        clauses = tokenize_round("sc in each remaining st around")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "each_st_around")
+
+    def test_bare_sc2tog_recognized_with_fixed_ratio(self):
+        clauses = tokenize_round("*sc2tog")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "literal_count")
+        self.assertEqual(c.stitch, "sc2tog")
+        self.assertEqual(c.consumes, 2)
+        self.assertEqual(c.produces, 1)
+
+    def test_bare_unrecognized_token_not_forced(self):
+        # A bare token with no known fixed ratio (unlike sc2tog) has nothing
+        # to anchor consumes/produces to -- must fall through to unknown
+        # rather than guessing.
+        clauses = tokenize_round("bloop")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "unknown")
+
+    def test_multi_into_each_next(self):
+        clauses = tokenize_round("2 sc in each of next 2 sts")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "literal_count")
+        self.assertEqual(c.stitch, "sc")
+        self.assertEqual(c.consumes, 2)
+        self.assertEqual(c.produces, 4)
+
+    def test_each_of_position_extended_to_next(self):
+        clauses = tokenize_round("sc in each of next 12 sts")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "literal_count")
+        self.assertEqual(c.consumes, 12)
+        self.assertEqual(c.produces, 12)
+
+    def test_held_aside(self):
+        clauses = tokenize_round("Place the next 10 sts on a holder or scrap yarn (thumb gusset)")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "held_aside")
+        self.assertEqual(c.explicit_count, 10)
+        self.assertEqual(c.consumes, 10)
+        self.assertEqual(c.produces, 0)
+
+    def test_bridge_chain(self):
+        clauses = tokenize_round("Ch 2 to bridge the gap")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "bridge_chain")
+        self.assertEqual(c.explicit_count, 2)
+
+    def test_each_st_to_marker_unverifiable(self):
+        clauses = tokenize_round("Sc in each st to the marked gusset sts")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "each_st_to_marker")
+        self.assertIsNone(c.consumes)
+        self.assertIsNotNone(c.unverifiable_reason)
+
+    def test_held_gusset_resume(self):
+        clauses = tokenize_round("Sc in each of the 10 held gusset sts")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "held_gusset_resume")
+        self.assertEqual(c.consumes, 10)
+        self.assertEqual(c.produces, 10)
+
+    def test_evenly_across_bridge(self):
+        clauses = tokenize_round("then sc 2 sts evenly across the bridge chain")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "literal_count")
+        self.assertEqual(c.consumes, 0)
+        self.assertEqual(c.produces, 2)
+
+    def test_marker_and_colour_change_notes(self):
+        for text in [
+            "Place a marker in next 4 sts (gusset sts)",
+            "Place a stitch marker — work in a continuous spiral from here",
+            "changing to Colour 2 — Moss in the last st",
+        ]:
+            clauses = tokenize_round(text)
+            self.assertEqual(len(clauses), 1, text)
+            self.assertEqual(clauses[0].clause_type, "note", text)
+            self.assertEqual(clauses[0].consumes, 0, text)
+
+    def test_drawstring_closure_recognized_not_unknown(self):
+        clauses = tokenize_round(
+            "Fasten off, leaving a long tail. Thread the tail through the front loop of each "
+            "remaining stitch, pull tight to close the fingertip opening, and weave in the end"
+        )
+        types = [c.clause_type for c in clauses]
+        self.assertNotIn("unknown", types)
+        self.assertIn("fasten_off", types)
+        self.assertTrue(all(t in ("fasten_off", "closure") for t in types))
+
+
 if __name__ == "__main__":
     unittest.main()

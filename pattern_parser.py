@@ -151,6 +151,18 @@ def _parse_instructions(section: Section, pattern: Pattern):
     m = re.search(r"Foundation(?:\s+chain)?\s*:\s*Ch\s+(\d+)", blob, re.I)
     if m:
         pattern.foundation_chain = int(m.group(1))
+    else:
+        # "With Colour 1 -- Honey, magic ring. 30 sc in ring." -- a
+        # continuous-spiral/amigurumi-style foundation with no chain at
+        # all. Real sample found (mittens, Jul 7 batch): pattern.foundation_
+        # chain is used throughout the codebase as "the starting stitch
+        # count for row 1", not literally "number of chains", so this is a
+        # semantically consistent alternate way to establish the same
+        # field.
+        m = re.search(r"magic\s+ring\.?\s*(\d+)\s*sc\s+in\s+ring", blob, re.I)
+        if m:
+            pattern.foundation_chain = int(m.group(1))
+            pattern.foundation_is_magic_ring = True
 
     found_rows = []
 
@@ -166,6 +178,14 @@ def _parse_instructions(section: Section, pattern: Pattern):
         row_end = int(m.group(2)) if m.group(2) else row_start
         color = m.group(4)
         instr_text = m.group(5).strip().rstrip(".")
+        # Real sample found (mittens, Jul 7 batch): rows state BOTH a
+        # stitch-abbreviation count and a generic count, e.g. "...(30 sc)
+        # (30 sts)". The greedy capture above correctly anchors on the
+        # LAST "(N sts)" as the real declared count (same reasoning as the
+        # Jun 28 duplicated-(N sts) fix), but leaves the earlier "(N sc)"
+        # embedded in instr_text as noise. Strip it off the end here,
+        # rather than touching the greedy capture itself.
+        instr_text = re.sub(r"\s*\(\s*~?\s*\d+\s*sc\s*\)\s*\.?\s*$", "", instr_text).strip()
         declared = int(m.group(6))
         label = f"Row {row_start}" if row_start == row_end else f"Rows {row_start}-{row_end}"
         rr = RoundRow(label=label, row_start=row_start, row_end=row_end,
