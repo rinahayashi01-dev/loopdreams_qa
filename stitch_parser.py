@@ -54,6 +54,51 @@ _RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+{_POS}\s+{_NOUN}$", re.I)
 # it consumes 0.
 _RE_SKIP_CHAIN_SPACE = re.compile(r"^skip\s+(?:the\s+)?ch-?1\s+sp(?:ace)?$", re.I)
 _RE_NOTE = re.compile(r"^at (?:the )?end of this row$", re.I)
+# Real clause shapes found on a real sample (mittens, Jul 7 batch -- the
+# first continuous-spiral/amigurumi-style construction this project has
+# QA'd, with a thumb gusset). All of the following are no-ops for
+# stitch-count purposes (informational markers, not stitches), EXCEPT
+# held_aside/bridge_chain which carry real numbers other clauses need.
+_RE_PLACE_MARKER = re.compile(r"^place\s+a\s+(?:stitch\s+)?marker\b", re.I)
+# "Place the next 10 sts on a holder or scrap yarn (thumb gusset)" -- sets
+# aside N sts from the active round (they're picked back up later, in a
+# separate row/round -- see held_gusset_resume below). Removes N from
+# THIS row's produced total but doesn't destroy them.
+_RE_HELD_ASIDE = re.compile(r"^place\s+the\s+next\s+(\d+)\s+sts\s+on\s+a\s+holder\s+or\s+scrap\s+yarn\b", re.I)
+# "Ch 2 to bridge the gap" -- a chain worked to bridge over the gap left by
+# stitches just set aside (held_aside above), later folded into real
+# stitches by a "working the last N sts ... into the N ch just made"
+# round-completion clause in the SAME row -- see checks/stitch_count.py's
+# dedicated gusset-transition row handler for how these combine.
+_RE_BRIDGE_CHAIN = re.compile(r"^ch\s+(\d+)\s+to\s+bridge\s+the\s+gap$", re.I)
+# "changing to Colour 2 -- Moss in the last st" -- an inline colour change
+# stated as a trailing clause within a row (distinct from the existing
+# leading "With Colour B -- Moss:" row-opening marker pattern_parser.py
+# already handles). No stitch-count effect either way.
+_RE_INLINE_COLOUR_CHANGE = re.compile(r"^changing\s+to\s+colour\s+[\w]+\s*[—-]\s*[\w]+\s+in\s+the\s+last\s+st$", re.I)
+# "working the last 2 sts of the round into the 2 ch just made" -- the
+# comma-split half of the round-completion sentence that follows "sc in
+# each remaining st around,". No-op on its own: the gusset-transition row
+# handler in checks/stitch_count.py gets both numbers it needs directly
+# from the held_aside/bridge_chain clauses earlier in the same row, not
+# from re-parsing this phrase.
+_RE_WORKING_LAST_INTO_CH = re.compile(
+    r"^working\s+the\s+last\s+\d+\s+sts?\s+of\s+the\s+round\s+into\s+the\s+\d+\s+ch\s+just\s+made$", re.I
+)
+# Drawstring-cinch closure (real phrasing, mittens Jul 7 batch: "Fasten
+# off, leaving a long tail. Thread the tail through the front loop of each
+# remaining stitch, pull tight to close the fingertip opening, and weave
+# in the end."). The comma/period split breaks this into several top-level
+# parts -- "Fasten off" already matches _RE_FASTEN_OFF; these cover the
+# rest. All no-ops for stitch-count purposes: the trailing declared count
+# restates how many stitches existed going into the closure, not something
+# this text itself produces.
+_RE_LEAVING_LONG_TAIL = re.compile(r"^leaving\s+a\s+long\s+tail$", re.I)
+_RE_THREAD_TAIL_FRONT_LOOP = re.compile(
+    r"^thread\s+the\s+tail\s+through\s+the\s+front\s+loop\s+of\s+each\s+remaining\s+stitch$", re.I
+)
+_RE_PULL_TIGHT_CLOSE = re.compile(r"^pull\s+tight\s+to\s+close\s+the\s+.+$", re.I)
+_RE_WEAVE_IN_END = re.compile(r"^(?:and\s+)?weave\s+in\s+the\s+end$", re.I)
 _RE_BRACKET_GROUP = re.compile(r"^\[(.*)\]\s*(once|twice|[a-z]+\s+times?|\d+\s*times?)\b", re.I)
 # "(sc, hdc, dc) in next st" -- a named list of different stitches, all into ONE shared spot.
 # Captures arbitrary lowercase words, so it works for custom tokens too without
@@ -79,6 +124,8 @@ class _Patterns:
         "corner", "literal_next", "each_of_position", "side_edge", "cluster_same_spot",
         "centre_dc", "around_post", "top_of_chain", "simple_positional",
         "stitch_in_ch1_space", "foundation_ordinal_single",
+        "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
+        "each_st_to_marker",
     )
 
     def __init__(self, stitch_alt: str):
@@ -95,8 +142,20 @@ class _Patterns:
             rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook\s*(?:\([^)]*\)\s*)?"
             rf"and\s+(?:in\s+)?each\s+ch\s+across$", re.I
         )
-        self.each_st_across = re.compile(rf"^\*?({stitch_alt})\s+in\s+each\s+st\s+across\b\s*(.*)$", re.I)
-        self.each_st_around = re.compile(rf"^\*?({stitch_alt})\s+in\s+each\s+st\s+around\b\s*(.*)$", re.I)
+        # Both allow an optional "in the back/front loop only of" infix
+        # (real phrasing, mittens Jul 7 batch: "Sc in the back loop only of
+        # each st around") and an optional "remaining" qualifier ("each
+        # remaining st around" -- the gusset-transition round-completion
+        # clause after some stitches were already set aside/worked
+        # separately earlier in the same row).
+        self.each_st_across = re.compile(
+            rf"^\*?({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"each\s+(?:remaining\s+)?st\s+across\b\s*(.*)$", re.I
+        )
+        self.each_st_around = re.compile(
+            rf"^\*?({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"each\s+(?:remaining\s+)?st\s+around\b\s*(.*)$", re.I
+        )
         self.corner = re.compile(rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+corner$", re.I)
         self.literal_next = re.compile(rf"^(\d*)\s*({stitch_alt})\s+in\s+next\s+(\d+)\s*(?:sts?)?$", re.I)
         # "<stitch> in each of (the) first/last N sts" -- a generalization of
@@ -106,7 +165,49 @@ class _Patterns:
         # stitches this way ("SC in each of first 2 sts ... SC in each of
         # last 2 sts"), which no prior clause shape matched.
         self.each_of_position = re.compile(
-            rf"^({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(first|last)\s+(\d+)\s*(?:sts?)?$", re.I
+            rf"^({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(first|last|next)\s+(\d+)\s*(?:sts?)?$", re.I
+        )
+        # "<N> <stitch> in each of (first|next|last) M sts" -- an increase:
+        # N copies worked into EACH of the next M previous-row stitches
+        # (distinct from each_of_position above, which is a plain 1:1
+        # pickup of M stitches; here every one of the M stitches gets N
+        # copies). Real phrasing (mittens, Jul 7 batch, thumb gusset
+        # shaping): "2 sc in each of next 2 sts".
+        self.multi_into_each = re.compile(
+            rf"^(\d+)\s+({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(?:first|next|last)\s+(\d+)\s*(?:sts?)?$", re.I
+        )
+        # "<stitch> in each of the N held gusset sts" -- resuming the
+        # stitches set aside earlier by held_aside (see module-level
+        # _RE_HELD_ASIDE), a plain 1:1 pickup. Real phrasing (mittens,
+        # Jul 7 batch, thumb round 1).
+        self.held_gusset_resume = re.compile(
+            rf"^({stitch_alt})\s+in\s+each\s+of\s+the\s+(\d+)\s+held\s+gusset\s+sts$", re.I
+        )
+        # "then sc N sts evenly across the bridge chain" -- picking up N new
+        # stitches from the bridge chain made earlier (module-level
+        # _RE_BRIDGE_CHAIN), not consuming any previous-round stitches.
+        self.evenly_across_bridge = re.compile(
+            rf"^(?:then\s+)?({stitch_alt})\s+(\d+)\s+sts\s+evenly\s+across\s+the\s+bridge\s+chain$", re.I
+        )
+        # Bare stitch token with no positional phrase at all -- e.g.
+        # "sc2tog" used alone inside a repeat group ("*sc2tog, sc in each
+        # of next 12 sts; rep from * around"). Real phrasing (mittens,
+        # Jul 7 batch, decrease rounds). Only matches stitches with a
+        # grammar-independent fixed ratio already in abbreviations.STITCH_MATH
+        # (sc2tog is consumes=2/produces=1 regardless of context) -- a
+        # compound/unrecognized token here would have nothing to anchor a
+        # ratio to, so it's left to the final "unknown" fallback instead.
+        self.bare_stitch = re.compile(rf"^({stitch_alt})$", re.I)
+        # "<stitch> in each st to <arbitrary marker text>" -- a PARTIAL round
+        # completion that stops before a marked point, rather than finishing
+        # the whole round (each_st_around) or the whole row (each_st_across).
+        # How many previous-row stitches this consumes on its own isn't
+        # knowable without knowing exactly where the marker falls -- left
+        # unverifiable at the clause level, but see
+        # checks/stitch_count.py's dedicated gusset-transition row handler:
+        # the ROW's total math doesn't actually depend on that split point.
+        self.each_st_to_marker = re.compile(
+            rf"^({stitch_alt})\s+in\s+each\s+st\s+to\s+.+$", re.I
         )
         self.side_edge = re.compile(
             rf"^working\s+(\d+)\s+({stitch_alt})\s+per\s+row-?end\s+along\s+(?:each\s+)?side\s+edge$", re.I
@@ -288,6 +389,26 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_NOTE.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
+    if _RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p):
+        return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
+
+    if (_RE_LEAVING_LONG_TAIL.match(p) or _RE_THREAD_TAIL_FRONT_LOOP.match(p)
+            or _RE_PULL_TIGHT_CLOSE.match(p) or _RE_WEAVE_IN_END.match(p)):
+        return StitchClause(raw=raw_part, clause_type="closure", consumes=0, produces=0)
+
+    m = _RE_HELD_ASIDE.match(p)
+    if m:
+        return StitchClause(raw=raw_part, clause_type="held_aside",
+                             explicit_count=int(m.group(1)), consumes=int(m.group(1)), produces=0)
+
+    m = _RE_BRIDGE_CHAIN.match(p)
+    if m:
+        # Distinct clause_type (not the generic "chain") so
+        # checks/stitch_count.py's gusset-transition row handler can detect
+        # this shape unambiguously rather than sniffing raw text.
+        return StitchClause(raw=raw_part, clause_type="bridge_chain", explicit_count=int(m.group(1)),
+                             consumes=0, produces=0)
+
     m = _RE_REP_FROM.match(p)
     if m:
         return StitchClause(raw=raw_part, clause_type="repeat_close", explicit_count=None,
@@ -298,6 +419,17 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
         return StitchClause(raw=raw_part, stitch=canon, clause_type="foundation_into_chain",
                              explicit_count=int(m.group(2)), is_compound=is_compound)
+
+    m = patterns.each_st_to_marker.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="each_st_to_marker",
+                             consumes=None, produces=None, is_compound=is_compound,
+                             unverifiable_reason=(
+                                 f"'{m.group(0)}' is a partial round completion stopping at a marked point -- "
+                                 f"how many previous-row stitches this consumes on its own depends on where the "
+                                 f"marker falls, which isn't stated as a number"
+                             ))
 
     m = patterns.each_st_across.match(p)
     if m:
@@ -363,6 +495,44 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         produces = (prod * n) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
                              explicit_count=n, consumes=n, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "<N> <stitch> in each of (first|next|last) M sts" -- an increase: N
+    # copies worked into EACH of M previous-row stitches (distinct from
+    # each_of_position above, which is a plain 1:1 pickup of M stitches).
+    m = patterns.multi_into_each.match(p)
+    if m:
+        n_per = int(m.group(1))
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        count = int(m.group(3))
+        produces = (prod * n_per * count) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=count, consumes=count, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "<stitch> in each of the N held gusset sts" -- resuming stitches set
+    # aside earlier (held_aside), a plain 1:1 pickup.
+    m = patterns.held_gusset_resume.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        n = int(m.group(2))
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="held_gusset_resume",
+                             explicit_count=n, consumes=n, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "then sc N sts evenly across the bridge chain" -- N new stitches
+    # picked up from the bridge chain, not consuming any previous-round sts.
+    m = patterns.evenly_across_bridge.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        n = int(m.group(2))
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")
 
@@ -490,6 +660,16 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                                  f"shape doesn't have a well-defined split across a mixed row like this, so "
                                  f"it's left unverifiable rather than guessed"
                              ))
+
+    # Bare stitch token with no positional phrase at all (e.g. "sc2tog"
+    # inside a repeat group). Only fires for stitches with a fixed,
+    # context-independent ratio -- see patterns.bare_stitch's own comment.
+    m = patterns.bare_stitch.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        if c is not None and prod is not None:
+            return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                                 explicit_count=1, consumes=c, produces=prod, is_compound=is_compound)
 
     # Leading '*' opens a repeat group around whatever clause follows -- if we
     # didn't already match it above (e.g. "*3 sc in corner" matched the

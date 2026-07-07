@@ -8,6 +8,7 @@ within a single row, and a foundation row that's ambiguous about which
 chain to start in.
 """
 import re
+from collections import defaultdict
 
 from ..models import Issue
 from .. import abbreviations as ab
@@ -34,6 +35,8 @@ def check(pattern) -> list:
     issues.extend(_check_missing_component_count(pattern))
     issues.extend(_check_stitch_guide_body_mismatch(pattern))
     issues.extend(_check_zipper_liner_section(pattern))
+    issues.extend(_check_paired_item(pattern))
+    issues.extend(_check_colour_naming_consistency(pattern))
     return issues
 
 
@@ -56,14 +59,26 @@ def _check_required_fields(pattern) -> list:
 
 
 def _check_finishing_present(pattern) -> list:
-    issues = []
     has_finishing = any(s.name == "finishing" for s in pattern.sections)
-    if not has_finishing:
-        issues.append(Issue(
-            category="completeness", severity="error", location="Pattern",
-            message="No Finishing/assembly section found.",
-        ))
-    return issues
+    if has_finishing:
+        return []
+
+    # A continuous magic-ring construction (amigurumi-style, real sample:
+    # mittens Jul 7 batch) has no seams to join at all -- unlike flat-panel
+    # constructions (blankets, totes), which always need a separate
+    # Finishing/assembly step this check should still require. Skip the
+    # error only when the piece's own last body row already closes it
+    # inline (a drawstring-cinch "closure" clause, or a plain fasten-off).
+    body_rows = [r for r in pattern.rows if r.row_start > 0]
+    last_row = max(body_rows, key=lambda r: r.row_end) if body_rows else None
+    if pattern.foundation_is_magic_ring and last_row is not None:
+        if any(c.clause_type in ("closure", "fasten_off") for c in last_row.clauses):
+            return []
+
+    return [Issue(
+        category="completeness", severity="error", location="Pattern",
+        message="No Finishing/assembly section found.",
+    )]
 
 
 def _collect_stitch_tokens(clauses, tokens):
@@ -194,6 +209,12 @@ def _check_duplicate_turn(pattern) -> list:
 
 
 def _check_foundation_row_ambiguity(pattern) -> list:
+    # A magic-ring foundation (continuous-spiral/amigurumi-style, real
+    # sample: mittens Jul 7 batch) has no turning-chain-skip concept at all
+    # -- stitches are worked directly into the ring -- so there's no "which
+    # numbered chain to start in" ambiguity to flag.
+    if pattern.foundation_is_magic_ring:
+        return []
     first = next((r for r in pattern.rows if r.row_start == 1), None)
     if first is None:
         return []
@@ -216,6 +237,10 @@ _REAL_STITCH_CLAUSE_TYPES = {
     "literal_count", "each_st_across", "each_st_around", "corner", "side_edge_rule",
     "cluster_same_spot", "positional_single", "foundation_into_chain", "counted_chain",
     "skip", "bracket_group",
+    # Real clause types found on a real sample (mittens, Jul 7 batch,
+    # continuous-spiral/amigurumi-style thumb gusset construction) -- all
+    # genuine stitch/row content, just not simple across/around stitching.
+    "each_st_to_marker", "held_aside", "bridge_chain", "held_gusset_resume", "closure",
 }
 
 
@@ -492,3 +517,67 @@ def _check_zipper_liner_section(pattern) -> list:
             f"complete the missing step(s) from this pattern as written."
         ),
     )]
+
+
+# Items conventionally made and worn/used as a matched pair. Real sample
+# found (mittens, Jul 7 batch): the pattern's title is "Mittens" but the
+# body only ever constructs one mitten, with no "make 2"/"second
+# mitten"/"repeat for the other hand" instruction anywhere -- a tester
+# following this exactly ends up with a single mitten, not a pair.
+# Deliberately kept to the handful of item types that are unambiguously
+# always paired (unlike e.g. a hat, scarf, or tote bag, which are
+# legitimately single pieces) -- grown only from real, confirmed cases,
+# same discipline as cross_variant.py and known_constructions.py.
+_PAIRED_ITEM_WORDS = {"mitten", "glove", "sock"}
+_SECOND_PIECE_RE = re.compile(
+    r"second\s+(?:mitten|glove|sock)|make\s+(?:2|two)\b|repeat\s+(?:for|to\s+make)\s+(?:the\s+)?"
+    r"(?:other|second)|other\s+(?:mitten|glove|sock|hand|foot)|\bpair\b",
+    re.I,
+)
+
+
+def _check_paired_item(pattern) -> list:
+    title = (pattern.title or "").lower()
+    item_word = next((w for w in _PAIRED_ITEM_WORDS if w in title), None)
+    if item_word is None:
+        return []
+    if _SECOND_PIECE_RE.search(pattern.raw_text):
+        return []
+    return [Issue(
+        category="completeness", severity="error", location="Pattern",
+        message=(
+            f"This pattern's title identifies it as {item_word}s -- an item conventionally made as a matched "
+            f"pair -- but the body only ever constructs one {item_word}, with no 'make 2', 'second "
+            f"{item_word}', or 'repeat for the other hand/foot' instruction found anywhere. A tester following "
+            f"this exactly ends up with a single {item_word}, not a pair."
+        ),
+    )]
+
+
+# Real sample found (mittens, Jul 7 batch): the pattern refers to its second
+# colour as both "Colour 2" (Foundation, Row 3) and "Colour B" (Rows 4-5) --
+# both paired with the same colour name ("Moss"), but the equivalence is
+# never stated anywhere, risking a tester wondering whether a third colour
+# is needed. Detected purely from the pattern's own text (which colour
+# identifiers get paired with which names), not an external naming rule.
+_COLOUR_MENTION_RE = re.compile(r"colour\s+([\w]+)\s*[—-]\s*([\w']+)", re.I)
+
+
+def _check_colour_naming_consistency(pattern) -> list:
+    name_to_ids = defaultdict(dict)  # name (lower) -> {id (lower): original-cased id}
+    for id_, name in _COLOUR_MENTION_RE.findall(pattern.raw_text):
+        name_to_ids[name.strip().lower()].setdefault(id_.strip().lower(), id_.strip())
+
+    issues = []
+    for name, ids in sorted(name_to_ids.items()):
+        if len(ids) > 1:
+            shown = ", ".join(f"'Colour {i}'" for i in sorted(ids.values()))
+            issues.append(Issue(
+                category="completeness", severity="warning", location="Materials",
+                message=(
+                    f"The colour '{name.title()}' is referred to by {len(ids)} different identifiers in this "
+                    f"pattern ({shown}), without ever stating they're the same colour. A tester could "
+                    f"reasonably wonder whether an additional colour is needed."
+                ),
+            ))
+    return issues

@@ -1373,3 +1373,133 @@ regenerates -> re-verify) is working end to end.
   of next shell" landmark-reference math limitation from the Jun 27
   batch, unchanged and expected). Full suite passes (36 tests, 1 skip).
 
+## Fourteenth real-sample batch (Jul 7, 2026) — Mittens (thumb gusset)
+First new pattern TYPE beyond blankets/tote bags: a Mittens pattern, and
+the first continuous-spiral/amigurumi-style construction this project has
+QA'd -- magic ring foundation, no join/turn, decrease rounds, a thumb
+gusset (held stitches + bridge chain), and a drawstring-cinch closure.
+Explicitly asked "do we recommend building this out now or parking it" --
+recommended building it now (same bar as the Jun 27 six-clause-shape
+batch: every new shape here is driven by this one real, hand-verified-
+correct sample, not speculative), given the false-positive ERROR had to
+be fixed regardless and LoopDreams has been shipping a new pattern type
+roughly every couple of days.
+
+- **Hand-verified the entire pattern correct before touching any code**:
+  traced all 28 rounds by hand, including the thumb gusset region growing
+  4 -> 6 -> 8 -> 10 sts across rounds 6-8 (a textbook-correct gusset
+  increase), the set-aside/bridge-chain transition math at round 9
+  (36 sts - 10 held + 2 bridge = 28, provably independent of exactly
+  where the gusset falls in the round), all 12 decrease rounds down to
+  each closure, and both drawstring-cinch closures (fingertip, thumb
+  tip). Confirmed correct. The automated tool's *initial* output (4
+  errors, 35 warnings) was almost entirely noise/false alarms from never
+  having seen this construction style before -- this is the reference
+  point for everything fixed below.
+- **Real false-positive ERROR, fixed (highest priority, confidently
+  wrong not just unverifiable)**: `_check_row`'s each_st dispatch assumed
+  an `each_st_across`/`each_st_around` clause is always the WHOLE row (no
+  preceding real content) -- true for every prior sample, but not for
+  this one, where short-row increases ("2 sc in each of next 2 sts, sc
+  in each of next 2 sts") precede a trailing "sc in each st around to
+  end." The dispatch ignored everything before that trailing clause and
+  verified the row as if it were bare "sc in each st around" from the
+  start -- 30 sts in, 30 out expected, but the pattern (correctly)
+  declares 32/34/36. **Fixed**: `_check_row` now sums any pre/post
+  clauses around the each_st clause and feeds the adjusted totals through
+  (`_check_each_st` gained `pre_consumes`/`pre_produces` params). Verified
+  the fix doesn't just paper over a real mismatch: a deliberately-wrong
+  synthetic declared count is still caught as a real error (`tests/
+  test_gusset_and_closure_rows.py`).
+- **Magic-ring foundation**: `pattern_parser.py` previously only
+  recognized `Foundation: Ch N` -- a magic-ring foundation ("magic ring.
+  30 sc in ring") has no chain at all. Added recognition, plus a new
+  `Pattern.foundation_is_magic_ring` flag. Used to suppress the "which
+  numbered chain to start in" ambiguity check (both in `stitch_count.py`
+  and `completeness.py`) -- a magic ring has no turning-chain-skip
+  concept whatsoever, so that ambiguity genuinely doesn't apply, unlike
+  every prior sample's real chain foundations.
+- **New clause shapes added to `stitch_parser.py`** (all driven directly
+  by this sample's actual text): back-loop-only/front-loop-only infix on
+  `each_st_across`/`around`; an optional "remaining" qualifier on the
+  same (`"each remaining st around"`); `each_of_position` extended from
+  `first|last` to also accept `next`; a new increase shape ("N `<stitch>`
+  in each of next/first/last M sts" -- N copies into EACH of M stitches,
+  distinct from the plain 1:1 `each_of_position` pickup); a bare stitch
+  token with no positional phrase at all (`sc2tog`, which already had a
+  fixed ratio in `abbreviations.STITCH_MATH` but had no clause shape to
+  reach it); marker-placement and inline colour-change clauses as no-ops;
+  `held_aside` (`"place the next N sts on a holder..."`); `bridge_chain`
+  (`"ch N to bridge the gap"`); `each_st_to_marker` (a partial round
+  completion stopping at a marked point, left unverifiable *at the clause
+  level* -- see the gusset-transition row handler for why the row's
+  total is still knowable); `held_gusset_resume` (`"sc in each of the N
+  held gusset sts"`, resuming stitches set aside earlier); an
+  evenly-across-bridge pickup; and a "closure" clause type for the
+  drawstring-cinch sentence's several comma-split fragments (`"leaving a
+  long tail"`, `"thread the tail through..."`, `"pull tight to close..."`,
+  `"...weave in the end"`).
+- **New dedicated row-shape handler, `_check_gusset_transition`** (mirrors
+  the existing `_check_foundation_into_chain` precedent): detects a row
+  containing both a `held_aside` and a `bridge_chain` clause, and computes
+  `produced = in_count - held + bridge` directly -- correct regardless of
+  exactly where the gusset falls within the round, matching the by-hand
+  proof above. Still an actual check, not a rubber stamp: a deliberately-
+  wrong declared count in the same shape is still caught as a real error.
+- **`held_gusset_resume` forces a fresh sub-count**: a row resuming held
+  stitches (e.g. starting the thumb) is NOT a continuation of the
+  immediately-preceding row's count -- that row is usually a different
+  part of the piece entirely (here, the fingertip closure). `_check_row`
+  now detects this clause type and overrides `in_count` to `None` for
+  that row, falling through to the normal flat-sequence path, which still
+  verifies `produced == declared_count` from the row's own explicit
+  numbers -- and still catches a wrong declared count as a real error.
+- **New terminal "closure" row shape**: a row whose only content is
+  `fasten_off`/`closure`/`note` clauses doesn't produce or consume
+  stitches in the normal sense -- it gathers up whatever's left and
+  closes the piece. The old model would compute `consumed = 0` and
+  compare against `in_count`, a guaranteed false mismatch. Now checked as
+  its own shape: the declared count must simply match what was carried in
+  from the previous row (a real, meaningful invariant -- a wrong number
+  here is still caught).
+- **New parser gap, unrelated to the construction style**: every row
+  states BOTH a stitch-abbreviation count and a generic count, e.g.
+  `"...(30 sc) (30 sts)"`. The existing greedy capture correctly anchors
+  the declared count on the LAST `"(N sts)"` (same reasoning as the Jun
+  28 duplicated-count fix), but left the earlier `"(N sc)"` embedded in
+  the row's instruction text as noise on literally every row. Fixed by
+  stripping a trailing `"(N sc)"` off the captured instruction text.
+- **Two genuine, confirmed content defects, now caught automatically**:
+  (1) the pattern's title identifies it as Mittens -- an item always made
+  as a matched pair -- but the body only ever constructs one mitten, with
+  no "make 2"/"second mitten"/pair instruction anywhere; a tester
+  following this exactly ends up with a single mitten. Added
+  `_check_paired_item`: a small, explicit list of unambiguously-paired
+  item types (mittens, gloves, socks -- deliberately NOT generalized to
+  "everything with two of something," since e.g. a hat or scarf is
+  legitimately single-piece), checked against the pattern's own title,
+  flagged only if no "second piece" language appears anywhere in the
+  pattern text. (2) the second colour is referred to as both "Colour 2"
+  (Foundation, Row 3) and "Colour B" (Rows 4-5), both paired with the
+  same name ("Moss"), never reconciled. Added
+  `_check_colour_naming_consistency`: collects every colour identifier
+  paired with every colour name across the pattern's own text, flags any
+  name mapped to 2+ distinct identifiers -- detected purely from what the
+  pattern itself says, not an external naming convention.
+- **Tests**: `tests/test_stitch_parser.py` (new `TestMittensClauseShapes`,
+  every new clause shape in isolation), `tests/test_gusset_and_closure_
+  rows.py` (new file: magic-ring foundation, the pre-clauses-before-
+  each_st fix, gusset-transition math, held-resume fresh-start behavior,
+  terminal-closure rows -- each with both a correct case AND a
+  deliberately-wrong case, to confirm these are real checks and not rubber
+  stamps), `tests/test_pattern_parser.py` (duplicate `(N sc)` stripping),
+  `tests/test_paired_item_and_colour_naming.py` (new file: both new
+  completeness checks, each with a flagged case, a not-flagged/fixed
+  case, and -- for the paired-item check -- a non-paired-item title
+  confirming no false positive). Full suite passes (65 tests, 1 skip).
+- **Final result**: was previously **FAIL** (4 errors, 35 warnings, almost
+  entirely tool noise/false-positives). After all fixes: **FAIL** (1
+  error, 1 warning) -- now down to exactly the two real, confirmed
+  content defects, with all 28 rounds of genuinely correct stitch-count
+  math verifying silently.
+

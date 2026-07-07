@@ -120,5 +120,32 @@ class TestZipperLinerSectionBoundary(unittest.TestCase):
         self.assertEqual(component_count_issues, [])
 
 
+class TestDuplicateScStsAnnotation(unittest.TestCase):
+    def test_leading_sc_count_stripped_leaving_only_sts_as_declared(self):
+        # Real phrasing found on a real sample (mittens, Jul 7 batch):
+        # rows state BOTH a stitch-abbreviation count and a generic count,
+        # e.g. "...(30 sc) (30 sts)". Before this fix, the earlier "(30
+        # sc)" stayed embedded in the row's instruction text and got
+        # tokenized as an "unrecognized clause" -- noise on every single
+        # row of the pattern.
+        raw = (
+            "Test Mitten\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 22, turn.\n"
+            "Row 1: Sc in each st across. (21 sc) (21 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        row1 = pattern.rows[0]
+        self.assertEqual(row1.declared_count, 21)
+        self.assertNotIn("sc)", row1.raw_text)
+        types = [c.clause_type for c in row1.clauses]
+        self.assertNotIn("unknown", types)
+
+
 if __name__ == "__main__":
     unittest.main()
