@@ -121,7 +121,18 @@ def _sum_known(clauses):
         consumes_total += c.consumes
         if c.produces is None:
             if c.is_compound and c.stitch:
-                unknown[c.stitch] += 1
+                # Weight by the clause's own multiplier (e.g. cluster_
+                # same_spot's "2 moss in first st" represents 2 units of
+                # the unknown ratio, not 1) rather than always +=1. Real
+                # bug found (shawl, Jul 8 batch): every compound stitch
+                # seen before this always appeared with an implicit
+                # multiplier of 1 ("bobble in next st"), so the always-1
+                # assumption happened to be correct and this was never
+                # exercised -- "2 MOSS in first st" / "MOSS in each of
+                # next N sts" (multipliers of 2 and N) exposed it,
+                # producing a contradictory-equations false error instead
+                # of solving cleanly.
+                unknown[c.stitch] += c.explicit_count if c.explicit_count is not None else 1
             else:
                 return 0, None, None
         else:
@@ -398,7 +409,7 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
 
     # No repeat group, no each-st clause: a flat, non-repeating sequence of
     # fixed-count clauses (e.g. literal stitch-by-stitch instructions).
-    return _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides)
+    return _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_foundation_transition)
 
 
 def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
@@ -420,7 +431,12 @@ def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
         consumes += c.consumes
         if c.produces is None:
             if c.is_compound and c.stitch in ratio_overrides:
-                produces += ratio_overrides[c.stitch]
+                # Weight by the clause's own multiplier -- same fix as
+                # _sum_known above, for the same reason (shawl, Jul 8
+                # batch): "2 moss in first st" is 2 units of the resolved
+                # per-unit ratio, not 1.
+                weight = c.explicit_count if c.explicit_count is not None else 1
+                produces += ratio_overrides[c.stitch] * weight
             else:
                 reasons.append(c.unverifiable_reason or f"'{c.stitch}' has no fixed consumes/produces ratio")
                 continue
@@ -537,7 +553,7 @@ def _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, r
     return []
 
 
-def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides):
+def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_foundation_transition=False):
     p, c, reasons = _zone_sum(clauses, ratio_overrides=ratio_overrides)
     if reasons:
         return [Issue(
@@ -545,6 +561,27 @@ def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides):
             message=f"Cannot verify stitch-count math for {row.label}: {'; '.join(reasons)}.",
         )]
     if in_count is not None and c != in_count:
+        if is_foundation_transition and c < in_count:
+            # Ambiguous, not wrong: this row's clauses consume fewer
+            # stitches than the raw foundation chain, with no ordinal
+            # "in Nth ch from hook" clause stating how many chains were
+            # meant as a turning-chain equivalent. Real sample found
+            # (shawl, Jul 8 batch): a triangle shawl's first row works
+            # "2 SC in first st, SC in next st, 2 SC in last st" straight
+            # off a Ch 4 foundation, consuming only 3 -- almost certainly
+            # the standard "skip 1 as if it were a turning chain"
+            # convention (matching the declared count exactly), but never
+            # stated as such, so left unverifiable rather than assumed --
+            # same posture as the analogous each_st-clause ambiguity above.
+            return [Issue(
+                category="stitch_count", severity="warning", location=row.label,
+                message=(
+                    f"Cannot verify stitch-count math for {row.label}: this row's stitches only account for "
+                    f"{c} of the {in_count} foundation chain sts, with no ordinal clause (e.g. '2nd ch from "
+                    f"hook') stating how many chains were meant as a turning-chain equivalent. Declared count: "
+                    f"{row.declared_count} sts."
+                ),
+            )]
         return [Issue(
             category="stitch_count", severity="error", location=row.label,
             message=(

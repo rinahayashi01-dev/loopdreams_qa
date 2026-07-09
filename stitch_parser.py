@@ -28,9 +28,17 @@ from . import abbreviations as ab
 # Base (hardcoded) stitch-ish words, independent of any one pattern's own
 # abbreviation key. Longest-first ordering happens at compile time so e.g.
 # "sh st" matches before "st" alone, "sc2tog" before "sc".
-_BASE_STITCH_WORDS = frozenset(
-    ab.ALL_KNOWN_TOKENS | {"shell stitch", "shell", "sh st", "cluster", "popcorn", "bobble", "puff"}
-)
+#
+# Unions ab.COMPOUND_STITCH_WORDS directly (rather than a separately
+# hand-maintained duplicate list, which is what this used to be) --
+# real bug found (shawl, Jul 8 batch): "moss"/"sedge" were added to
+# abbreviations.COMPOUND_STITCH_WORDS but NOT to this separate hardcoded
+# set, so every clause using them still failed to match ANY shape at all
+# (unrecognized-clause noise on every row) even after that first fix,
+# since THIS is the set that actually builds the tokenizer's regex
+# alternation. Deriving from the one shared source avoids this class of
+# bug recurring for the next compound word added.
+_BASE_STITCH_WORDS = frozenset(ab.ALL_KNOWN_TOKENS | ab.COMPOUND_STITCH_WORDS | {"shell stitch"})
 
 _POS = r"(?:the\s+)?(?:very\s+)?(first|next|last)"
 _NOUN = r"(?:st|sc|hdc|dc|tr|ch)s?"
@@ -71,6 +79,17 @@ _RE_HELD_ASIDE = re.compile(r"^place\s+the\s+next\s+(\d+)\s+sts\s+on\s+a\s+holde
 # round-completion clause in the SAME row -- see checks/stitch_count.py's
 # dedicated gusset-transition row handler for how these combine.
 _RE_BRIDGE_CHAIN = re.compile(r"^ch\s+(\d+)\s+to\s+bridge\s+the\s+gap$", re.I)
+# "sl st to top of ch 3 to join" -- ends a JOINED round (flat circle/motif
+# construction, real sample: coaster Jul 8 batch -- distinct from the
+# continuous-spiral mittens construction, which never joins at all). A
+# no-op for stitch-count purposes: it closes the round, doesn't add or
+# remove stitches. The sc-variant coaster (same batch) has no counted
+# turning chain to join back to -- its rounds open on a bare stitch
+# instead, so the round closes with "sl st to first sc to join" instead;
+# same no-op, different anchor phrase.
+_RE_SL_ST_JOIN = re.compile(
+    r"^sl\s*st\s+to\s+(?:top\s+of\s+ch\s+\d+|first\s+[a-z]+)\s+to\s+join$", re.I
+)
 # "changing to Colour 2 -- Moss in the last st" -- an inline colour change
 # stated as a trailing clause within a row (distinct from the existing
 # leading "With Colour B -- Moss:" row-opening marker pattern_parser.py
@@ -125,7 +144,7 @@ class _Patterns:
         "centre_dc", "around_post", "top_of_chain", "simple_positional",
         "stitch_in_ch1_space", "foundation_ordinal_single",
         "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
-        "each_st_to_marker",
+        "each_st_to_marker", "same_st",
     )
 
     def __init__(self, stitch_alt: str):
@@ -147,13 +166,16 @@ class _Patterns:
         # each st around") and an optional "remaining" qualifier ("each
         # remaining st around" -- the gusset-transition round-completion
         # clause after some stitches were already set aside/worked
-        # separately earlier in the same row).
+        # separately earlier in the same row). Also an optional leading
+        # count multiplier (real phrasing, coaster Jul 8 batch: "2 dc in
+        # each remaining st around" -- an increase, 2 copies into EACH
+        # remaining stitch, not just 1).
         self.each_st_across = re.compile(
-            rf"^\*?({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
             rf"each\s+(?:remaining\s+)?st\s+across\b\s*(.*)$", re.I
         )
         self.each_st_around = re.compile(
-            rf"^\*?({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
             rf"each\s+(?:remaining\s+)?st\s+around\b\s*(.*)$", re.I
         )
         self.corner = re.compile(rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+corner$", re.I)
@@ -228,6 +250,12 @@ class _Patterns:
         self.top_of_chain = re.compile(rf"^({stitch_alt})\s+in\s+top\s+of\s+(?:the\s+)?ch(?:-\d+)?$", re.I)
         # Generic single-instance positional clause: "<stitch> in (first|next|last) st"
         self.simple_positional = re.compile(rf"^({stitch_alt})\s+in\s+{_POS}\s+{_NOUN}$", re.I)
+        # "<stitch> in (the) same st" -- an increase paired with a counted
+        # turning chain (real sample, coaster Jul 8 batch: "Ch 3 (counts as
+        # first dc), dc in same st" -- the ch-3 already counts as the
+        # round's first dc; this adds a SECOND dc at that same position,
+        # rather than consuming a new previous-row stitch).
+        self.same_st = re.compile(rf"^({stitch_alt})\s+in\s+(?:the\s+)?same\s+st$", re.I)
         # "<stitch> in (first|next|last) ch-1 sp(ace)" -- linen/moss-stitch
         # style, working into a chain-1 SPACE left by the previous row
         # rather than into an actual previous-row stitch. New phrasing found
@@ -392,6 +420,9 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
+    if _RE_SL_ST_JOIN.match(p):
+        return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
+
     if (_RE_LEAVING_LONG_TAIL.match(p) or _RE_THREAD_TAIL_FRONT_LOOP.match(p)
             or _RE_PULL_TIGHT_CLOSE.match(p) or _RE_WEAVE_IN_END.match(p)):
         return StitchClause(raw=raw_part, clause_type="closure", consumes=0, produces=0)
@@ -433,17 +464,21 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     m = patterns.each_st_across.match(p)
     if m:
-        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        multiplier = int(m.group(1)) if m.group(1) else 1
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        produces = (prod * multiplier) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="each_st_across",
-                             consumes=c, produces=prod, is_compound=is_compound,
+                             explicit_count=multiplier, consumes=c, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if not is_compound else
                              f"'{canon}' has no fixed consumes/produces ratio; construction not defined")
 
     m = patterns.each_st_around.match(p)
     if m:
-        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        multiplier = int(m.group(1)) if m.group(1) else 1
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        produces = (prod * multiplier) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="each_st_around",
-                             consumes=c, produces=prod, is_compound=is_compound,
+                             explicit_count=multiplier, consumes=c, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if not is_compound else
                              f"'{canon}' has no fixed consumes/produces ratio; construction not defined")
 
@@ -476,15 +511,46 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     m = patterns.literal_next.match(p)
     if m:
-        n_stitches = int(m.group(1)) if m.group(1) else 1
         canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
         consumed_target = int(m.group(3))
-        produces = (prod * n_stitches * consumed_target) if prod is not None else None
+        if not m.group(1):
+            # Bare "<stitch> in next N sts" -- no leading count at all.
+            # Well-established: 1 stitch per position, N total.
+            n_stitches = 1
+            produces = (prod * consumed_target) if prod is not None else None
+            unverifiable_reason = None if prod is not None else f"'{canon}' has no fixed consumes/produces ratio"
+        else:
+            n_stitches = int(m.group(1))
+            if n_stitches == consumed_target:
+                # Real phrasing found on a real sample (dishcloth, Jul 8
+                # batch): "45 DC in next 45 sts" -- the leading count is a
+                # redundant restatement of the same number, not a
+                # multiplier ("N per EACH of the M stitches", which is what
+                # this shape means when the two numbers differ). Confirmed
+                # by the row's own declared count staying flat (45 -> 45,
+                # no shaping expected): the only sensible reading is 1
+                # stitch per position, same as the bare form above.
+                produces = (prod * consumed_target) if prod is not None else None
+                unverifiable_reason = (
+                    None if prod is not None else f"'{canon}' has no fixed consumes/produces ratio"
+                )
+            else:
+                # "<N> <stitch> in next <M> sts" with N != M: read as N
+                # copies into EACH of M stitches. Unlike the N == M case
+                # above, this specific combination has never actually been
+                # exercised by any real sample or test -- rather than keep
+                # guessing an unvalidated formula, leave it unverifiable
+                # until a real case confirms which reading is intended.
+                produces = None
+                unverifiable_reason = (
+                    f"'{m.group(0)}' states two different numbers ({n_stitches} and {consumed_target}) with no "
+                    f"confirmed real-sample precedent for what that combination means here -- left unverifiable "
+                    f"rather than guessed"
+                )
         return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
                              explicit_count=n_stitches, consumes=consumed_target,
                              produces=produces, is_compound=is_compound,
-                             unverifiable_reason=None if prod is not None else
-                             f"'{canon}' has no fixed consumes/produces ratio")
+                             unverifiable_reason=unverifiable_reason)
 
     # "<stitch> in each of (the) first/last N sts" -- non-repeated edge
     # stitches stated with an explicit count rather than "in next N".
@@ -619,6 +685,26 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         consumes = c if c is not None else 1
         return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
                              consumes=consumes, produces=prod, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    m = patterns.same_st.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        # Hand-verified against the real sample (coaster, Jul 8 batch,
+        # rounds 1-3): the preceding turning chain here is a BARE, un-
+        # counted "Ch 3" (produces=0 on its own) -- the "counts as first
+        # dc" convention stated once in the Foundation line carries
+        # forward implicitly, rather than being restated on every round.
+        # So "dc in same st" alone has to represent the FULL 2-stitch
+        # increase at that position: consumes=1 (the one real previous-
+        # round stitch the chain+this dc together replace), produces=2
+        # (the implicit chain-stitch plus this explicit one). Confirmed by
+        # testing all three increase rounds' declared counts (12->24,
+        # 24->36, 36->48) against this exact model -- all resolve exactly.
+        produces = (prod * 2) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
+                             consumes=1, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")
 

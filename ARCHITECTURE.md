@@ -1503,3 +1503,141 @@ roughly every couple of days.
   content defects, with all 28 rounds of genuinely correct stitch-count
   math verifying silently.
 
+## Fifteenth real-sample batch (Jul 8, 2026) — Shawl, Coaster, Dishcloth
+## (14 patterns, 3 brand-new pattern types)
+Three new pattern TYPEs in one batch: a triangular top-down Shawl (sedge,
+moss, tr, dc, hdc, sc -- 6 variants, 149 rows each), a joined-round flat
+Coaster motif (dc, hdc, sc), and a flat-panel Dishcloth (linen, moss, dc,
+hdc, sc). Asked "how should I scope today's tool work" after finding a
+significant confirmed defect plus substantial new tool gaps across all
+three types -- explicitly chose to build out full support for all three
+(same bar as the Jul 7 mittens batch: every gap here is driven by real,
+now-understood samples, not speculative).
+
+- **Coaster introduces a genuinely new construction style**: JOINED
+  rounds (magic ring -> `sl st ... to join` closes each round), distinct
+  from mittens' continuous-spiral (never joins). New clause shapes in
+  `stitch_parser.py`: `join` (`"sl st to top of ch N to join"` for
+  dc/hdc, and `"sl st to first <stitch> to join"` for sc, which has no
+  counted turning chain to join back to -- same no-op, two anchor
+  phrases, both matched by one broadened `_RE_SL_ST_JOIN`); `same_st`
+  (`"dc in same st"`, hand-verified against the real file's rounds 1-2 as
+  consumes=1/produces=2*ratio, since the preceding bare "Ch 3" carries no
+  stitch value of its own here); an optional leading-count multiplier on
+  `each_st_across`/`each_st_around` (`"2 dc in each remaining st
+  around"`); and a new magic-ring-with-counted-turning-chain foundation
+  shape (`"Magic ring. Ch 3 (counts as first dc), 11 dc in ring..."` --
+  the counted chain always represents exactly 1 stitch regardless of how
+  many literal chains form it).
+- **Real confirmed content defect (coaster)**: no Finishing/assembly
+  section and no explicit fasten-off anywhere in the body. Investigated
+  whether this should be suppressed as a false positive (the way
+  continuous-spiral drawstring closures self-close without one) --
+  concluded it's a genuine gap: joined-round motifs don't self-close the
+  way a spiral's cinch does, so the existing `_check_fasten_off`/`_check
+  completeness` checks are correct to flag it. Round 3's stitch-count
+  math (35 remaining sts ÷ 3-st repeat unit doesn't divide evenly) is
+  also a likely real defect, not a tool artifact -- rounds 1-2 verify
+  exactly under the identical model.
+- **Dangerous unvalidated-assumption fix, `literal_next`**: this clause
+  (`"N <stitch> in next M sts"`) previously treated ANY leading count as
+  an unconditional "N per EACH of M sts" multiplier. Checked whether any
+  real sample or test had ever exercised a leading count > 1 combined
+  with "in next M sts" -- none had. The dishcloth sample introduced the
+  first real case, but it's the `N == M` shape (`"45 DC in next 45
+  sts"`), a redundant restatement meaning 1 per stitch, NOT a multiplier.
+  Fixed to resolve only the validated `N == M` case; the untested `N !=
+  M` combination is now left honestly unverifiable instead of guessed.
+- **Dishcloth parser gaps**: foundation line can carry a leading colour
+  clause (`"Foundation chain:With Colour 1 — Honey, Ch 48, turn."`) --
+  previously only bare `"Ch N"` matched. Row-opening colour join
+  previously required a single-letter identifier + colon
+  (`"With Colour B — Moss:"`); this sample uses a numbered identifier
+  with a comma (`"With Colour 2 — Moss, 45 DC in next 45 sts."`) --
+  broadened both `row_re` and `repeat_ref_re` to accept either. All 5
+  dishcloth variants now PASS clean.
+- **Shawl Row 1 foundation-chain-skip ambiguity, new shape**: the
+  existing each_st-clause-based ambiguity check (added for an earlier
+  batch) didn't cover a flat INCREASE sequence worked directly off the
+  raw chain with no each_st clause at all (`"2 SC in first st, SC in
+  next st, 2 SC in last st"`, consuming only 3 of a 4-ch foundation, no
+  ordinal clause explaining the skip). Extended both `stitch_count.py`'s
+  `_check_flat_sequence` (new `is_foundation_transition` param,
+  downgrades a confident ERROR to an honest "unverifiable" WARNING) and
+  `completeness.py`'s `_check_foundation_row_ambiguity` to cover this
+  shape, mirroring the existing each_st-based handling.
+- **Shawl "missing fasten off" false positive, fixed**: the Border's own
+  leading `"Fasten off."` (before it re-joins yarn to work the border
+  itself) wasn't recognized as satisfying the body's fasten-off
+  requirement. `_check_fasten_off` now checks the border row's first
+  clause for this.
+- **Real confirmed content defect (shawl border geometry)**: hand-
+  computed the border's own stated formula (`[3 sc in corner, sc in
+  each st across flat edge] x2 + [3 sc in corner, 1 sc per row-end along
+  side edge] x2` -- a rectangular 4-edge template) against the actual
+  body_width=301 and total_rows=149, getting 912 sts; the pattern
+  declares 320. Root cause: this shawl is geometrically a TRIANGLE (one
+  wide edge, two slanted sides), but the border instructions were
+  written for a 4-edge rectangle. Confirmed as a real pattern defect, not
+  a tool bug -- the existing border-math ERROR check is working
+  correctly.
+- **moss/sedge used as literal stitch TOKENS for the first time**: every
+  earlier moss/sedge sample (throw blanket batches) always spelled out
+  the underlying sc/ch1 or sc+hdc+dc construction literally in the row
+  text; this shawl uses "MOSS"/"SEDGE" directly as stitch tokens (`"2
+  MOSS in first st, MOSS in next st, 2 MOSS in last st"`), the same
+  shorthand-token style already used for shell/bobble/etc. Added to
+  `abbreviations.COMPOUND_STITCH_WORDS`. This alone did NOT fix it:
+  `stitch_parser.py`'s `_BASE_STITCH_WORDS` had its own separately
+  hardcoded compound-word list, disconnected from
+  `abbreviations.COMPOUND_STITCH_WORDS` -- the actual regex alternation
+  the tokenizer uses. Fixed by properly unioning the two sets, closing a
+  duplicate-maintenance gap that had been silently there since the
+  compound-stitch-word list was first introduced.
+- **Two-part latent bug in the compound-ratio solving pipeline
+  (`checks/stitch_count.py`)**, only now exercised because every prior
+  compound stitch (bobble, shell, etc.) always appeared with an implicit
+  multiplier of 1. Moss's row shape uses multiplier-2 clauses (`"2 MOSS
+  in first st"`) alongside multiplier-N clauses (`"MOSS in each of next
+  N sts"`) in the same row. (1) `_sum_known` (used while ALGEBRAICALLY
+  SOLVING an unknown ratio from rows' own declared counts) always
+  incremented the unknown-token occurrence count by exactly 1 per
+  clause, ignoring the clause's own multiplier -- produced wildly
+  contradictory "solved" ratios per row (3, 5, 7, 9...99 implied by
+  different rows) instead of a single consistent answer. Fixed to weight
+  by `c.explicit_count`. (2) `_zone_sum` (the SEPARATE function used for
+  the actual per-row VERIFICATION pass once a ratio has been resolved)
+  had the identical bug: `produces += ratio_overrides[c.stitch]` added
+  the resolved per-unit ratio once per clause, never multiplied by the
+  clause's own multiplier -- would have silently undercounted any row
+  using "2 moss..." even after the ratio was correctly solved. Fixed the
+  same way. Both moss and sedge now solve to a consistent ratio of 1
+  (matching plain-sc-equivalent behavior) across all 149 rows, with no
+  contradictions.
+- **Real confirmed content defect (shawl moss/sedge)**: "MOSS"/"SEDGE"
+  are used throughout the pattern body but never appear in the
+  ABBREVIATIONS key at all -- confirmed by reading the actual extracted
+  key text, not a parser gap.
+- **Duplicate count annotation, generalized further**: the Jul 7 mittens
+  fix only stripped a single trailing `"(N sc)"`. This batch introduced
+  a same-unit duplicate (shawl: `"(N sts) (N sts)"`) and a different-
+  unit duplicate (coaster: `"(N dc) (N sts)"`). Generalized the strip to
+  a loop that removes any number of trailing `"(N sc|hdc|dc|tr|dtr|htr|
+  ttr|sts?)"` annotations, regardless of unit or how many pile up.
+- **Tests**: new file `tests/test_shawl_coaster_dishcloth.py` -- 20 tests
+  covering every fix above (literal_next's three-way disambiguation,
+  coaster's same_st/join/multiplier/magic-ring-with-turning-chain,
+  dishcloth's colour-prefixed foundation and numbered-comma colour join,
+  the generalized duplicate-count stripping, the shawl foundation-skip
+  ambiguity generalization, the border fasten-off recognition, and the
+  moss/sedge compound-token + ratio-solving fix), each with both a
+  correct case and a deliberately-wrong case still caught where
+  applicable. Full suite passes (85 tests, 1 skip).
+- **Final result**: dishcloth (5 variants) now PASS clean. Coaster (3
+  variants) FAILs on exactly its real defects (missing Finishing/fasten-
+  off, and for dc/hdc a real round-math error). Shawl (6 variants) FAILs
+  on exactly its real defects (border geometry mismatch on all 6; moss/
+  sedge's undefined-abbreviation error on those 2 variants) -- down from
+  an initial wall of hundreds of tool-gap warnings per file to only
+  genuine, hand-verified content findings.
+

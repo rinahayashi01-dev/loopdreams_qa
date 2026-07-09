@@ -148,7 +148,14 @@ def _parse_instructions(section: Section, pattern: Pattern):
     joined = _join_wrapped(section.raw_text, boundaries)
     blob = re.sub(r"\s+", " ", joined.replace("\n", " ")).strip()
 
-    m = re.search(r"Foundation(?:\s+chain)?\s*:\s*Ch\s+(\d+)", blob, re.I)
+    # Optional leading colour clause before the chain count -- real sample
+    # found (dishcloth, Jul 8 batch): "Foundation chain:With Colour 1 --
+    # Honey, Ch 48, turn." (previously only "Foundation chain:Ch 48, turn."
+    # -- no colour prefix -- was recognized).
+    m = re.search(
+        r"Foundation(?:\s+chain)?\s*:\s*(?:With\s+Colour\s+[A-Za-z0-9]+\s*[—-]\s*[A-Za-z]+\s*,\s*)?Ch\s+(\d+)",
+        blob, re.I,
+    )
     if m:
         pattern.foundation_chain = int(m.group(1))
     else:
@@ -163,12 +170,33 @@ def _parse_instructions(section: Section, pattern: Pattern):
         if m:
             pattern.foundation_chain = int(m.group(1))
             pattern.foundation_is_magic_ring = True
+        else:
+            # "Magic ring. Ch 3 (counts as first dc), 11 dc in ring, sl st
+            # to top of ch 3 to join." -- a JOINED-round (flat circle/motif)
+            # magic-ring foundation, real sample found (coaster, Jul 8
+            # batch): distinct from the mittens continuous-spiral form
+            # above (no counted turning chain there). The counted chain
+            # always represents exactly 1 stitch, regardless of how many
+            # actual chains form it -- total = 1 + the "N <stitch> in ring"
+            # count.
+            m = re.search(
+                r"magic\s+ring\.?\s*ch\s+\d+\s*\(counts\s+as\s+first\s+[a-z]+\)\s*,\s*(\d+)\s+[a-z]+\s+in\s+ring",
+                blob, re.I,
+            )
+            if m:
+                pattern.foundation_chain = int(m.group(1)) + 1
+                pattern.foundation_is_magic_ring = True
 
     found_rows = []
 
+    # Colour identifier broadened to alphanumeric (was letter-only) and the
+    # separator to accept a comma as well as a colon -- real sample found
+    # (dishcloth, Jul 8 batch): "With Colour 2 -- Moss, 45 DC in next 45
+    # sts." (a numbered identifier, comma-separated, instead of the
+    # previously-seen lettered/colon-separated "With Colour B -- Moss:").
     row_re = re.compile(
         r"Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\s*:\s*"
-        r"(?:With\s+Colour\s+([A-Za-z])\s*[—-]\s*([A-Za-z]+)\s*:\s*)?"
+        r"(?:With\s+Colour\s+([A-Za-z0-9]+)\s*[—-]\s*([A-Za-z]+)\s*[:,]\s*)?"
         r"((?:(?!Rows?\s+\d+\s*[:–-]).)*)"
         r"\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
         re.I,
@@ -178,14 +206,23 @@ def _parse_instructions(section: Section, pattern: Pattern):
         row_end = int(m.group(2)) if m.group(2) else row_start
         color = m.group(4)
         instr_text = m.group(5).strip().rstrip(".")
-        # Real sample found (mittens, Jul 7 batch): rows state BOTH a
-        # stitch-abbreviation count and a generic count, e.g. "...(30 sc)
-        # (30 sts)". The greedy capture above correctly anchors on the
-        # LAST "(N sts)" as the real declared count (same reasoning as the
-        # Jun 28 duplicated-(N sts) fix), but leaves the earlier "(N sc)"
-        # embedded in instr_text as noise. Strip it off the end here,
-        # rather than touching the greedy capture itself.
-        instr_text = re.sub(r"\s*\(\s*~?\s*\d+\s*sc\s*\)\s*\.?\s*$", "", instr_text).strip()
+        # Real samples found (mittens Jul 7, shawl/dishcloth/coaster Jul 8):
+        # rows sometimes restate the count twice, either with the same unit
+        # ("...(5 sts) (5 sts)", shawl), a different one ("...(30 sc)
+        # (30 sts)", mittens), or a different stitch abbreviation entirely
+        # ("...(24 dc) (24 sts)", coaster). The greedy capture above
+        # correctly anchors on the LAST "(N sts)" as the real declared
+        # count (same reasoning as the Jun 28 duplicated-(N sts) fix), but
+        # leaves any earlier duplicate annotation embedded in instr_text as
+        # noise. Strip any number of trailing "(N <stitch abbr>)"/"(N sts)"
+        # annotations here, rather than touching the greedy capture itself.
+        while True:
+            stripped = re.sub(
+                r"\s*\(\s*~?\s*\d+\s*(?:sc|hdc|dc|tr|dtr|htr|ttr|sts?)\s*\)\s*\.?\s*$", "", instr_text
+            ).strip()
+            if stripped == instr_text:
+                break
+            instr_text = stripped
         declared = int(m.group(6))
         label = f"Row {row_start}" if row_start == row_end else f"Rows {row_start}-{row_end}"
         rr = RoundRow(label=label, row_start=row_start, row_end=row_end,
@@ -199,7 +236,7 @@ def _parse_instructions(section: Section, pattern: Pattern):
     # their own pass or they'd silently vanish from the parsed pattern.
     repeat_ref_re = re.compile(
         r"Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\s*:\s*"
-        r"(?:With\s+Colour\s+([A-Za-z])\s*[—-]\s*([A-Za-z]+)\s*:\s*)?"
+        r"(?:With\s+Colour\s+([A-Za-z0-9]+)\s*[—-]\s*([A-Za-z]+)\s*[:,]\s*)?"
         r"Repeat\s+Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\.?",
         re.I,
     )

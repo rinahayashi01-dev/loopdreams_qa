@@ -12,6 +12,7 @@ from collections import defaultdict
 
 from ..models import Issue
 from .. import abbreviations as ab
+from . import stitch_count as stitch_count_module
 
 REQUIRED_MATERIALS_FIELDS = ["gauge", "hook", "yarn"]
 
@@ -167,8 +168,16 @@ def _check_fasten_off(pattern) -> list:
     if not body_rows:
         return []
     has_fasten_off = any(c.clause_type == "fasten_off" for r in body_rows for c in r.clauses)
+    border_row = next((r for r in pattern.rows if r.row_start == -1), None)
+    if not has_fasten_off and border_row is not None and border_row.clauses:
+        # A "Fasten off." stated as the border's OWN first instruction
+        # (real sample: shawl, Jul 8 batch -- "Border: Fasten off. With RS
+        # facing, join yarn at any corner...") functionally closes the
+        # body's working yarn just as well as stating it at the end of the
+        # last body row would -- these are equivalent, not a real gap.
+        has_fasten_off = border_row.clauses[0].clause_type == "fasten_off"
     if not has_fasten_off:
-        has_border = any(r.row_start == -1 for r in pattern.rows)
+        has_border = border_row is not None
         if has_border:
             msg = (
                 "The pattern body never includes a 'fasten off' instruction before the border begins. "
@@ -230,6 +239,25 @@ def _check_foundation_row_ambiguity(pattern) -> list:
                 f"convention, but the exact number depends on stitch height and isn't actually stated here."
             ),
         )]
+
+    # Same ambiguity, different clause shape: no each_st clause at all, but
+    # the row's own literal stitch clauses consume fewer than the raw
+    # foundation chain -- real sample found (shawl, Jul 8 batch): "2 SC in
+    # first st, SC in next st, 2 SC in last st" off a Ch 4 foundation
+    # consumes only 3, with no ordinal clause explaining the shortfall.
+    if not has_foundation_clause and each_st is None and pattern.foundation_chain is not None:
+        _, consumed, reasons = stitch_count_module._zone_sum(first.clauses)
+        if not reasons and consumed < pattern.foundation_chain:
+            return [Issue(
+                category="completeness", severity="warning", location=first.label,
+                message=(
+                    f"{first.label} works directly off the foundation chain ({pattern.foundation_chain} ch) "
+                    f"but its stitches only account for {consumed} of them, with no ordinal clause (e.g. '2nd "
+                    f"ch from hook') stating how many chains were meant as a turning-chain equivalent. "
+                    f"Skipping some chains this way is standard convention, but the exact number isn't "
+                    f"actually stated here."
+                ),
+            )]
     return []
 
 
