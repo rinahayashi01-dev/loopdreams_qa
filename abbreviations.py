@@ -61,9 +61,19 @@ STITCH_MATH = {
 # Presence of one of these tokens (or a custom abbreviation key entry whose
 # DEFINITION text contains one of these words) marks a stitch as needing an
 # explicit construction definition before stitch-count math can be verified.
+# "moss"/"sedge" added from a real sample (shawl, Jul 8 batch): unlike
+# every earlier moss/sedge stitch sample (throw blanket), which always
+# spelled out the sc/ch1 or sc+hdc+dc construction literally in the row
+# text, this one uses "MOSS"/"SEDGE" directly as a stitch TOKEN in row
+# instructions ("2 MOSS in first st, MOSS in next st, ..."), the same
+# shorthand-token style already used for shell/bobble/etc. Without this,
+# every clause using the token fails to match ANY clause shape at all
+# (the word isn't in the stitch-word alternation), producing "unrecognized
+# clause" noise on every single row instead of the correct "compound
+# stitch, no fixed ratio" completeness flag.
 COMPOUND_STITCH_WORDS = {
     "shell", "sh st", "cluster", "cl", "popcorn", "pc", "bobble", "puff",
-    "v-st", "v st", "picot", "star st",
+    "v-st", "v st", "picot", "star st", "moss", "sedge",
 }
 
 KNOWN_SIMPLE_TOKENS = set(STITCH_MATH.keys())
