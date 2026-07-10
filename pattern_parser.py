@@ -42,10 +42,32 @@ SECTION_HEADERS = {
     # See _check_zipper_liner_section in completeness.py for what's
     # actually verified about this section's own content.
     "adding a zipper & liner": "zipper_liner",
+    # Real sample (Tote Bag, Jul 10 "Pattern Test v1" cover-page template):
+    # a new template replaces the "Materials" heading entirely with two
+    # separate headings -- "Pattern Overview" (gauge/colours/finished-size,
+    # still "Label: value" fields) and "You Will Need" (a plain bullet
+    # list of yarn/hook/notions, no labels at all). "Pattern Overview" maps
+    # straight to "materials"; "You Will Need" gets its own section name
+    # ("supplies_list") since its unlabeled bullet-list shape needs a
+    # different parsing strategy -- see parse()'s merge step below, which
+    # folds any yarn/hook mentions found there into the "materials"
+    # section's fields.
+    "pattern overview": "materials",
+    "you will need": "supplies_list",
 }
 
 _RE_PAGE_HEADER = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4},\s*\d{1,2}:\d{2}\s*[AP]M\b.*$")
 _RE_PAGE_FOOTER = re.compile(r"^https?://\S+\s+\d+/\d+$")
+# Real sample (Tote Bag, Jul 10 "Pattern Test v1" cover-page template): a
+# different footer style entirely -- a copyright/branding line, with the
+# page number on its OWN separate following line ("© 2026 LoopDreams
+# Studio Pattern Test v1" / "Page 4"), not a single combined line like the
+# URL-based footer. Left unstripped, this glued itself onto whatever
+# content immediately preceded it (here, the Handles component's own
+# "(N sts)"), breaking the trailing-count regex anchor the same way an
+# unstripped URL footer would have.
+_RE_PAGE_FOOTER_COPYRIGHT = re.compile(r"^©\s*\d{4}\b.*$", re.I)
+_RE_PAGE_FOOTER_PAGE_NUM = re.compile(r"^Page\s+\d+$", re.I)
 
 _RE_FIELD_LINE = re.compile(r"^[A-Za-z][A-Za-z /]{1,24}:\s*\S")
 _RE_ROW_MARKER = re.compile(r"^Rows?\s+\d+", re.I)
@@ -60,7 +82,12 @@ def _strip_noise_lines(raw_text: str) -> list:
         s = ln.strip()
         if not s:
             continue
-        if _RE_PAGE_HEADER.match(s) or _RE_PAGE_FOOTER.match(s):
+        if (
+            _RE_PAGE_HEADER.match(s)
+            or _RE_PAGE_FOOTER.match(s)
+            or _RE_PAGE_FOOTER_COPYRIGHT.match(s)
+            or _RE_PAGE_FOOTER_PAGE_NUM.match(s)
+        ):
             continue
         keep.append(s)
     return keep
@@ -120,6 +147,27 @@ def _parse_materials(section: Section) -> dict:
         end = matches[i + 1].start() if i + 1 < len(matches) else len(blob)
         value = blob[start:end].strip().strip("·").strip()
         fields[label] = value
+    return fields
+
+
+def _parse_supplies_list(section: Section) -> dict:
+    """A "You Will Need" bullet list (Tote Bag, Jul 10 "Pattern Test v1"
+    template): plain prose lines with no "Label: value" structure at all
+    ("4.0 mm (G-6 US) crochet hook", "#3 Light (DK) yarn -- approx 400
+    yds"), unlike the labeled Materials/Pattern Overview block. Scan for a
+    yarn and a hook mention specifically, since those are the two required
+    fields a plain bullet list is standing in for here.
+    """
+    fields = {}
+    for ln in section.raw_text.split("\n"):
+        s = ln.strip()
+        low = s.lower()
+        if not s:
+            continue
+        if "yarn" not in fields and "yarn" in low and low != "yarn needle":
+            fields["yarn"] = s
+        if "hook" not in fields and "hook" in low:
+            fields["hook"] = s
     return fields
 
 
@@ -354,6 +402,8 @@ def parse(raw_text: str) -> Pattern:
     for section in raw_sections:
         if section.name == "materials":
             section.fields = _parse_materials(section)
+        elif section.name == "supplies_list":
+            section.fields = _parse_supplies_list(section)
         elif section.name == "abbreviations":
             pattern.abbreviation_key = _parse_abbreviations(section)
         elif section.name == "instructions":
@@ -361,8 +411,17 @@ def parse(raw_text: str) -> Pattern:
         elif section.name == "finishing":
             _parse_finishing(section, pattern)
 
-    # Declared system: prefer an explicit "Terminology:" field over heuristic.
+    # A "You Will Need" supplies list stands in for the yarn/hook fields a
+    # labeled Materials block would normally give -- fold whatever it found
+    # into the materials section so the required-fields check sees them,
+    # without ever overriding a field the labeled block already gave.
+    supplies_section = next((s for s in raw_sections if s.name == "supplies_list"), None)
     materials_section = next((s for s in raw_sections if s.name == "materials"), None)
+    if supplies_section and materials_section:
+        for field, value in supplies_section.fields.items():
+            materials_section.fields.setdefault(field, value)
+
+    # Declared system: prefer an explicit "Terminology:" field over heuristic.
     if materials_section and "terminology" in materials_section.fields:
         val = materials_section.fields["terminology"].strip().upper()
         if val in ("US", "UK"):
