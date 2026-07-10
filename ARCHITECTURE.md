@@ -1641,3 +1641,79 @@ now-understood samples, not speculative).
   an initial wall of hundreds of tool-gap warnings per file to only
   genuine, hand-verified content findings.
 
+## Sixteenth real-sample batch (Jul 10, 2026) — Tote Bag (waffle stitch),
+## new "Pattern Test v1" cover-page template
+A single new file (Easy Tote Bag.pdf), but a first-of-its-kind cover-page
+TEMPLATE change from LoopDreams: "PATTERN TEST V1" branding, a diagonal
+"DRAFT" watermark, a "Pattern Overview" + "You Will Need" header pair
+replacing "Materials" entirely, a "Seaming Techniques" tutorial section,
+a "Tester Feedback" section, and a copyright-style page footer instead of
+the earlier URL-based one. The pattern body itself is the
+already-validated waffle-stitch tote bag construction (see Jul 4/Jul 6
+batches) -- hand-verified correct end-to-end (gauge-to-dimension math,
+80-row count, handle count) before touching any code. Asked whether to
+build out recognition for the new template now or park it as a one-off;
+chose to build it now since both gaps are real, well-understood, and
+narrowly scoped (not the large speculative lift a brand-new construction
+style would be).
+
+- **Hand-verified the pattern correct first**: gauge is 20 sts/10 rows =
+  4in; foundation 71 ch -> 69 sts is 69/20*4 ≈ 13.8in ≈ the declared 14in
+  finished width. 32in unfolded panel height / 4in * 10 rows/4in = 80
+  rows, exactly matching the pattern's final "Row 80". Handles: Ch 121 ->
+  120 sc, matching the declared "(120 sts)". No construction defects
+  found -- both tool findings below were extraction/parsing gaps, not
+  content problems.
+- **New footer format broke the Handles component's trailing count**: the
+  existing `_RE_PAGE_FOOTER` only recognized the old URL-based single-
+  line footer. This template's footer is a copyright/branding line with
+  the page number on its OWN following line ("© 2026 LoopDreams Studio
+  Pattern Test v1" / "Page 4"), which `_strip_noise_lines` didn't
+  recognize -- it glued onto whatever content preceded it (here, the
+  Handles component's own "(120 sts)"), breaking the trailing-count
+  regex anchor the same way an unstripped URL footer would have, and
+  producing a false "Handles gives real stitch instructions but never
+  states an expected count" warning. Fixed with two new patterns,
+  `_RE_PAGE_FOOTER_COPYRIGHT` and `_RE_PAGE_FOOTER_PAGE_NUM`.
+- **"Pattern Overview"/"You Will Need" replacing "Materials" entirely**:
+  gauge/terminology/colours are still given as "Label: value" fields
+  (now under a "Pattern Overview" heading instead of "Materials" --
+  simple alias added to `SECTION_HEADERS`), but yarn/hook are given as
+  plain "You Will Need" bullet-list prose ("4.0 mm (G-6 US) crochet
+  hook") with no label structure at all. Since this is a fundamentally
+  different shape (unlabeled bullets, not wrapped label values), gave it
+  its own section name (`supplies_list`) and a dedicated parser
+  (`_parse_supplies_list`) that scans for a yarn and a hook mention
+  specifically (skipping the "Yarn needle" notions bullet so it's never
+  mistaken for the yarn field itself). `parse()` then folds whatever
+  `supplies_list` found into the `materials` section's fields via
+  `setdefault`, so a real labeled field is never overridden -- this
+  eliminated the false "No Materials section found" error without
+  weakening the required-fields check for every other pattern (still
+  correctly flags a genuinely missing yarn/hook mention).
+- **Known limitation, not fixed (low priority, no incorrect output)**:
+  the diagonal "DRAFT" watermark's rasterized characters get scattered
+  into the extracted text stream at effectively random points -- e.g.
+  "Terminology:US" comes out as "TermiTnology:US" with a stray watermark
+  "T" spliced mid-word, breaking the `Terminology:` label match. This
+  downgrades `declared_system_source` from `explicit_field` to
+  `heuristic` (the heuristic fallback still lands on the correct value,
+  "US", since no UK-only tokens appear anywhere in the pattern -- so this
+  never produces an actually-wrong result, just a less-confident
+  provenance label). Not chased further: unlike the footer/materials
+  gaps above, this is sub-word-granularity noise from a rasterized
+  watermark, not a stable, well-defined text shape -- any narrow regex
+  fix here risks being fragile or over-fit to this one PDF's exact
+  watermark rendering.
+- **Tests**: new file `tests/test_pattern_test_v1_template.py` (7 tests):
+  the copyright/page-number footer stripping, the Handles trailing-count
+  no longer corrupted by it, Pattern-Overview-as-materials recognition,
+  gauge/terminology/yarn/hook all resolving correctly (including
+  `declared_system_source == "explicit_field"` for a non-watermarked
+  synthetic sample), the "Yarn needle" bullet not being mistaken for the
+  yarn field, and a genuinely-missing yarn field still being caught as a
+  real error. Full suite passes (92 tests, 1 skip).
+- **Final result**: was FAIL (1 error, 1 warning, both tool artifacts of
+  the new template). After both fixes: **PASS** (0 errors, 0 warnings) --
+  the pattern itself has no real defects.
+
