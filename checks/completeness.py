@@ -143,23 +143,34 @@ def _check_abbreviations(pattern) -> list:
 
 
 def _check_row_gaps(pattern) -> list:
+    # Real sample (sweater, Jul 12 batch): Back Panel/Front Panel/Sleeves
+    # each restart their own row numbering at 1 -- gaps must be checked
+    # PER COMPONENT (component=None for every single-piece pattern before
+    # that batch, which groups them all together exactly as before).
     issues = []
-    body_rows = sorted((r for r in pattern.rows if r.row_start > 0), key=lambda r: r.row_start)
-    prev_end = 0  # row 0 == right after the foundation chain
-    prev_label = "the foundation chain"
-    for r in body_rows:
-        if r.row_start > prev_end + 1:
-            lo, hi = prev_end + 1, r.row_start - 1
-            missing_desc = f"Row {lo}" if lo == hi else f"Rows {lo}-{hi}"
-            issues.append(Issue(
-                category="completeness", severity="error", location="Pattern Steps",
-                message=(
-                    f"No instructions are given for {missing_desc} -- the pattern jumps from "
-                    f"{prev_label} directly to {r.label}."
-                ),
-            ))
-        prev_end = max(prev_end, r.row_end)
-        prev_label = f"Row {prev_end}"
+    by_component = defaultdict(list)
+    for r in pattern.rows:
+        if r.row_start > 0:
+            by_component[r.component].append(r)
+
+    for component, rows in by_component.items():
+        body_rows = sorted(rows, key=lambda r: r.row_start)
+        prev_end = 0  # row 0 == right after the foundation chain
+        prev_label = "the foundation chain"
+        location = "Pattern Steps" if component is None else f"Pattern Steps ({component})"
+        for r in body_rows:
+            if r.row_start > prev_end + 1:
+                lo, hi = prev_end + 1, r.row_start - 1
+                missing_desc = f"Row {lo}" if lo == hi else f"Rows {lo}-{hi}"
+                issues.append(Issue(
+                    category="completeness", severity="error", location=location,
+                    message=(
+                        f"No instructions are given for {missing_desc} -- the pattern jumps from "
+                        f"{prev_label} directly to {r.label}."
+                    ),
+                ))
+            prev_end = max(prev_end, r.row_end)
+            prev_label = f"Row {prev_end}"
     return issues
 
 
@@ -443,14 +454,31 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
     # in the body. Found while enabling "turning chain:" as a complexity
     # marker (see ARCHITECTURE.md) -- without this exclusion, that change
     # would have silently defeated its own purpose.
-    structural_labels = {m.rstrip(":") for m in complex_markers}
+    # "Note" added alongside the structural labels above -- a "Note:"
+    # annotation (e.g. "Note: Turning chain: Ch 2, turn...") is exactly the
+    # same kind of non-stitch-naming label as "Foundation:"/"Turning
+    # chain:", not a named stitch to look for in the body.
+    structural_labels = {m.rstrip(":") for m in complex_markers} | {"note"}
     heading_re = re.compile(
         r"^([A-Z][A-Za-z ]{1,40}?)(?:\s*\([^)]+\))?\s*:",
         re.M,
     )
+
+    def _is_structural(name: str) -> bool:
+        key = name.strip().lower()
+        if key in structural_labels:
+            return True
+        # OCR sometimes prefixes a heading with a misread decorative icon
+        # glyph (real sample: sweater, Jul 12 batch, OCR'd from a
+        # text-free/vector-only PDF -- "Q Note:"/"Qy Note:" instead of a
+        # plain "Note:"). Tolerate a single short leading token the same
+        # way _match_section_header does for section headings.
+        m = re.match(r"^\S{1,3}\s+(.*)$", key)
+        return bool(m and m.group(1) in structural_labels)
+
     headings = [
         m.group(1).strip().lower() for m in heading_re.finditer(raw)
-        if m.group(1).strip().lower() not in structural_labels
+        if not _is_structural(m.group(1))
     ]
 
     for name in headings:

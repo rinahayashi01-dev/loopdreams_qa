@@ -40,6 +40,11 @@ from ..models import Issue
 
 _NO_OP_TYPES = {"chain", "turn", "join", "note", "fasten_off"}
 
+# Sentinel distinct from a legitimate component value of None (the
+# single-piece case), so the very first row always triggers the
+# component-boundary reset in check() below.
+_UNSET = object()
+
 # Past this many rows sharing the EXACT same "cannot verify" reason, repeating
 # the identical explanation once per row stops being useful and starts
 # burying any other findings in noise. Real case found on a real sample
@@ -55,6 +60,7 @@ def check(pattern) -> list:
 
     prev_count = None
     prev_label = "Foundation chain"
+    prev_component = _UNSET
     body_width = None
     total_rows = 0
 
@@ -62,6 +68,22 @@ def check(pattern) -> list:
         if row.label == "Border":
             issues.extend(_check_border(row, body_width, total_rows, ratio_overrides))
             continue
+
+        # Real sample (sweater, Jul 12 batch): Back Panel/Front Panel/
+        # Sleeves are each independently numbered ("component" on
+        # RoundRow), so a row-to-row count carried across a component
+        # boundary would compare unrelated pieces against each other.
+        # Reset the running state at each boundary and seed it from that
+        # component's OWN foundation (component_foundations, or the
+        # pattern-level foundation_chain/is_magic_ring for the single-piece
+        # case -- component is None there, identical to every prior batch).
+        if row.component != prev_component:
+            prev_count = None
+            prev_label = "Foundation chain"
+            prev_component = row.component
+            cur_foundation_chain, cur_is_magic_ring = pattern.component_foundations.get(
+                row.component, (pattern.foundation_chain, pattern.foundation_is_magic_ring)
+            )
 
         total_rows = max(total_rows, row.row_end)
 
@@ -75,7 +97,32 @@ def check(pattern) -> list:
             body_width = row.declared_count if row.declared_count is not None else body_width
             continue
 
-        in_count = prev_count if prev_count is not None else pattern.foundation_chain
+        if row.clauses and all(c.clause_type in _NO_OP_TYPES for c in row.clauses):
+            if len(row.clauses) == 1 and row.clauses[0].clause_type == "chain":
+                # A component's own foundation declared AS a numbered row
+                # (real sample: sweater, Jul 12 batch, "Row 1 Sleeves
+                # (make 2): Ch 35. (32 sts)") -- its declared_count is
+                # already the POST-turning-chain-skip stitch count (used
+                # above to seed this component's foundation_chain), not a
+                # real row-to-row count to carry forward. The very next
+                # row typically re-derives directly from the raw chain via
+                # its own "Nth ch from hook" clause -- if prev_count were
+                # set here, that row would subtract the turning-chain skip
+                # a second time. Skip entirely, leaving prev_count at
+                # whatever it was (None, right after the component reset
+                # above).
+                continue
+            # Any other row with no real stitch content at all can't be
+            # "verified" against the in-count the normal way (it has
+            # nothing to produce/consume), so just carry its own declared
+            # count forward as the new baseline, the same as the
+            # referenced_rows bypass above.
+            prev_count = row.declared_count
+            prev_label = row.label
+            body_width = row.declared_count if row.declared_count is not None else body_width
+            continue
+
+        in_count = prev_count if prev_count is not None else cur_foundation_chain
         in_label = prev_label
         # A magic-ring foundation (continuous-spiral/amigurumi-style, real
         # sample: mittens Jul 7 batch) has no turning-chain-skip concept at
@@ -83,7 +130,7 @@ def check(pattern) -> list:
         # "which numbered chain to start in" ambiguity the way there is for
         # a real chain foundation. Only flag the transition ambiguity when
         # the foundation actually came from a chain.
-        is_foundation_transition = prev_count is None and not pattern.foundation_is_magic_ring
+        is_foundation_transition = prev_count is None and not cur_is_magic_ring
 
         row_issues = _check_row(row, in_count, in_label, is_foundation_transition, ratio_overrides)
         issues.extend(row_issues)
@@ -224,15 +271,33 @@ def _solve_compound_ratios(pattern):
     before this feature existed."""
     candidates = defaultdict(list)  # token -> [(row_label, value)]
     prev_count = None
+    prev_component = _UNSET
+    cur_foundation_chain = pattern.foundation_chain
 
     for row in pattern.rows:
         if row.label == "Border":
             continue
+
+        # Mirror check()'s own per-component reset (see there for why: Back
+        # Panel/Front Panel/Sleeves each restart their own numbering).
+        if row.component != prev_component:
+            prev_count = None
+            prev_component = row.component
+            cur_foundation_chain, _ = pattern.component_foundations.get(
+                row.component, (pattern.foundation_chain, pattern.foundation_is_magic_ring)
+            )
+
         if row.referenced_rows:
             prev_count = row.declared_count if row.declared_count is not None else prev_count
             continue
 
-        in_count = prev_count if prev_count is not None else pattern.foundation_chain
+        if row.clauses and all(c.clause_type in _NO_OP_TYPES for c in row.clauses):
+            if len(row.clauses) == 1 and row.clauses[0].clause_type == "chain":
+                continue  # component's own foundation declaration -- see check() for why
+            prev_count = row.declared_count if row.declared_count is not None else prev_count
+            continue
+
+        in_count = prev_count if prev_count is not None else cur_foundation_chain
         result = _solve_row_for_ratio(row, in_count)
         if result is not None:
             token, value = result

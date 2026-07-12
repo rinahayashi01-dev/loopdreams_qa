@@ -30,6 +30,14 @@ class RoundRow:
     declared_count: Optional[int] = None
     declared_count_is_approx: bool = False
     referenced_rows: list = field(default_factory=list)   # e.g. [2, 3] for "Repeat Rows 2-3"
+    # Which independently-numbered piece this row belongs to (e.g. "BACK
+    # PANEL", "SLEEVES (MAKE 2)"), None for single-piece patterns (every
+    # pattern before the Jul 12 sweater batch). Real sample: a sweater made
+    # of 4 separate row-by-row pieces (Back, Front, 2x Sleeves), each
+    # restarting its own numbering at Row 1 -- row_start alone is no longer
+    # globally unique within a pattern, so checks that walk pattern.rows in
+    # row-number order must group by component first.
+    component: Optional[str] = None
 
 
 @dataclass
@@ -51,6 +59,13 @@ class Pattern:
     foundation_is_magic_ring: bool = False  # True when foundation_chain came from "magic ring. N sc in ring"
                                              # rather than "Ch N" -- no turning-chain-skip ambiguity applies
     rows: list = field(default_factory=list)                # list[RoundRow]
+    # Per-component foundation info for multi-piece patterns (real sample:
+    # sweater, Jul 12 batch -- Back Panel, Front Panel, and Sleeves each
+    # have their OWN "Foundation Ch N" line). Keyed by RoundRow.component
+    # (None for the single-piece case, mirroring foundation_chain/
+    # foundation_is_magic_ring above exactly). Value is (chain_count,
+    # is_magic_ring).
+    component_foundations: dict = field(default_factory=dict)
 
 
 @dataclass
