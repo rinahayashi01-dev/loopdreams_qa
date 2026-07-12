@@ -1717,3 +1717,151 @@ style would be).
   the new template). After both fixes: **PASS** (0 errors, 0 warnings) --
   the pattern itself has no real defects.
 
+## Seventeenth real-sample batch (Jul 12, 2026) — Sweater (dc, hdc, sc),
+## first multi-panel garment + first OCR'd sample
+Three new files, all completely text-free PDFs (pure vector curves/shapes,
+zero embedded text characters, zero images) -- the first sample this
+project has needed OCR for at all. Asked the user before installing OCR
+tooling (`brew install tesseract`, `pip install pdf2image pytesseract`),
+since that's a system-level environment change, not a code change; user
+approved. Once OCR'd, this turned out to be the first multi-panel garment
+(Back Panel, Front Panel, Sleeves (make 2) as three independently
+row-numbered pieces) this project has QA'd, plus a new cover-page
+template (colon-less "badge label" formatting) and several OCR-specific
+extraction artifacts. Asked separately whether to build out full
+multi-panel support now or park it (the architecturally bigger piece of
+this batch) -- user chose to build it now.
+
+- **OCR quality caveats, confirmed harmless or worked around**: a
+  decorative logo graphic and small icon glyphs before each section
+  heading OCR into scattered garbage characters/short tokens ("ypDre",
+  "@ PATTERN OVERVIEW", "Wt ABBREVIATIONS", "Q Note:"/"Qy Note:").
+  Inconsistent space-dropping around single-digit row numbers ("Row1",
+  "Row3", "Row9" alongside normally-spaced "Row 2", "Row 10") and around
+  "in each" ("SC ineach st across", one row only). A stray "_" character
+  glued onto one row number ("Row 8_"). None of these are pattern
+  defects -- all are OCR-rendering noise, addressed below.
+- **Title heuristic broken by the logo garbage**: the "first non-empty
+  line" heuristic grabbed OCR garbage instead of the real title line.
+  Fixed by finding the metadata line ("<Title> - <Level> - <Month> <Day>,
+  <Year>", a stable convention across every batch) and using the line
+  immediately before it as the title, falling back to the old behavior
+  when no such line is found.
+- **`_match_section_header` helper, new**: tries an exact header match
+  first, then tolerates a single short (<=4 char) leading garbage token
+  before a still-exact header phrase -- covers the icon-glyph-prefixed
+  headings without risking a false match on unrelated content (everything
+  after the stripped token must still be a complete, exact header). The
+  same tolerant-prefix idea was applied to `_check_stitch_guide_body_
+  mismatch`'s heading detector in `completeness.py` (fixing a false "Q
+  Note" named-stitch mismatch -- "Note:" itself is now also added to the
+  excluded structural labels, a latent gap even without the icon prefix).
+- **Colon-optional badge-label format, both "Row N" and "Foundation"**:
+  this template's row/foundation labels are visual badges with NO literal
+  colon at all ("Row 2 DC in each st across...", "Foundation Ch 87."),
+  unlike every earlier pattern's "Row 2: DC in..."/"Foundation: Ch 87".
+  Made the colon optional in `row_re`, `repeat_ref_re`, and the
+  foundation-chain regex. This required ALSO widening the instr_text
+  lookahead that stops each row's capture at the next "Row N" -- it used
+  to only fire when followed by a colon/dash, which (with the colon now
+  optional) never fired at all, silently swallowing whole subsequent rows
+  into one giant clause blob. Now stops at any "Row N", and uses `(?!\d)`
+  instead of a `\b` word-boundary check (the "Row 8_" stray underscore is
+  itself a `\w` character, so `\b` doesn't fire between the digit and it
+  -- `(?!\d)` doesn't care).
+- **Multi-panel construction, the main new capability**: Back Panel,
+  Front Panel, and Sleeves (make 2) are three separate row-by-row
+  constructions, each restarting its OWN numbering at Row 1 -- the first
+  sample where row_start is no longer globally unique within a pattern.
+  Added `RoundRow.component` (tagging which piece a row belongs to,
+  `None` for every single-piece pattern before this batch) and
+  `Pattern.component_foundations` (per-piece foundation chain/magic-ring
+  info, same `None`-key convention). `_parse_instructions` now splits its
+  section into per-component chunks at each ALL-CAPS heading
+  (`_split_component_chunks`/`_RE_COMPONENT_HEADER`, requiring the WHOLE
+  line to be uppercase so it can't accidentally match real title/
+  sentence-case row text) and parses each chunk independently, tagging
+  results with that chunk's component name.
+- **Every row-sequence-dependent check updated to reset at component
+  boundaries**: `stitch_count.check()` and `_solve_compound_ratios` now
+  reset `prev_count`/`prev_label` and re-seed the active foundation
+  chain/magic-ring flag whenever `row.component` changes, instead of
+  threading a single running count across the whole pattern.
+  `completeness._check_row_gaps` now groups rows by component before
+  walking for gaps, so each piece's own Row 1 starting over doesn't read
+  as "the pattern jumps backward" and a genuine same-component gap is
+  still caught precisely.
+- **Sleeves' own foundation declared AS a numbered row**: unlike
+  Back/Front (which have a separate "Foundation Ch 87." line), Sleeves
+  states its foundation as "Row 1 Sleeves (make 2): Ch 35. (32 sts)" --
+  no real stitch construction, just a declaration. Detected via
+  `_RE_ROW_AS_FOUNDATION`, which captures BOTH the raw chain count (35,
+  stored as this component's `component_foundations` entry) and the
+  restated post-skip stitch count (32, kept only as the row's own
+  `declared_count` for row-gap continuity). Modeled as a single bare
+  "chain" clause -- a real latent bug surfaced here: the existing
+  no-op-row bypass in `stitch_count.check()` carried a no-op row's
+  `declared_count` forward as `prev_count`, which was correct for every
+  prior no-op shape (a bare `Repeat Row(s)` back-reference, etc.) but
+  WRONG here, since the very next row re-derives straight from the raw
+  chain via its own "Nth ch from hook" clause -- carrying 32 forward
+  would have made that row subtract the turning-chain skip a second
+  time (87 -> 84 style math becoming 32 -> 29). Fixed by special-casing
+  a row whose clauses are exactly one bare "chain" clause: skip
+  entirely, leaving `prev_count` untouched (`None`, right after the
+  component-boundary reset) so the next row correctly re-derives from
+  the RAW chain count instead.
+- **New clause shape, `each_st_to_last`**: "2 DC in first st, DC in each
+  st to last st, 2 DC in last st" (the sleeve increase-row shape). The
+  pre-existing broad `each_st_to_marker` pattern (`"<stitch> in each st
+  to .+$"`, designed for an actual marker reference) was silently
+  swallowing this too, since "last st" matches its catch-all just as well
+  as a real marker phrase -- misclassifying a fully well-defined position
+  as an unverifiable one. Added a narrower `each_st_to_last` pattern,
+  checked BEFORE `each_st_to_marker`, that reuses the existing
+  `each_st_across` clause TYPE (not a new one) -- the pre/post each_st
+  dispatch already in `checks/stitch_count.py` (added for mittens' short-
+  row gusset shaping) handles the surrounding "2 DC in first/last st"
+  clauses for free with no further changes needed.
+- **"Increase row:"/"Decrease row:" leading label, new no-op**: purely
+  descriptive row-type label preceding the real stitch clauses -- the
+  increase itself is fully accounted for by the row's own clauses.
+  Tolerates a short leading OCR-noise prefix (the stray "_" from "Row 8_"
+  above ends up glued onto the front of this label after row-splitting).
+- **"ASSEMBLY" as a `finishing`-equivalent heading**: a multi-panel
+  garment's finishing content is headed "Assembly" (seaming instructions)
+  rather than "Finishing" -- same role, added as a `SECTION_HEADERS`
+  alias.
+- **Diagram-caption false positive, `_parse_finishing`'s "make N"
+  detector**: the Assembly section's diagram caption ("Sleeve (make 2):
+  worked cuff-up, increasing evenly from 8 in to 15 in wide over 17 in.")
+  matches the same "<Label> (make N):" shape the Handles-style secondary-
+  component detector looks for, but it's describing a picture, not new
+  construction -- Sleeves' real row-by-row instructions already exist as
+  their own component. Fixed by skipping this detection when a component
+  with a matching (case/pluralization-loose) name already exists among
+  the pattern's own parsed rows.
+- **Real confirmed content defect, all 3 variants**: Sleeves' Row 15 is
+  completely missing -- the pattern jumps from "Row 14" (44 sts) straight
+  to "Row 16" (46 sts), verified against the actual rendered PDF pages
+  (not just the extracted text), breaking the established one-plain-row-
+  between-increases rhythm every other row in the same section follows
+  exactly.
+- **Tests**: new file `tests/test_sweater_multi_panel.py` (17 tests) --
+  multi-panel row numbering and per-component foundations, no cross-
+  component stitch-count bleed, the row-gap check catching a real
+  same-component gap without a false cross-component positive, the
+  colon-optional Row/Foundation badge format (including the missing-space
+  and stray-underscore OCR variants), `each_st_to_last`'s math (both a
+  correct case and a deliberately-wrong case still caught, plus
+  confirming the real marker-based shape is unaffected), the "Increase
+  row" no-op label, the ASSEMBLY alias, and the diagram-caption false
+  positive (plus confirming a genuine new "make N" component is still
+  recognized). Full suite passes (109 tests, 1 skip).
+- **Final result**: all 3 variants were completely unreadable (0
+  characters extracted) before OCR setup. After OCR + all fixes: **FAIL
+  (1 error)** on all 3 -- down to exactly the one real, confirmed content
+  defect (Sleeves' missing Row 15), with the rest of the four-piece
+  construction (Back Panel, Front Panel, 2x Sleeves, Neckline) verifying
+  cleanly.
+

@@ -62,6 +62,16 @@ _RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+{_POS}\s+{_NOUN}$", re.I)
 # it consumes 0.
 _RE_SKIP_CHAIN_SPACE = re.compile(r"^skip\s+(?:the\s+)?ch-?1\s+sp(?:ace)?$", re.I)
 _RE_NOTE = re.compile(r"^at (?:the )?end of this row$", re.I)
+# "Increase row: 2 DC in first st, ..." -- a leading row-type label, real
+# phrasing (sweater, Jul 12 batch, sleeve shaping rows). Purely descriptive
+# (the actual increase is fully accounted for by the row's own stitch
+# clauses) -- a no-op for stitch-count purposes, same as the other labels
+# below.
+# Leading [^A-Za-z]* tolerates OCR noise gluing a stray punctuation
+# character onto the row-number badge just before this label (real sample:
+# sweater, Jul 12 batch: "Row 8_ Increase row: ..." -- the row_re parser
+# leaves the underscore attached to the front of this clause's own text).
+_RE_ROW_TYPE_LABEL = re.compile(r"^[^A-Za-z]*(?:increase|decrease)\s+row$", re.I)
 # Real clause shapes found on a real sample (mittens, Jul 7 batch -- the
 # first continuous-spiral/amigurumi-style construction this project has
 # QA'd, with a thumb gusset). All of the following are no-ops for
@@ -144,7 +154,7 @@ class _Patterns:
         "centre_dc", "around_post", "top_of_chain", "simple_positional",
         "stitch_in_ch1_space", "foundation_ordinal_single",
         "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
-        "each_st_to_marker", "same_st",
+        "each_st_to_marker", "each_st_to_last", "same_st",
     )
 
     def __init__(self, stitch_alt: str):
@@ -170,12 +180,18 @@ class _Patterns:
         # count multiplier (real phrasing, coaster Jul 8 batch: "2 dc in
         # each remaining st around" -- an increase, 2 copies into EACH
         # remaining stitch, not just 1).
+        # "in\s*each" (was "in\s+each") -- real OCR artifact (sweater, Jul
+        # 12 batch, sc variant): a single row's "SC in each st across" comes
+        # out as "SC ineach st across", the space between "in" and "each"
+        # dropped, while every other row in the same file has it normally.
+        # \s* tolerates both without risking a false match elsewhere, since
+        # the literal word "each" still must follow directly either way.
         self.each_st_across = re.compile(
-            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
             rf"each\s+(?:remaining\s+)?st\s+across\b\s*(.*)$", re.I
         )
         self.each_st_around = re.compile(
-            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
             rf"each\s+(?:remaining\s+)?st\s+around\b\s*(.*)$", re.I
         )
         self.corner = re.compile(rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+corner$", re.I)
@@ -230,6 +246,21 @@ class _Patterns:
         # the ROW's total math doesn't actually depend on that split point.
         self.each_st_to_marker = re.compile(
             rf"^({stitch_alt})\s+in\s+each\s+st\s+to\s+.+$", re.I
+        )
+        # "<stitch> in each st to last st" -- NOT a marker (the position is
+        # exactly as well-defined as "in last st" is everywhere else in this
+        # module), so it must be checked BEFORE each_st_to_marker's broad
+        # ".+$" catch-all, which would otherwise swallow it as an
+        # unverifiable partial-round-completion. Real phrasing (sweater,
+        # Jul 12 batch, sleeve increase rows): "2 DC in first st, DC in
+        # each st to last st, 2 DC in last st" -- reuses the "each_st_
+        # across" clause TYPE (not a new one) so the existing pre/post
+        # each_st dispatch in checks/stitch_count.py handles it for free:
+        # the trailing "2 DC in last st" clause's own consumes/produces
+        # already get folded into "post", correctly reserving that last
+        # stitch out of what this clause consumes.
+        self.each_st_to_last = re.compile(
+            rf"^({stitch_alt})\s+in\s+each\s+st\s+to\s+last\s+st$", re.I
         )
         self.side_edge = re.compile(
             rf"^working\s+(\d+)\s+({stitch_alt})\s+per\s+row-?end\s+along\s+(?:each\s+)?side\s+edge$", re.I
@@ -414,7 +445,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_JOIN.match(p) or _RE_SETUP.match(p):
         return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
 
-    if _RE_NOTE.match(p):
+    if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p):
@@ -450,6 +481,14 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
         return StitchClause(raw=raw_part, stitch=canon, clause_type="foundation_into_chain",
                              explicit_count=int(m.group(2)), is_compound=is_compound)
+
+    m = patterns.each_st_to_last.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="each_st_across",
+                             consumes=c, produces=prod, is_compound=is_compound,
+                             unverifiable_reason=None if not is_compound else
+                             f"'{canon}' has no fixed consumes/produces ratio; construction not defined")
 
     m = patterns.each_st_to_marker.match(p)
     if m:

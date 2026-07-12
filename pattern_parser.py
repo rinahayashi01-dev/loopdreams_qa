@@ -24,6 +24,14 @@ SECTION_HEADERS = {
     "pattern steps": "instructions",
     "instructions": "instructions",
     "finishing": "finishing",
+    # Real sample (sweater, Jul 12 batch): a multi-panel garment's
+    # finishing content is headed "ASSEMBLY" (seaming instructions for the
+    # separate panels) rather than "Finishing" -- same role, different
+    # word. A later "NECKLINE" sub-heading isn't its own SECTION_HEADERS
+    # entry and doesn't need to be: it just stays part of this same
+    # "finishing" section's raw text, which is harmless since nothing
+    # currently depends on isolating it further.
+    "assembly": "finishing",
     "notes": "notes",
     "confidence summary": "ignored_meta",  # LoopDreams' own auto-QA output -- not pattern content
     # Real sample found (tote bag, Jul 5 batch): "TESTER EXPECTATIONS" is a
@@ -56,6 +64,29 @@ SECTION_HEADERS = {
     "you will need": "supplies_list",
 }
 
+
+def _match_section_header(line: str):
+    """Return the mapped section name for a header line, or None.
+
+    Real sample (Sweater, Jul 12 batch, OCR'd from a text-free/vector-only
+    PDF): each section heading has a small decorative icon glyph in front
+    of it in the original design, which OCR misreads as a short garbage
+    token instead of dropping it cleanly ("@ pattern overview", "wt
+    abbreviations", "¢ pattern steps"). An exact-match lookup misses
+    all of these. Try the exact line first, then fall back to stripping a
+    single short (<=4 char) leading token and checking whether the
+    remainder is an exact known header -- narrow enough that it can't
+    accidentally match arbitrary unrelated content, since everything after
+    the stripped token must still be a full, exact header phrase.
+    """
+    key = line.strip().lower()
+    if key in SECTION_HEADERS:
+        return SECTION_HEADERS[key]
+    m = re.match(r"^\S{1,4}\s+(.*)$", key)
+    if m and m.group(1) in SECTION_HEADERS:
+        return SECTION_HEADERS[m.group(1)]
+    return None
+
 _RE_PAGE_HEADER = re.compile(r"^\d{1,2}/\d{1,2}/\d{2,4},\s*\d{1,2}:\d{2}\s*[AP]M\b.*$")
 _RE_PAGE_FOOTER = re.compile(r"^https?://\S+\s+\d+/\d+$")
 # Real sample (Tote Bag, Jul 10 "Pattern Test v1" cover-page template): a
@@ -70,9 +101,47 @@ _RE_PAGE_FOOTER_COPYRIGHT = re.compile(r"^©\s*\d{4}\b.*$", re.I)
 _RE_PAGE_FOOTER_PAGE_NUM = re.compile(r"^Page\s+\d+$", re.I)
 
 _RE_FIELD_LINE = re.compile(r"^[A-Za-z][A-Za-z /]{1,24}:\s*\S")
-_RE_ROW_MARKER = re.compile(r"^Rows?\s+\d+", re.I)
-_RE_FOUNDATION_MARKER = re.compile(r"^Foundation(?:\s+chain)?\s*:", re.I)
+# Real sample (sweater, Jul 12 batch, OCR'd from a text-free/vector-only
+# PDF): the space between "Row" and a single-digit number is inconsistently
+# dropped by OCR ("Row1", "Row3", "Row9" alongside a normally-spaced "Row
+# 2", "Row 10") -- \s* (was \s+) tolerates both.
+_RE_ROW_MARKER = re.compile(r"^Rows?\s*\d+", re.I)
+# Colon after "Foundation" optional too -- same badge-label convention as
+# Row N above (real sample: sweater, Jul 12 batch -- "Foundation Ch 87."
+# with no colon at all).
+_RE_FOUNDATION_MARKER = re.compile(r"^Foundation(?:\s+chain)?\s*:?", re.I)
 _RE_BORDER_MARKER = re.compile(r"^Border\s*:", re.I)
+# A standalone ALL-CAPS heading inside Pattern Steps marking one of several
+# independently-numbered pieces in the same pattern (real sample: sweater,
+# Jul 12 batch -- "BACK PANEL", "FRONT PANEL", "SLEEVES (MAKE 2)", each
+# restarting its own "Row 1"). Every prior pattern had exactly one piece, so
+# this line shape never needed to be distinguished from ordinary content
+# before. Requires the whole line to be uppercase letters/digits/spaces/
+# parens/&/apostrophe so it can't accidentally match real row/instruction
+# text, which is always title- or sentence-case in every sample seen.
+_RE_COMPONENT_HEADER = re.compile(r"^[A-Z][A-Z0-9 ()&'-]{2,40}$")
+
+
+def _split_component_chunks(raw_text: str):
+    """Split an instructions section's raw text into (component_name, text)
+    chunks at each ALL-CAPS component heading. component_name is None for
+    any text before the first heading (the common single-piece case, where
+    there may be no heading at all -- that whole section becomes one chunk
+    with component_name=None, identical to the pre-multi-piece behavior)."""
+    chunks = []
+    current_name = None
+    current_lines = []
+    for ln in raw_text.split("\n"):
+        if _RE_COMPONENT_HEADER.match(ln.strip()):
+            if current_lines:
+                chunks.append((current_name, "\n".join(current_lines)))
+            current_name = ln.strip()
+            current_lines = []
+        else:
+            current_lines.append(ln)
+    if current_lines:
+        chunks.append((current_name, "\n".join(current_lines)))
+    return chunks
 
 
 def _strip_noise_lines(raw_text: str) -> list:
@@ -99,11 +168,11 @@ def _split_into_sections(lines: list) -> list:
     current_name = "preamble"
     current_lines = []
     for ln in lines:
-        key = ln.strip().lower()
-        if key in SECTION_HEADERS:
+        mapped = _match_section_header(ln)
+        if mapped is not None:
             if current_lines:
                 sections.append(Section(name=current_name, raw_text="\n".join(current_lines)))
-            current_name = SECTION_HEADERS[key]
+            current_name = mapped
             current_lines = []
         else:
             current_lines.append(ln)
@@ -189,24 +258,71 @@ def _parse_abbreviations(section: Section) -> dict:
 
 
 def _parse_instructions(section: Section, pattern: Pattern):
+    """Split into per-component chunks (real sample: sweater, Jul 12 batch --
+    Back Panel/Front Panel/Sleeves are each independently row-numbered) and
+    parse each with the same logic as before, tagging results with which
+    component they belong to. component=None (the single-piece case) covers
+    every pattern before that batch and behaves exactly as it did previously."""
     from . import abbreviations as ab
     custom_compound = ab.custom_compound_tokens(pattern.abbreviation_key)
 
+    for component, chunk_text in _split_component_chunks(section.raw_text):
+        _parse_instructions_chunk(chunk_text, pattern, custom_compound, component)
+
+
+# "Row 1 Sleeves (make 2): Ch 35. (32 sts)" -- real sample (sweater, Jul 12
+# batch): a component whose OWN foundation chain is declared as its "Row 1"
+# rather than a separate "Foundation:" line, with no real stitch
+# construction of its own (the actual first worked row is "Row 2"). Treated
+# as a no-op declaration row (establishes this component's foundation count
+# directly from its own declared "(N sts)", which is already the post-
+# turning-chain count) rather than a real stitch row to verify.
+_RE_ROW_AS_FOUNDATION = re.compile(
+    r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+(\d+)\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
+    re.I,
+)
+
+
+def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, component):
     boundaries = [_RE_FOUNDATION_MARKER, _RE_ROW_MARKER]
-    joined = _join_wrapped(section.raw_text, boundaries)
+    joined = _join_wrapped(raw_text, boundaries)
     blob = re.sub(r"\s+", " ", joined.replace("\n", " ")).strip()
+
+    def _set_foundation(chain, is_magic_ring):
+        if component is None:
+            pattern.foundation_chain = chain
+            pattern.foundation_is_magic_ring = is_magic_ring
+        else:
+            pattern.component_foundations[component] = (chain, is_magic_ring)
+
+    found_rows = []
+
+    fm = _RE_ROW_AS_FOUNDATION.search(blob)
+    if fm:
+        row_start = int(fm.group(1))
+        raw_chain = int(fm.group(2))
+        declared = int(fm.group(3))
+        _set_foundation(raw_chain, False)
+        rr = RoundRow(label=f"Row {row_start}", row_start=row_start, row_end=row_start,
+                      raw_text=fm.group(0), declared_count=declared, component=component)
+        rr.clauses = tokenize_round("ch " + str(raw_chain))  # a bare chain -- no-op for stitch-count purposes
+        found_rows.append(rr)
+        blob = blob[: fm.start()] + blob[fm.end():]
 
     # Optional leading colour clause before the chain count -- real sample
     # found (dishcloth, Jul 8 batch): "Foundation chain:With Colour 1 --
     # Honey, Ch 48, turn." (previously only "Foundation chain:Ch 48, turn."
-    # -- no colour prefix -- was recognized).
+    # -- no colour prefix -- was recognized). Colon after "Foundation"
+    # itself now optional too -- real sample (sweater, Jul 12 batch):
+    # "Foundation Ch 87." is a badge-label heading with no colon at all,
+    # same convention as the colonless "Row N" badges.
     m = re.search(
-        r"Foundation(?:\s+chain)?\s*:\s*(?:With\s+Colour\s+[A-Za-z0-9]+\s*[—-]\s*[A-Za-z]+\s*,\s*)?Ch\s+(\d+)",
+        r"Foundation(?:\s+chain)?\s*:?\s*(?:With\s+Colour\s+[A-Za-z0-9]+\s*[—-]\s*[A-Za-z]+\s*,\s*)?Ch\s+(\d+)",
         blob, re.I,
     )
     if m:
-        pattern.foundation_chain = int(m.group(1))
-    else:
+        _set_foundation(int(m.group(1)), False)
+    elif not fm:
         # "With Colour 1 -- Honey, magic ring. 30 sc in ring." -- a
         # continuous-spiral/amigurumi-style foundation with no chain at
         # all. Real sample found (mittens, Jul 7 batch): pattern.foundation_
@@ -216,8 +332,7 @@ def _parse_instructions(section: Section, pattern: Pattern):
         # field.
         m = re.search(r"magic\s+ring\.?\s*(\d+)\s*sc\s+in\s+ring", blob, re.I)
         if m:
-            pattern.foundation_chain = int(m.group(1))
-            pattern.foundation_is_magic_ring = True
+            _set_foundation(int(m.group(1)), True)
         else:
             # "Magic ring. Ch 3 (counts as first dc), 11 dc in ring, sl st
             # to top of ch 3 to join." -- a JOINED-round (flat circle/motif)
@@ -232,20 +347,33 @@ def _parse_instructions(section: Section, pattern: Pattern):
                 blob, re.I,
             )
             if m:
-                pattern.foundation_chain = int(m.group(1)) + 1
-                pattern.foundation_is_magic_ring = True
-
-    found_rows = []
+                _set_foundation(int(m.group(1)) + 1, True)
 
     # Colour identifier broadened to alphanumeric (was letter-only) and the
     # separator to accept a comma as well as a colon -- real sample found
     # (dishcloth, Jul 8 batch): "With Colour 2 -- Moss, 45 DC in next 45
     # sts." (a numbered identifier, comma-separated, instead of the
     # previously-seen lettered/colon-separated "With Colour B -- Moss:").
+    # The colon after the row number itself is now OPTIONAL -- real sample
+    # (sweater, Jul 12 batch): "Row N" is a visual badge label in the
+    # source design with no literal colon at all ("Row 2 DC in each st
+    # across..."), unlike every earlier pattern's "Row 2: DC in...".
+    # The instr_text lookahead used to only stop at the NEXT "Row N" when it
+    # was followed by a colon/dash -- fine while every row had one, but with
+    # the colon now optional (see above), that lookahead never fired at all
+    # for a colonless "Row N" boundary, so one match's capture ran on
+    # through every subsequent row until it hit the next "(N sts)" it could
+    # find, silently swallowing whole rows into one giant clause blob. Now
+    # stops at ANY "Row N" occurrence, regardless of trailing punctuation.
+    # Uses (?!\d) rather than \b after the digits -- \b doesn't fire between
+    # a digit and an underscore (both are \w), and a real sample (sweater,
+    # Jul 12 batch) has OCR noise gluing a stray "_" onto a row number
+    # ("Row 8_ Increase row:..."), which silently defeated the \b version
+    # of this same boundary check.
     row_re = re.compile(
-        r"Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\s*:\s*"
+        r"Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*:?\s*"
         r"(?:With\s+Colour\s+([A-Za-z0-9]+)\s*[—-]\s*([A-Za-z]+)\s*[:,]\s*)?"
-        r"((?:(?!Rows?\s+\d+\s*[:–-]).)*)"
+        r"((?:(?!Rows?\s*\d+(?!\d)).)*)"
         r"\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
         re.I,
     )
@@ -274,7 +402,7 @@ def _parse_instructions(section: Section, pattern: Pattern):
         declared = int(m.group(6))
         label = f"Row {row_start}" if row_start == row_end else f"Rows {row_start}-{row_end}"
         rr = RoundRow(label=label, row_start=row_start, row_end=row_end,
-                      raw_text=instr_text, color=color, declared_count=declared)
+                      raw_text=instr_text, color=color, declared_count=declared, component=component)
         rr.clauses = tokenize_round(instr_text, custom_compound)
         found_rows.append(rr)
 
@@ -282,10 +410,11 @@ def _parse_instructions(section: Section, pattern: Pattern):
     # back-reference to earlier row text, with no stitch count restated.
     # These never match row_re above (no trailing "(N sts)"), so they need
     # their own pass or they'd silently vanish from the parsed pattern.
+    # Colon after the row number optional -- see row_re above.
     repeat_ref_re = re.compile(
-        r"Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\s*:\s*"
+        r"Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*:?\s*"
         r"(?:With\s+Colour\s+([A-Za-z0-9]+)\s*[—-]\s*([A-Za-z]+)\s*[:,]\s*)?"
-        r"Repeat\s+Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\.?",
+        r"Repeat\s+Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\.?",
         re.I,
     )
     for m in repeat_ref_re.finditer(blob):
@@ -298,7 +427,7 @@ def _parse_instructions(section: Section, pattern: Pattern):
         label = f"Row {row_start}" if row_start == row_end else f"Rows {row_start}-{row_end}"
         rr = RoundRow(label=label, row_start=row_start, row_end=row_end,
                       raw_text=f"[repeats Row(s) {ref_start}-{ref_end}]", color=color,
-                      referenced_rows=referenced)
+                      referenced_rows=referenced, component=component)
         found_rows.append(rr)
 
     # "Repeat Rows P[-Q] x N more times." -- a standalone repeat instruction
@@ -313,7 +442,7 @@ def _parse_instructions(section: Section, pattern: Pattern):
     # to found_rows entirely, and the checker sees a hard gap between the
     # last explicit row and the next explicit row after it.
     repeat_n_more_re = re.compile(
-        r"Repeat\s+Rows?\s+(\d+)(?:\s*[–-]\s*(\d+))?\s*(?:x|×)\s*(\d+)\s+more\s+times?\.?",
+        r"Repeat\s+Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*(?:x|×)\s*(\d+)\s+more\s+times?\.?",
         re.I,
     )
     for m in repeat_n_more_re.finditer(blob):
@@ -330,7 +459,7 @@ def _parse_instructions(section: Section, pattern: Pattern):
         label = f"Row {new_start}" if new_start == new_end else f"Rows {new_start}-{new_end}"
         rr = RoundRow(label=label, row_start=new_start, row_end=new_end,
                       raw_text=f"[repeats Row(s) {ref_start}-{ref_end}, {n_more} more time(s)]",
-                      referenced_rows=referenced)
+                      referenced_rows=referenced, component=component)
         found_rows.append(rr)
 
     found_rows.sort(key=lambda r: r.row_start)
@@ -371,6 +500,20 @@ def _parse_finishing(section: Section, pattern: Pattern):
     comp_m = re.search(r"\b([A-Z][a-z]+)\s*\(make\s+(\d+)\)\s*:\s*(.*?)\.?\s*$", blob)
     if comp_m:
         label = comp_m.group(1).strip()
+        # Real sample (sweater, Jul 12 batch): an assembly-diagram caption
+        # ("Sleeve (make 2): worked cuff-up, increasing evenly from 8 in to
+        # 15 in wide over 17 in.") matches this same "<Label> (make N):"
+        # shape, but it's describing a picture, not giving new
+        # construction -- the sleeve's real row-by-row instructions already
+        # exist as their own "SLEEVES (MAKE 2)" component elsewhere in
+        # Pattern Steps. Skip if a same-piece component (matched loosely,
+        # ignoring case and singular/plural) is already present, so this
+        # caption doesn't get parsed as if it were a second, undefined
+        # construction full of unrecognized prose.
+        existing_components = {(r.component or "").lower() for r in pattern.rows if r.component}
+        label_singular = label.lower().rstrip("s")
+        if any(label_singular in c for c in existing_components):
+            return
         comp_text = comp_m.group(3).strip()
         declared, is_approx = None, False
         cm = re.search(r"\(\s*(~?)\s*(\d+)\s*sts?\s*\)\.?\s*$", comp_text)
@@ -384,17 +527,35 @@ def _parse_finishing(section: Section, pattern: Pattern):
         pattern.rows.append(rr)
 
 
+_RE_TITLE_METADATA_LINE = re.compile(
+    r"^.+\s*[-·]\s*(Beginner|Intermediate|Advanced|Easy)\s*[-·]\s*[A-Za-z]+\s+\d{1,2},\s*\d{4}$", re.I
+)
+
+
 def parse(raw_text: str) -> Pattern:
     lines = _strip_noise_lines(raw_text)
     pattern = Pattern(raw_text=raw_text)
 
     # Title heuristic: first non-empty line before MATERIALS that isn't the
     # secondary metadata line ("Scarf · Intermediate · June 26, 2026").
-    for ln in lines:
-        if ln.strip().lower() in SECTION_HEADERS:
-            break
-        if pattern.title is None:
-            pattern.title = ln.strip()
+    # Real sample (Sweater, Jul 12 batch, OCR'd from a text-free/vector-only
+    # PDF): a decorative cover-page logo graphic OCRs into several lines of
+    # garbage BEFORE the real title line, so "first non-empty line" grabs
+    # the garbage instead. The metadata line's format ("<Title> - <Level> -
+    # <Month> <Day>, <Year>") is a stable, distinctive convention seen
+    # across every batch -- find it and use the line immediately before it
+    # as the title, falling back to the old first-line heuristic if no
+    # such metadata line is present (keeps prior samples working exactly
+    # as before).
+    metadata_idx = next((i for i, ln in enumerate(lines) if _RE_TITLE_METADATA_LINE.match(ln.strip())), None)
+    if metadata_idx is not None and metadata_idx > 0:
+        pattern.title = lines[metadata_idx - 1].strip()
+    else:
+        for ln in lines:
+            if _match_section_header(ln) is not None:
+                break
+            if pattern.title is None:
+                pattern.title = ln.strip()
 
     raw_sections = _split_into_sections(lines)
     pattern.sections = raw_sections
