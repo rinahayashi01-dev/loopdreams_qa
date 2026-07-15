@@ -79,5 +79,38 @@ class TestOCRProgressVisibility(unittest.TestCase):
         self.assertIn("2 page(s)", written)
 
 
+class TestOCRPageSegmentationAndCharacterConfusion(unittest.TestCase):
+    # Real bug (scarf-mossribbed, Jul 15 batch): Tesseract's default page
+    # segmentation (PSM 3) badly scrambled the reading order on a page
+    # with many short, densely-stacked "Row N" badge+instruction pairs --
+    # all the row-number badges came out first, then all the instruction
+    # text, completely decoupled from their real row numbers. PSM 6 reads
+    # this correctly (verified against the real file) without regressing
+    # a genuine multi-column table elsewhere in the same document.
+    def test_ocr_uses_psm_6(self):
+        with mock.patch("pdf2image.convert_from_path", return_value=[mock.Mock()]) as mock_convert, \
+             mock.patch("pytesseract.image_to_string", return_value="text") as mock_ocr:
+            extraction._ocr_pages("irrelevant/path.pdf", [0])
+
+        self.assertEqual(mock_ocr.call_args.kwargs.get("config"), "--psm 6")
+
+    def test_sl_st_character_confusion_normalized(self):
+        # Real OCR misreads of "Sl st" (slip stitch): the lowercase "l"
+        # comes out as a capital "I" or a pipe "|" -- "SI st", "S| st",
+        # "sI st" -- inconsistently across a single file, alongside
+        # correctly-read "sl st" elsewhere in the SAME file.
+        with mock.patch("pdf2image.convert_from_path", return_value=[mock.Mock()]), \
+             mock.patch(
+                 "pytesseract.image_to_string",
+                 return_value="SI st in 2nd ch from hook. S| st in next 2 sts. sI st across. sl st to join.",
+             ):
+            results = extraction._ocr_pages("irrelevant/path.pdf", [0])
+
+        self.assertEqual(
+            results[0],
+            "sl st in 2nd ch from hook. sl st in next 2 sts. sl st across. sl st to join.",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

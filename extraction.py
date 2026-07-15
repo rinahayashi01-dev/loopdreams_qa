@@ -17,9 +17,18 @@ PDF / Word text extraction.
   hard-crash QA of an otherwise-fine PDF just because it's unavailable.
 """
 import os
+import re
 import sys
 
 MIN_CHARS_BEFORE_OCR_FALLBACK = 20
+
+# Real OCR character confusion (scarf-mossribbed, Jul 15 batch): the
+# lowercase "l" in "Sl st" (slip stitch) gets misread as a capital "I" or
+# a pipe "|" -- "SI st", "S| st", "sI st" -- inconsistently across a single
+# file, alongside correctly-read "sl st" elsewhere. Narrow substitution:
+# only touches "S<confusable> st", not "l"/"I"/"|" generally (which would
+# risk corrupting unrelated text).
+_RE_OCR_SL_ST_CONFUSION = re.compile(r"\bs[lI|]\s*st\b", re.I)
 
 
 def extract_text(path: str) -> str:
@@ -98,7 +107,19 @@ def _ocr_pages(path: str, page_indices) -> list:
         print(f"  OCR'ing page {idx + 1} ({n}/{total})...", file=sys.stderr, flush=True)
         images = convert_from_path(path, first_page=idx + 1, last_page=idx + 1, dpi=300)
         if images:
-            results.append(pytesseract.image_to_string(images[0]))
+            # Real bug (scarf-mossribbed, Jul 15 batch): Tesseract's default
+            # page segmentation (PSM 3, "fully automatic") badly scrambled
+            # the reading order on a page with many short, densely-stacked
+            # "Row N" badge+instruction pairs (a ribbing section) --
+            # producing all the row-number badges first, then all the
+            # instruction text second, completely decoupled from their real
+            # row numbers. PSM 6 ("assume a single uniform block of text")
+            # reads this correctly, and was verified to still correctly
+            # handle a genuine multi-column layout (the Pattern Overview's
+            # Finished Size/Yarn/Hook/Yardage table) -- not just narrowly
+            # fixing this one page at the cost of breaking others.
+            raw = pytesseract.image_to_string(images[0], config="--psm 6")
+            results.append(_RE_OCR_SL_ST_CONFUSION.sub("sl st", raw))
         else:
             results.append("")
     return results
