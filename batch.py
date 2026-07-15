@@ -77,13 +77,21 @@ def run_batch(dir_path: str, json_output: bool = False) -> dict:
     patterns = {}
     for path in paths:
         name = os.path.basename(path)
+        # Printed unconditionally (even in --json mode, where it goes to
+        # stderr so it never lands in the JSON on stdout) -- real need
+        # (scarf/sweater, Jul 12-15 batches): those patterns need OCR
+        # (~15-20s/page), and a batch of several such files running
+        # sequentially with zero output otherwise looks hung for minutes.
+        print(f"Checking {name}...", file=sys.stderr if json_output else sys.stdout, flush=True)
+        # Extract+parse ONCE and reuse for both the report and
+        # cross_variant.check() below -- this used to extract twice per
+        # file (once inside cli.run(), once again here), which silently
+        # doubled the OCR cost for every OCR-needing file.
+        pattern = parse(extract_text(path))
+        patterns[name] = pattern
         # quiet during the per-file call when we're going to emit one
         # combined JSON document at the end instead of per-file printing.
-        results[name] = cli.run(path, json_output=False, quiet=json_output)
-        # Re-parsed separately (rather than threading the Pattern object
-        # out of cli.run()) so cli.run()'s existing single-file contract
-        # stays untouched -- these files are small, re-parsing is cheap.
-        patterns[name] = parse(extract_text(path))
+        results[name] = cli.run_for_pattern(pattern, json_output=False, quiet=json_output)
 
     cross_variant_issues = cross_variant.check(patterns)
 

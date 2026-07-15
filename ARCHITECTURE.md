@@ -1865,3 +1865,84 @@ this batch) -- user chose to build it now.
   construction (Back Panel, Front Panel, 2x Sleeves, Neckline) verifying
   cleanly.
 
+## Eighteenth real-sample batch (Jul 15, 2026) — Scarf (moss stitch),
+## batch/extraction infra improvements
+One new file, confirmed to use the same OCR'd/vector-only export template
+as the Jul 12 sweater batch -- the user confirmed this template (no text
+layer at all) will be the permanent format for all future patterns going
+forward, not a one-off. Prompted two kinds of follow-up work: (1) small
+parsing fixes for two more colonless-badge-label variants this template
+introduces, found while reviewing this specific file, and (2) a separate,
+explicitly-scoped improvement to batch.py/extraction.py's handling of
+OCR-heavy batches, since OCR is slow (~15-20s/page) and every future batch
+will need it for every file.
+
+- **Title heuristic: "Generated:" label before the date**: this
+  sample's metadata line reads "Scarf - Beginner - Generated: July 15,
+  2026" -- an extra label before the date that no earlier sample's
+  metadata line had. `_RE_TITLE_METADATA_LINE` (added for the Jul 12
+  sweater batch to skip past OCR'd logo-graphic garbage) didn't allow for
+  it, so the metadata line went unrecognized and the title fell back to
+  the logo garbage again. Fixed by making an optional generic `"<word>:
+  "` label before the date part of the pattern (not hardcoded to
+  "Generated" specifically, since this template is expected to keep
+  recurring with possible further label variations).
+- **Stitch Guide mismatch check: colonless heading + colonless
+  construction labels**: this guide's own heading ("MOSS STITCH") and its
+  "Foundation"/"Row 2" construction labels have no colon at all --
+  same badge-label convention as Pattern Steps' colonless "Row
+  N"/"Foundation" (Jul 12 sweater batch), but this time affecting the
+  Stitch Guide section specifically, which `_check_stitch_guide_body_
+  mismatch` had never needed to handle before. Both `heading_re` (which
+  finds a guide's named-stitch headings) and `construction_re` (which
+  finds its own Foundation/Working row text for the construction-overlap
+  strategy) required a literal colon, so neither matched anything at all,
+  and the check fell through to reporting a false "(unnamed stitch)"
+  mismatch on an otherwise fully-correct guide. Fixed narrowly: added a
+  SEPARATE, stricter all-caps-only heading pattern (mirrors pattern_
+  parser.py's `_RE_COMPONENT_HEADER`) alongside the existing colon-based
+  one, rather than loosening the existing one's colon requirement --
+  removing that requirement outright would have made it match almost any
+  capitalized sentence start in the guide's prose. Made `construction_re`'s
+  colon optional too (lower risk there, since "foundation"/"working row"
+  are themselves already a strong anchor).
+- **Batch/extraction infra, explicitly scoped separately from the file
+  review above**: with OCR now a permanent, recurring cost, two follow-up
+  improvements were made, per explicit discussion with the user (chose
+  "progress printing only" over also parallelizing file processing):
+  (1) `extraction.py` now prints a note (to stderr) when a file has pages
+  needing OCR, plus a per-page "OCR'ing page N (i/total)..." progress
+  line -- previously silent, easy to mistake a multi-minute wait for a
+  hang. (2) A real, now much more costly inefficiency found while adding
+  this: `batch.py` extracted (and thus OCR'd) every file TWICE -- once
+  inside `cli.run()` for the report, and again separately for `cross_
+  variant.check()`'s own parsed `Pattern`. Fixed by splitting `cli.run()`
+  into `run()` (unchanged, single-file entry point) and a new
+  `run_for_pattern(pattern, ...)` that takes an already-parsed `Pattern`;
+  `batch.py` now extracts+parses each file exactly once and reuses it for
+  both. (3) `batch.py` also prints a "Checking <name>..." progress line
+  per file (to stdout normally, to stderr in `--json` mode so it can
+  never corrupt the single combined JSON document on stdout).
+- **Real content review, this file**: hand-verified correct end-to-end.
+  Gauge 16 sts/8 rows = 4in; foundation Ch 34 -> 33 sts (skip 1, standard
+  sc convention) -> 33/16*4 ≈ 8.25in, matching the declared "est. 8in
+  wide". 145 rows -> 145/8*4 ≈ 72.5in, matching "72in tall". Border's
+  own stated formula ([3 sc corner + sc across flat edge] x2 for top/
+  bottom + [3 sc corner + 1 sc per row-end] x2 for the sides) computes to
+  exactly 368 sts against this scarf's real dimensions (33 sts wide, 145
+  rows), matching the declared count exactly -- unlike the Jul 8 shawl's
+  border, this one's rectangular template is the CORRECT shape for a
+  rectangular scarf, so no mismatch. No real defects found.
+- **Tests**: new cases in `tests/test_stitch_guide_mismatch.py` (colonless
+  all-caps heading, both a correct-match case and a genuine-mismatch
+  case still caught), `tests/test_pattern_parser.py` (the "Generated:"
+  label, plus confirming the original no-label metadata format still
+  works), `tests/test_extraction.py` (per-page and per-file OCR progress
+  notes), and `tests/test_batch.py` (extract_text called exactly once
+  per file, the progress line printed per file, and going to stderr
+  specifically in `--json` mode without corrupting the JSON on stdout).
+  Full suite passes (118 tests, 1 skip).
+- **Final result**: was FAIL (1 error, a tool artifact of the new
+  template's colonless Stitch Guide labels). After the fix: **PASS**
+  (0 errors, 0 warnings) -- the pattern itself has no real defects.
+

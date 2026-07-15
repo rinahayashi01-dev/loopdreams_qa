@@ -61,6 +61,17 @@ def _extract_pdf(path: str) -> str:
                 pages_text.append(text)
 
     if ocr_pages:
+        # Real sample (sweater, Jul 12 batch; scarf, Jul 15 batch): a new
+        # LoopDreams export template renders every page as vector graphics
+        # with no embedded text at all, so EVERY page needs OCR -- at
+        # ~15-20s/page, a batch of these can run for many minutes with zero
+        # visible output otherwise, easily looking hung. This note (and the
+        # per-page one in _ocr_pages below) give visible progress instead.
+        print(
+            f"Note: {os.path.basename(path)} has {len(ocr_pages)} page(s) with no text layer -- "
+            f"OCR'ing them now (this can take a while for large files).",
+            file=sys.stderr,
+        )
         ocr_results = _ocr_pages(path, ocr_pages)
         for idx, text in zip(ocr_pages, ocr_results):
             pages_text[idx] = text
@@ -82,7 +93,9 @@ def _ocr_pages(path: str, page_indices) -> list:
         return ["" for _ in page_indices]
 
     results = []
-    for idx in page_indices:
+    total = len(page_indices)
+    for n, idx in enumerate(page_indices, start=1):
+        print(f"  OCR'ing page {idx + 1} ({n}/{total})...", file=sys.stderr, flush=True)
         images = convert_from_path(path, first_page=idx + 1, last_page=idx + 1, dpi=300)
         if images:
             results.append(pytesseract.image_to_string(images[0]))

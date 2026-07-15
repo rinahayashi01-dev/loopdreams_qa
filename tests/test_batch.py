@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import tempfile
 import unittest
@@ -130,6 +131,79 @@ class TestRunBatchCrossVariantIntegration(unittest.TestCase):
                     combined = batch.run_batch(d, json_output=True)
 
         self.assertEqual(combined["cross_variant_issues"], [])
+
+    def test_extract_text_called_exactly_once_per_file(self):
+        # Real inefficiency (scarf/sweater, Jul 12-15 batches): run_batch
+        # used to extract each file twice -- once inside cli.run(), once
+        # again for cross_variant.check() -- which used to be cheap but now
+        # silently doubles the OCR cost (~15-20s/page) for every file that
+        # needs it under the new export template.
+        texts = {
+            "moss.pdf": _pattern_text(
+                "Moss Stitch: An alternating sc/ch1 pattern.",
+                "Sc in 2nd ch from hook and in each ch across. Ch 1, turn.",
+            ),
+        }
+        call_count = {"n": 0}
+
+        def fake(path):
+            call_count["n"] += 1
+            return texts[os.path.basename(path)]
+
+        with tempfile.TemporaryDirectory() as d:
+            for name in texts:
+                open(os.path.join(d, name), "w").close()
+
+            with mock.patch("loopdreams_qa.batch.extract_text", side_effect=fake):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    batch.run_batch(d, json_output=True)
+
+        self.assertEqual(call_count["n"], 1)
+
+    def test_progress_line_printed_per_file(self):
+        texts = {
+            "moss.pdf": _pattern_text(
+                "Moss Stitch: An alternating sc/ch1 pattern.",
+                "Sc in 2nd ch from hook and in each ch across. Ch 1, turn.",
+            ),
+        }
+        fake = lambda path: self._fake_extract_text(texts, path)
+
+        with tempfile.TemporaryDirectory() as d:
+            for name in texts:
+                open(os.path.join(d, name), "w").close()
+
+            with mock.patch("loopdreams_qa.batch.extract_text", side_effect=fake):
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    batch.run_batch(d, json_output=False)
+
+        self.assertIn("Checking moss.pdf", stdout.getvalue())
+
+    def test_progress_line_goes_to_stderr_in_json_mode(self):
+        # So it never lands inside the single combined JSON document on
+        # stdout that --json mode is supposed to produce.
+        texts = {
+            "moss.pdf": _pattern_text(
+                "Moss Stitch: An alternating sc/ch1 pattern.",
+                "Sc in 2nd ch from hook and in each ch across. Ch 1, turn.",
+            ),
+        }
+        fake = lambda path: self._fake_extract_text(texts, path)
+
+        with tempfile.TemporaryDirectory() as d:
+            for name in texts:
+                open(os.path.join(d, name), "w").close()
+
+            with mock.patch("loopdreams_qa.batch.extract_text", side_effect=fake):
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    combined = batch.run_batch(d, json_output=True)
+
+        self.assertNotIn("Checking", stdout.getvalue())
+        self.assertIn("Checking moss.pdf", stderr.getvalue())
+        json.loads(stdout.getvalue())  # still valid, uncorrupted JSON
+        self.assertEqual(combined["batch_summary"]["files_checked"], 1)
 
 
 if __name__ == "__main__":

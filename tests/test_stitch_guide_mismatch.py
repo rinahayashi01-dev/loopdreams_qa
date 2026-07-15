@@ -138,6 +138,68 @@ class TestStitchGuideBodyMismatch(unittest.TestCase):
         self.assertEqual(len(issues), 1)
         self.assertIn("Double Crochet", issues[0].message)
 
+    def test_all_caps_colonless_heading_with_matching_body_not_flagged(self):
+        # Real bug (scarf, Jul 15 batch, same "badge label" template family
+        # as the Jul 12 sweater): the guide's own heading ("MOSS STITCH")
+        # and its "Foundation"/"Working row" construction labels have NO
+        # colon at all -- unlike every earlier sample's "Moss Stitch: ..."/
+        # "Foundation: ...". Both the colon-requiring heading_re AND
+        # construction_re used to find nothing at all here, producing a
+        # false "(unnamed stitch)" mismatch even though the body's Row 1/
+        # Row 2 text is a near-verbatim match for the guide's own
+        # colonless "Foundation"/"Row 2" construction lines.
+        raw = (
+            "Test Scarf\n"
+            + MATERIALS_BLOCK
+            + "STITCH GUIDE\n"
+            "MOSS STITCH\n"
+            "An alternating sc and chain-1 pattern that creates a tight, woven\n"
+            "texture. Also called the linen stitch.\n"
+            "Stitch multiple: Multiple of 2 + 1\n"
+            "Foundation Sc in the 2nd ch from hook and in each ch across. Ch 1, turn.\n"
+            "Row 2 Sc in the first stitch. *Ch 1, skip 1 st, sc in the next st; "
+            "rep from * to end. Ch 1, turn.\n"
+            "ABBREVIATIONS\n"
+            "ch = chain · sc = single crochet · rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 20, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (19 sts)\n"
+            "Row 2: Sc in first st, *ch 1, skip 1 st, sc in next st; rep from *\n"
+            "across. Ch 1, turn. (19 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        self.assertEqual(_guide_mismatch_issues(raw), [])
+
+    def test_all_caps_colonless_heading_genuine_mismatch_still_flagged(self):
+        # Same colonless template shape as above, but this time the guide's
+        # named stitch genuinely doesn't match the body -- must still be
+        # caught, confirming the fix above doesn't just wave everything
+        # through.
+        raw = (
+            "Test Scarf\n"
+            + MATERIALS_BLOCK
+            + "STITCH GUIDE\n"
+            "SEDGE STITCH\n"
+            "A beginner-friendly textured stitch made from small three-stitch\n"
+            "clusters (sc + hdc + dc) all worked into the same spot.\n"
+            "Stitch multiple: Multiple of 3\n"
+            "Foundation (hdc, dc) in 2nd ch from hook. Skip 2 ch, work (sc, hdc, "
+            "dc) all in the next ch; rep to last ch, sc in last ch. Ch 1, turn.\n"
+            "ABBREVIATIONS\n"
+            "ch = chain · sc = single crochet · rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 20, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (19 sts)\n"
+            "Row 2: Sc in first st, *ch 1, skip 1 st, sc in next st; rep from *\n"
+            "across. Ch 1, turn. (19 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        issues = _guide_mismatch_issues(raw)
+        self.assertEqual(len(issues), 1)
+        self.assertIn("Sedge", issues[0].message)
+
 
 if __name__ == "__main__":
     unittest.main()

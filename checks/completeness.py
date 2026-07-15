@@ -463,6 +463,17 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
         r"^([A-Z][A-Za-z ]{1,40}?)(?:\s*\([^)]+\))?\s*:",
         re.M,
     )
+    # Real sample (scarf, Jul 15 batch, same "badge label" template family
+    # as the Jul 12 sweater): stitch guide headings like "MOSS STITCH" are
+    # rendered as a standalone heading with NO colon at all, unlike the
+    # colon-terminated "Moss Stitch: ..." style every earlier sample used.
+    # heading_re above still requires the colon (kept strict on purpose --
+    # dropping that anchor entirely would make it match almost any
+    # capitalized sentence start in the guide's prose). This second,
+    # narrower pattern only matches a WHOLE line that's entirely uppercase
+    # (with an optional parenthetical, e.g. "DOUBLE CROCHET (DC)") --
+    # mirrors pattern_parser.py's _RE_COMPONENT_HEADER for the same reason.
+    all_caps_heading_re = re.compile(r"^([A-Z][A-Z0-9 ]{1,40})(?:\s*\([^)]+\))?$", re.M)
 
     def _is_structural(name: str) -> bool:
         key = name.strip().lower()
@@ -478,6 +489,9 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
 
     headings = [
         m.group(1).strip().lower() for m in heading_re.finditer(raw)
+        if not _is_structural(m.group(1))
+    ] + [
+        m.group(1).strip().lower() for m in all_caps_heading_re.finditer(raw)
         if not _is_structural(m.group(1))
     ]
 
@@ -506,7 +520,10 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
     # somewhere in the pattern's body row text. A high overlap threshold
     # (70%) keeps this from matching on incidental shared crochet
     # vocabulary ("sc", "in", "next") alone.
-    construction_re = re.compile(r"(?:foundation|working row)\s*:\s*(.+)", re.I)
+    # Colon after "foundation"/"working row" optional -- same colonless
+    # badge-label convention as the all-caps heading above (real sample:
+    # scarf, Jul 15 batch: "Foundation Sc inthe 2nd ch from hook...").
+    construction_re = re.compile(r"(?:foundation|working row)\s*:?\s*(.+)", re.I)
     for line in raw.splitlines():
         m = construction_re.search(line)
         if not m:
