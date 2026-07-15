@@ -527,8 +527,16 @@ def _parse_finishing(section: Section, pattern: Pattern):
         pattern.rows.append(rr)
 
 
+# The optional "(?:[A-Za-z]+:\s*)?" tolerates a label before the date
+# itself -- real sample (scarf, Jul 15 batch): "Scarf - Beginner -
+# Generated: July 15, 2026" (every earlier sample just had the date
+# directly after the level, e.g. "Tote Bag - Intermediate - July 10,
+# 2026"). Kept generic (any single label word, not hardcoded to
+# "Generated") since this new export template is expected to recur with
+# possible further label variations.
 _RE_TITLE_METADATA_LINE = re.compile(
-    r"^.+\s*[-·]\s*(Beginner|Intermediate|Advanced|Easy)\s*[-·]\s*[A-Za-z]+\s+\d{1,2},\s*\d{4}$", re.I
+    r"^.+\s*[-·]\s*(Beginner|Intermediate|Advanced|Easy)\s*[-·]\s*(?:[A-Za-z]+:\s*)?"
+    r"[A-Za-z]+\s+\d{1,2},\s*\d{4}$", re.I
 )
 
 

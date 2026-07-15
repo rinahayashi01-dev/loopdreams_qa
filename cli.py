@@ -10,7 +10,17 @@ from .report import build_report, to_text, to_json
 def run(path: str, json_output: bool = False, quiet: bool = False) -> dict:
     raw_text = extract_text(path)
     pattern = parse(raw_text)
+    return run_for_pattern(pattern, json_output=json_output, quiet=quiet)
 
+
+def run_for_pattern(pattern, json_output: bool = False, quiet: bool = False) -> dict:
+    """Same report-building/printing as run(), but for a Pattern the caller
+    already extracted and parsed. Real motivation (scarf/sweater, Jul 12-15
+    batches): those patterns need OCR, which is slow (~15-20s/page) --
+    batch.py used to call run() (extract+parse) and then separately parse
+    extract_text(path) again for cross_variant.check(), silently OCR'ing
+    every OCR-needing file TWICE. Splitting run() lets batch.py extract and
+    parse each file exactly once and reuse the same Pattern for both."""
     issues = []
     issues.extend(stitch_count.check(pattern))
     issues.extend(terminology.check(pattern))

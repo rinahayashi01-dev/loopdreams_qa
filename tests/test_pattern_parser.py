@@ -147,5 +147,46 @@ class TestDuplicateScStsAnnotation(unittest.TestCase):
         self.assertNotIn("unknown", types)
 
 
+class TestTitleMetadataLineLabel(unittest.TestCase):
+    # Real sample (scarf, Jul 15 batch): the metadata line reads "Scarf -
+    # Beginner - Generated: July 15, 2026" -- an extra "Generated:" label
+    # before the date that every earlier sample's metadata line ("Tote Bag
+    # - Intermediate - July 10, 2026") never had. Without tolerating this,
+    # the title heuristic never finds the metadata line at all and falls
+    # back to the first non-empty line, which (on an OCR'd/vector-only PDF
+    # with a decorative logo graphic) is scattered logo garbage instead of
+    # the real title.
+    def test_generated_label_before_date_still_locates_title(self):
+        raw = (
+            "ypDre\no ca\n\nScarf — Jul 15\n\nScarf - Beginner - Generated: July 15, 2026\n\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 20, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (19 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        self.assertEqual(pattern.title, "Scarf — Jul 15")
+
+    def test_plain_metadata_line_without_label_still_works(self):
+        # Confirms the fix doesn't regress the original, no-label format.
+        raw = (
+            "Tote Bag — Jul 10\n\nTote Bag - Intermediate - July 10, 2026\n\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 20, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (19 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        self.assertEqual(pattern.title, "Tote Bag — Jul 10")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -45,5 +45,39 @@ class TestOCRFallbackGracefulDegradation(unittest.TestCase):
         self.assertIn("OCR fallback unavailable", written)
 
 
+class TestOCRProgressVisibility(unittest.TestCase):
+    # Real motivation (scarf/sweater, Jul 12-15 batches): a new LoopDreams
+    # export template renders every page as vector graphics with no text
+    # layer at all, so every page needs OCR (~15-20s/page) -- a multi-page
+    # file running silently for minutes is easy to mistake for a hang.
+    # These progress lines go to stderr specifically so they never pollute
+    # stdout (e.g. batch --json's single combined JSON document).
+    def test_ocr_pages_prints_per_page_progress(self):
+        with mock.patch("pdf2image.convert_from_path", return_value=[mock.Mock()]), \
+             mock.patch("pytesseract.image_to_string", return_value="text"):
+            with mock.patch("sys.stderr") as mock_stderr:
+                extraction._ocr_pages("irrelevant/path.pdf", [2, 5, 9])
+
+        written = "".join(call.args[0] for call in mock_stderr.write.call_args_list if call.args)
+        self.assertIn("page 3 (1/3)", written)
+        self.assertIn("page 6 (2/3)", written)
+        self.assertIn("page 10 (3/3)", written)
+
+    def test_extract_pdf_notes_how_many_pages_need_ocr(self):
+        fake_page = mock.Mock()
+        fake_page.extract_text.return_value = ""
+        fake_pdf = mock.MagicMock()
+        fake_pdf.__enter__.return_value.pages = [fake_page, fake_page]
+
+        with mock.patch("pdfplumber.open", return_value=fake_pdf), \
+             mock.patch.object(extraction, "_ocr_pages", return_value=["a", "b"]):
+            with mock.patch("sys.stderr") as mock_stderr:
+                extraction._extract_pdf("some-pattern.pdf")
+
+        written = "".join(call.args[0] for call in mock_stderr.write.call_args_list if call.args)
+        self.assertIn("some-pattern.pdf", written)
+        self.assertIn("2 page(s)", written)
+
+
 if __name__ == "__main__":
     unittest.main()
