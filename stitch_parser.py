@@ -44,7 +44,11 @@ _POS = r"(?:the\s+)?(?:very\s+)?(first|next|last)"
 _NOUN = r"(?:st|sc|hdc|dc|tr|ch)s?"
 
 # Regexes that do NOT depend on the stitch-word alternation -- compiled once.
-_RE_CHAIN = re.compile(r"^ch\s+(\d+)$", re.I)
+# \s* (was \s+) tolerates OCR dropping the space before the number (real
+# sample: scarf-mossribbed, Jul 15 batch -- "Ch1" alongside a normally-
+# spaced "Ch 1" elsewhere in the same file), same as the earlier "Row1"
+# fix.
+_RE_CHAIN = re.compile(r"^ch\s*(\d+)$", re.I)
 _RE_TURN = re.compile(r"^turn$", re.I)
 _RE_FASTEN_OFF = re.compile(r"^fasten off\.?$", re.I)
 _RE_JOIN = re.compile(r"^join\b", re.I)
@@ -99,6 +103,19 @@ _RE_BRIDGE_CHAIN = re.compile(r"^ch\s+(\d+)\s+to\s+bridge\s+the\s+gap$", re.I)
 # same no-op, different anchor phrase.
 _RE_SL_ST_JOIN = re.compile(
     r"^sl\s*st\s+to\s+(?:top\s+of\s+ch\s+\d+|first\s+[a-z]+)\s+to\s+join$", re.I
+)
+# "sl st in next 2 sts of the foundation chain"/"...of the final row" --
+# real phrasing (scarf-mossribbed, Jul 15 batch): a separate ribbing strip
+# is worked perpendicular to the main panel and fused to it row-by-row via
+# extra slip stitches into the panel's OWN edge (the foundation chain on
+# one side, the final row on the other), not into the ribbing's own
+# stitches. A no-op for the ribbing row's own declared width -- that width
+# is already fully accounted for by the row's other clause(s) (e.g. "sl st
+# in back loop only of each st across"); this is a side action consuming
+# from a DIFFERENT reference frame (the main panel's edge), not adding to
+# or subtracting from this row's own stitch count.
+_RE_SL_ST_EDGE_ATTACH = re.compile(
+    r"^sl\s*st\s+in\s+next\s+\d+\s+sts?\s+of\s+the\s+(?:foundation\s+chain|final\s+row)$", re.I
 )
 # "changing to Colour 2 -- Moss in the last st" -- an inline colour change
 # stated as a trailing clause within a row (distinct from the existing
@@ -453,6 +470,9 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     if _RE_SL_ST_JOIN.match(p):
         return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
+
+    if _RE_SL_ST_EDGE_ATTACH.match(p):
+        return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if (_RE_LEAVING_LONG_TAIL.match(p) or _RE_THREAD_TAIL_FRONT_LOOP.match(p)
             or _RE_PULL_TIGHT_CLOSE.match(p) or _RE_WEAVE_IN_END.match(p)):

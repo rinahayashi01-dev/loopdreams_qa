@@ -153,10 +153,24 @@ def _check_row_gaps(pattern) -> list:
         if r.row_start > 0:
             by_component[r.component].append(r)
 
+    prev_end = 0  # row 0 == right after the foundation chain
+    prev_label = "the foundation chain"
     for component, rows in by_component.items():
         body_rows = sorted(rows, key=lambda r: r.row_start)
-        prev_end = 0  # row 0 == right after the foundation chain
-        prev_label = "the foundation chain"
+        # Real sample (scarf-mossribbed, Jul 15 batch): not every component
+        # is a genuinely new, independently-numbered piece -- "RIBBING" is
+        # its own component for stitch-count/foundation purposes (a
+        # narrower strip with its own fresh chain), but its row numbering
+        # continues straight on from the previous section (136 following
+        # 135), not restarting at 1 the way the sweater's Back/Front/
+        # Sleeves genuinely do. Only reset the running row-number baseline
+        # when this component's own first row actually starts at 1 --
+        # otherwise keep accumulating across the boundary so a real
+        # continuation isn't misread as "the pattern jumps backward/skips
+        # everything before it."
+        if body_rows and body_rows[0].row_start == 1:
+            prev_end = 0
+            prev_label = "the foundation chain"
         location = "Pattern Steps" if component is None else f"Pattern Steps ({component})"
         for r in body_rows:
             if r.row_start > prev_end + 1:

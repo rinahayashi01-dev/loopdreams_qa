@@ -1946,3 +1946,134 @@ will need it for every file.
   template's colonless Stitch Guide labels). After the fix: **PASS**
   (0 errors, 0 warnings) -- the pattern itself has no real defects.
 
+## Nineteenth real-sample batch (Jul 15, 2026, second file) — Scarf
+## (moss stitch + slip-stitch ribbing variant)
+Same day, same base pattern, but a new "Options: slip stitch ribbing"
+variant -- a moss-stitch main panel ("FORMING THE BODY") followed by a
+"RIBBING" section adding a slip-stitch-ribbed edging attached
+perpendicular to each short end. Surfaced a genuine Tesseract page-
+segmentation bug (not just a colon/spacing quirk like prior OCR batches),
+a real stitch-math gap ("sl st" never had a fixed ratio), and an
+important new architectural distinction: not every ALL-CAPS heading in
+Pattern Steps is a genuinely new, independently-numbered piece.
+
+- **OCR reading-order bug, root-caused by rendering the actual page**:
+  the extracted text for the Ribbing section was badly scrambled --
+  entire runs of "Row N" labels with no instruction text, followed
+  separately by entire runs of instruction text with no labels,
+  completely decoupled from each other. Rendered the actual PDF page to
+  an image and confirmed the real layout is a perfectly clean, unambiguous
+  list of "Row N" badge + instruction pairs -- the scrambling was purely
+  a Tesseract page-segmentation artifact (default PSM 3, "fully automatic
+  page segmentation", badly misjudged the reading order on a page with
+  many short, densely-stacked badge+text pairs). Tested PSM 4 and PSM 6
+  directly against the problem page -- both read it correctly. Verified
+  PSM 6 doesn't regress a genuine multi-column layout elsewhere in the
+  SAME file (the Pattern Overview's Finished Size/Yarn/Hook/Yardage
+  table) before changing the default, rather than fixing this one page at
+  the risk of breaking others.
+- **OCR character confusion, "Sl st" -> "SI st"/"S| st"/"sI st"**: the
+  lowercase "l" in "Sl st" gets misread as a capital "I" or a pipe "|",
+  inconsistently across the same file (alongside correctly-read "sl st"
+  elsewhere). Added a narrow post-OCR text substitution (`\bs[lI|]\s*
+  st\b` -> "sl st") in `extraction.py`'s OCR path specifically -- doesn't
+  touch text from a genuine text layer, since this exact confusion is an
+  OCR-only artifact.
+- **"sl st" never had a fixed consumes/produces ratio -- real gap**:
+  every prior sample only ever used "sl st" as a round-closing JOIN
+  marker (a no-op), never as the primary working stitch of real fabric
+  rows. This is the first sample using it that way (an entire ribbing
+  section, worked in the back loop only for a corded texture) --
+  `abbreviations.STITCH_MATH` only had it in `NEUTRAL` (for US/UK
+  detection), with no ratio, so every row using it as a real stitch came
+  back "no fixed consumes/produces ratio". Added `"sl st": (1, 1)`.
+  Confirmed this doesn't conflict with the existing join-clause patterns
+  (`_RE_SL_ST_JOIN` etc.), which are matched first in the clause-
+  classification order and never fall through to this lookup.
+- **New no-op clause, edge attachment**: "sl st in next 2 sts of the
+  foundation chain"/"...of the final row" -- the ribbing strip is fused
+  to the main panel row-by-row via extra slip stitches into the panel's
+  OWN edge (the foundation chain on one side, the final row on the
+  other). A no-op for the ribbing row's own declared width: that width
+  is already fully accounted for by the row's OTHER clause(s); this is a
+  side action consuming from a DIFFERENT reference frame (the main
+  panel's edge), not the ribbing row's own stitch count.
+- **"Ch1" (no space) tolerated**, same OCR space-dropping pattern as the
+  earlier "Row1"/"Row3" fix, this time on the chain-clause regex itself.
+- **Architectural fix: not every ALL-CAPS heading is a new,
+  independently-numbered piece.** The sweater's Back Panel/Front Panel/
+  Sleeves each genuinely restart their OWN numbering at Row 1. This
+  scarf's "RIBBING" heading does NOT -- its rows continue the SAME
+  overall numbering straight on from "FORMING THE BODY" (136 following
+  135), while still needing its own fresh foundation-chain baseline
+  (a narrower strip, not a continuation of the panel's own stitch count).
+  These two concerns (row-NUMBERING continuity vs. stitch-count/
+  foundation BASELINE resets) turned out to be independent, not the same
+  thing as originally modeled for the sweater batch:
+  - `completeness._check_row_gaps` now only resets its running row-number
+    baseline when a component's own FIRST row genuinely restarts at 1 --
+    otherwise it keeps accumulating across the heading boundary, so a
+    real continuation (like RIBBING) isn't misread as "the pattern jumps
+    backward" or "skips everything before it."
+  - `pattern_parser.py` gained a second foundation-declared-as-a-row
+    shape, `_RE_ROW_AS_EDGE_FOUNDATION` ("Row 136 With RS facing, join
+    yarn to the first stitch of the foundation chain. Ch 11, turn. (10
+    sts)"), alongside the existing `_RE_ROW_AS_FOUNDATION` (the sweater's
+    "Sleeves (make 2): Ch 35." shape) -- both now matched in a loop
+    (rather than just once), since this file re-joins a SECOND time
+    later in the SAME "RIBBING" section (the other short end's ribbing
+    strip, starting from "the final row"'s edge instead).
+  - **Real latent bug found and fixed**: `stitch_count.py`'s existing
+    bare-chain-clause bypass (added for the sweater's single Row-1
+    foundation-declaration) only correctly handled ONE such reset per
+    component -- it updated `cur_foundation_chain` but never cleared
+    `prev_count`, so a SECOND reset further into the same component (this
+    file's second ribbing strip) silently inherited `prev_count` from
+    whatever real row came immediately before it, using the WRONG chain
+    for every row after. Fixed by explicitly clearing `prev_count` in that
+    bypass (not just leaving it "already None" as the sweater-only case
+    had assumed), and refreshing `cur_foundation_chain` directly from
+    the resetting row's own chain count rather than relying solely on the
+    once-per-component-boundary lookup.
+- **Real, rare OCR miss, not chased**: Row 172's actual rendered text is
+  "Ch 1, sl st in back loop only..." (identical in shape to every
+  neighboring row), but OCR dropped the "1" on this ONE occurrence,
+  producing a bare "Ch" with nothing following it. Confirmed against the
+  rendered page image. Unlike the systematic patterns above (consistent
+  space-dropping, consistent l/I/| confusion), this is a one-off,
+  non-systematic single-character miss -- guessing a default number when
+  one is missing would risk masking a genuine content error elsewhere, so
+  this is left as an honest "unrecognized clause" warning rather than
+  patched over.
+- **Border stitch-count check: passed, but flagged as a caveat, not a
+  confirmed correct value.** The border's declared count (438 sts)
+  numerically matches what `_check_border` computes from `body_width`
+  (the LAST row's declared count, 10 -- the ribbing strip's own width)
+  and `total_rows` (the highest row number seen, 203) -- but this
+  pattern's actual finished shape is no longer a simple rectangle (a
+  33-st/135-row moss panel with two narrower ribbing strips attached at
+  the ends). `_check_border`'s inputs were never designed to represent
+  a multi-section shape like this -- the numeric match here likely
+  reflects LoopDreams' own border-generation formula agreeing with
+  itself (both sides using the same "last row width + total rows"
+  shortcut) rather than an independently verified true perimeter. Noted
+  as a caveat in the QA report rather than claimed as either confirmed
+  correct or confirmed wrong, since verifying the TRUE perimeter would
+  need a stated sl-st ribbing gauge this pattern doesn't provide.
+- **Tests**: new file `tests/test_scarf_ribbing.py` (12 tests) -- sl st's
+  real 1:1 ratio (plus confirming the join-clause no-op still works
+  correctly), colonless "Ch1", the edge-attachment no-ops, the RIBBING-
+  continuation row-gap fix, RIBBING getting its own foundation (not the
+  panel's), stitch math verifying correctly against it (plus a
+  deliberately-wrong case still caught), and the core second-reset-
+  within-one-component bug (both a correct case and confirming it no
+  longer goes stale). New cases in `tests/test_extraction.py`: PSM 6
+  actually used, and the sl/I/| character-confusion normalization. Full
+  suite passes (130 tests, 1 skip).
+- **Final result**: was unreadable in the sense that the OCR reading-
+  order bug produced 14 errors/18 warnings of near-total noise. After all
+  fixes: **REVIEW** (0 errors, 1 warning) -- down to exactly one honest,
+  rare, non-systematic OCR miss (Row 172's dropped "1"), with the entire
+  moss-panel-plus-ribbing construction otherwise verifying cleanly
+  (modulo the border caveat above).
+

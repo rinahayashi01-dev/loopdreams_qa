@@ -38,6 +38,17 @@ NEUTRAL = {"ch", "sl st", "rep", "rs", "ws", "fo", "mr", "fpdc", "bpdc", "inc", 
 # in current row) for ONE instance of the stitch worked into ONE previous
 # stitch. inc/dec are themselves already net operations.
 STITCH_MATH = {
+    # Real sample (scarf-mossribbed, Jul 15 batch): "sl st" used as the
+    # PRIMARY working stitch of an entire ribbing section (worked in the
+    # back loop only, row after row -- a real, well-defined 1:1 stitch),
+    # not just its previous role as a no-op round-closing join marker
+    # ("sl st to join", handled separately by _RE_SL_ST_JOIN and never
+    # reaching this table). "sl st" was only ever in abbreviations.NEUTRAL
+    # (for US/UK terminology detection) with no fixed ratio, so every row
+    # using it as a real stitch came back "no fixed consumes/produces
+    # ratio" -- a real gap, not a join-clause conflict, since the join
+    # patterns are matched first and never fall through to this lookup.
+    "sl st": (1, 1),
     "sc": (1, 1),
     "hdc": (1, 1),
     "dc": (1, 1),

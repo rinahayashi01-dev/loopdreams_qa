@@ -106,11 +106,30 @@ def check(pattern) -> list:
                 # above to seed this component's foundation_chain), not a
                 # real row-to-row count to carry forward. The very next
                 # row typically re-derives directly from the raw chain via
-                # its own "Nth ch from hook" clause -- if prev_count were
-                # set here, that row would subtract the turning-chain skip
-                # a second time. Skip entirely, leaving prev_count at
-                # whatever it was (None, right after the component reset
-                # above).
+                # its own "Nth ch from hook" clause, which only happens if
+                # prev_count is None here (see in_count's "prev_count if
+                # not None else cur_foundation_chain" fallback below) --
+                # explicitly clear it rather than assuming it's already
+                # None: that assumption only holds for the FIRST such row
+                # in a component (right after the boundary reset above). A
+                # SECOND such reset further into the SAME component (real
+                # need, scarf-mossribbed, Jul 15 batch: a second ribbing
+                # strip re-joining yarn and starting a fresh chain later in
+                # the same "RIBBING" section) would otherwise inherit
+                # prev_count from whatever real row came immediately
+                # before it, silently reusing the WRONG chain.
+                #
+                # Also refresh cur_foundation_chain directly from THIS
+                # row's own chain count (its clause's explicit_count is the
+                # raw chain, set by pattern_parser.py's _RE_ROW_AS_
+                # FOUNDATION/_RE_ROW_AS_EDGE_FOUNDATION) -- the component-
+                # boundary reset above only fires once, at the FIRST
+                # transition into this component, so a later reset within
+                # it would otherwise be silently missed and the stale
+                # first-chain value used.
+                prev_count = None
+                cur_foundation_chain = row.clauses[0].explicit_count
+                cur_is_magic_ring = False
                 continue
             # Any other row with no real stitch content at all can't be
             # "verified" against the in-count the normal way (it has
@@ -293,7 +312,11 @@ def _solve_compound_ratios(pattern):
 
         if row.clauses and all(c.clause_type in _NO_OP_TYPES for c in row.clauses):
             if len(row.clauses) == 1 and row.clauses[0].clause_type == "chain":
-                continue  # component's own foundation declaration -- see check() for why
+                # See check()'s identical case for why -- also handles a
+                # second such reset further into the same component.
+                prev_count = None
+                cur_foundation_chain = row.clauses[0].explicit_count
+                continue
             prev_count = row.declared_count if row.declared_count is not None else prev_count
             continue
 

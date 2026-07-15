@@ -281,6 +281,22 @@ _RE_ROW_AS_FOUNDATION = re.compile(
     r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+(\d+)\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
     re.I,
 )
+# "Row 136 With RS facing, join yarn to the first stitch of the foundation
+# chain. Ch 11, turn. (10 sts)" -- real sample (scarf-mossribbed, Jul 15
+# batch): a ribbing strip worked perpendicular to the main panel and fused
+# to it row-by-row, re-joining yarn and starting a BRAND NEW, narrower
+# foundation chain mid-pattern -- structurally the same "raw chain declared
+# alongside its own already-resolved post-skip stitch count" shape as
+# _RE_ROW_AS_FOUNDATION above, just introduced by different surrounding
+# text (no "(make N):" label). Can occur MORE THAN ONCE within the same
+# component (this file re-joins along "the final row"'s edge for a second
+# ribbing strip later in the same "RIBBING" section) -- see the loop below
+# that applies both patterns repeatedly, not just once.
+_RE_ROW_AS_EDGE_FOUNDATION = re.compile(
+    r"Row\s*(\d+)\.?\s+With\s+RS\s+facing,?\s+join\s+yarn\s+to\s+the\s+(?:first|last)\s+stitch\s+of\s+the\s+"
+    r"(?:foundation\s+chain|final\s+row)\.?\s+Ch\s*(\d+),?\s*turn\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
+    re.I,
+)
 
 
 def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, component):
@@ -297,8 +313,16 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
 
     found_rows = []
 
-    fm = _RE_ROW_AS_FOUNDATION.search(blob)
-    if fm:
+    # Both foundation-declared-as-a-row shapes can occur more than once
+    # within the same component (real sample: scarf-mossribbed, Jul 15
+    # batch -- a second ribbing strip re-joins yarn and starts a brand new
+    # chain later in the SAME "RIBBING" section) -- keep matching either
+    # pattern until neither finds anything left, rather than assuming at
+    # most one such row per chunk.
+    while True:
+        fm = _RE_ROW_AS_FOUNDATION.search(blob) or _RE_ROW_AS_EDGE_FOUNDATION.search(blob)
+        if not fm:
+            break
         row_start = int(fm.group(1))
         raw_chain = int(fm.group(2))
         declared = int(fm.group(3))
