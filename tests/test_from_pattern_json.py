@@ -90,6 +90,76 @@ class TestComponentSections(unittest.TestCase):
         self.assertEqual(lines.count("BACK"), 1)
 
 
+class TestChainOnlyFoundationDetection(unittest.TestCase):
+    # Real generate-pattern output for a flat construction's row 1 is always
+    # a bare chain ("Ch 35, turn.") with no pre-existing trailing count --
+    # its own stitch_count field describes what the FIRST WORKED row will
+    # produce, not something the chain itself produces. The fixtures in the
+    # other test classes above all happen to include a trailing "(N sts)"
+    # already, which is unrealistic (real data never does this) and masks
+    # this whole code path -- these tests use realistic data instead.
+
+    def test_bare_chain_row_becomes_a_foundation_line_with_no_count(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 32, "instructions": "Ch 35, turn.", "section": None},
+            {"row_number": 2, "stitch_count": 32, "instructions": "Dc in 4th ch from hook and in each ch across. Ch 3, turn.", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Foundation: Ch 35, turn.", lines)
+        # Renumbered starting from 1 -- this tool doesn't count the
+        # foundation chain itself as "Row 1".
+        self.assertIn("Row 1: Dc in 4th ch from hook and in each ch across. Ch 3, turn. (32 sts)", lines)
+
+        pattern = parse(raw)
+        self.assertEqual(pattern.foundation_chain, 35)
+        issues = stitch_count.check(pattern)
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {errors}")
+
+    def test_foundation_prefix_variant_is_used_as_is(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 56, "instructions": "Foundation: Ch 59.", "section": None},
+            {"row_number": 2, "stitch_count": 56, "instructions": "Dc in 4th ch from hook and in each ch across. Ch 3, turn.", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Foundation: Ch 59.", lines)
+        self.assertIn("Row 1: Dc in 4th ch from hook and in each ch across. Ch 3, turn. (56 sts)", lines)
+
+    def test_round_construction_first_round_is_not_treated_as_foundation(self):
+        # A magic-ring round genuinely has real worked stitches -- it keeps
+        # its own row_number and gets a normalized count like any other row.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 12, "instructions": "Magic ring. Ch 3 (counts as first dc), 11 dc in ring, sl st to top of ch 3 to join. (12 dc)", "section": None},
+            {"row_number": 2, "stitch_count": 24, "instructions": "Ch 3, dc in same st, 2 dc in each remaining st around, sl st to top of ch 3 to join. (24 dc)", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertFalse(any(ln.startswith("Foundation:") for ln in lines))
+        self.assertIn(
+            "Row 1: Magic ring. Ch 3 (counts as first dc), 11 dc in ring, sl st to top of ch 3 to join. (12 dc). (12 sts)",
+            lines,
+        )
+
+    def test_each_section_gets_its_own_foundation_and_renumbering(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 92, "instructions": "Foundation: Ch 95.", "section": "Back"},
+            {"row_number": 2, "stitch_count": 92, "instructions": "Dc in 4th ch from hook and in each ch across. Ch 3, turn.", "section": "Back"},
+            {"row_number": 1, "stitch_count": 92, "instructions": "Foundation: Ch 95.", "section": "Front"},
+            {"row_number": 2, "stitch_count": 92, "instructions": "Dc in 4th ch from hook and in each ch across. Ch 3, turn.", "section": "Front"},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertEqual(lines.count("Foundation: Ch 95."), 2)
+        self.assertEqual(lines.count("Row 1: Dc in 4th ch from hook and in each ch across. Ch 3, turn. (92 sts)"), 2)
+
+        pattern = parse(raw)
+        issues = completeness.check(pattern)
+        gap_issues = [i for i in issues if "jumps from" in i.message]
+        self.assertEqual(gap_issues, [], f"unexpected row-gap issues: {gap_issues}")
+
+
 class TestEndToEnd(unittest.TestCase):
     def test_full_pipeline_runs_without_crashing_and_finds_the_right_row_count(self):
         payload = {**BASE_PAYLOAD, "rows": [
