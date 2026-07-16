@@ -202,6 +202,61 @@ class TestMakeNFoundationDetection(unittest.TestCase):
         self.assertEqual(errors, [], f"unexpected: {errors}")
 
 
+class TestRepeatWholePatternNoteDetection(unittest.TestCase):
+    # Real sample (Mittens dry-run): buildMittenRows' actual last row isn't
+    # the real fasten-off/closure row -- it's a trailing narrative sentence
+    # telling the crocheter to redo the whole pattern for the second
+    # mitten. Before this fix, this fell through to a normal numbered row
+    # with a fabricated "(N sts)" appended, and pattern_parser's
+    # repeat_ref_re misread the embedded "Rows 1-29" as a within-piece
+    # row-range reference -- producing a genuine false stitch-count
+    # mismatch against a correctly generated pattern.
+
+    def test_second_item_note_goes_to_notes_section_with_no_fabricated_count(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 12, "instructions": "Sc in each st around. (12 sc)", "section": None},
+            {
+                "row_number": 2, "stitch_count": 12,
+                "instructions": "To complete the pair, repeat Rows 1–29 once more to make a second, matching mitten.",
+                "section": None,
+            },
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Notes", lines)
+        notes_idx = lines.index("Notes")
+        self.assertIn("To complete the pair, repeat Rows 1–29 once more to make a second, matching mitten.", lines[notes_idx:])
+        # No fabricated count anywhere near it, and it's not a numbered row.
+        self.assertNotIn("Row 2:", "\n".join(lines[notes_idx:]))
+
+        pattern = parse(raw)
+        self.assertEqual(len(pattern.rows), 1)  # only the real Row 1 -- the note isn't parsed as a row at all
+        issues = stitch_count.check(pattern)
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {errors}")
+
+    def test_only_the_last_row_gets_this_treatment(self):
+        # Same keywords, but not the pattern's last row -- stays a normal
+        # numbered row rather than being pulled out to Notes. Only the
+        # final row is ever a trailing "make a second one" aside.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 10, "instructions": "Ch 11, turn. (10 sts)", "section": None},
+            {
+                "row_number": 2, "stitch_count": 10,
+                "instructions": "To complete the pair, repeat Rows 1-1 once more to make a second, matching mitten.",
+                "section": None,
+            },
+            {"row_number": 3, "stitch_count": 10, "instructions": "Fasten off. (10 sts)", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertNotIn("Notes", lines)
+        self.assertIn(
+            "Row 2: To complete the pair, repeat Rows 1-1 once more to make a second, matching mitten. (10 sts)",
+            lines,
+        )
+
+
 class TestEndToEnd(unittest.TestCase):
     def test_full_pipeline_runs_without_crashing_and_finds_the_right_row_count(self):
         payload = {**BASE_PAYLOAD, "rows": [

@@ -72,6 +72,17 @@ Row -> text mapping:
   reflects a genuine content gap in those templates' generators (no
   separate weave-in-ends/assembly guidance), not a false positive worth
   routing around here.
+- A last row whose text tells the crocheter to redo the whole pattern for a
+  second item ("To complete the pair, repeat Rows 1-29 once more to make a
+  second, matching mitten.") isn't stitch content at all -- goes to a
+  trailing "Notes" section (untouched by any row/stitch-count check) rather
+  than a numbered row, with no count appended. Real sample: Mittens'
+  buildMittenRows appends exactly this as the pattern's actual last row,
+  after the real fasten-off/closure row -- left as a normal row with a
+  fabricated count, pattern_parser's repeat_ref_re misreads the embedded
+  "Rows 1-29" as a within-piece row-range reference and this adapter's own
+  count normalization stamps a bogus declared count onto it, producing a
+  genuine false stitch-count-mismatch error.
 - Consecutive rows sharing the same non-null `section` (multi-piece
   garments, e.g. the drop-shoulder sweater's Back/Front/Sleeves/Assembly)
   get an all-caps component header line before them, matching
@@ -112,6 +123,22 @@ _FOUNDATION_CHAIN_RE = re.compile(
 # against pattern_parser.py's own comment: "Row 1 Sleeves (make 2): Ch 35.
 # (32 sts)" -- real sample, sweater Jul 12 batch.
 _MAKE_N_FOUNDATION_RE = re.compile(r"^[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+\d+\.?\s*$", re.I)
+# A trailing narrative remark telling the crocheter to redo the whole
+# pattern for a second item ("To complete the pair, repeat Rows 1-29 once
+# more to make a second, matching mitten."). This isn't new row content at
+# all -- it doesn't describe any stitches -- but pattern_parser.py's
+# repeat_ref_re still recognizes the embedded "Rows 1-29" as a row-range
+# reference (that shorthand is normally used for a WITHIN-piece repeat, not
+# a whole-pattern one), and this adapter's own "(N sts)" normalization then
+# stamps this row's real stitch_count onto that misidentified reference --
+# producing a genuine false stitch-count-mismatch error against a
+# correctly generated pattern. Real sample: Mittens (generate-pattern's
+# buildMittenRows appends this as its actual last row, after the real
+# fasten-off/closure row).
+_REPEAT_WHOLE_PATTERN_RE = re.compile(
+    r"repeat\s+Rows?\s+\d+\s*[-–]\s*\d+.*(?:second|another|matching|pair)",
+    re.I,
+)
 
 
 def _is_chain_only_foundation(instructions: str) -> bool:
@@ -120,6 +147,10 @@ def _is_chain_only_foundation(instructions: str) -> bool:
 
 def _is_make_n_foundation(instructions: str) -> bool:
     return bool(_MAKE_N_FOUNDATION_RE.match(instructions.strip()))
+
+
+def _is_repeat_whole_pattern_note(instructions: str) -> bool:
+    return bool(_REPEAT_WHOLE_PATTERN_RE.search(instructions.strip()))
 
 
 def _foundation_line(row: dict) -> str:
@@ -176,6 +207,7 @@ def build_raw_text(payload: dict) -> str:
     lines.append("PATTERN STEPS")
     body_rows = payload.get("rows") or []
     finishing_lines = []
+    note_lines = []
     groups = _section_groups(body_rows)
     for group_idx, (section, rows) in enumerate(groups):
         if section:
@@ -197,7 +229,11 @@ def build_raw_text(payload: dict) -> str:
         for i, row in enumerate(remaining):
             row_number = renumber_from + i if renumber_from is not None else row["row_number"]
             is_last_row_overall = last_group and i == len(remaining) - 1
-            if is_last_row_overall and _BORDER_ROW_RE.match(row["instructions"]):
+            if is_last_row_overall and _is_repeat_whole_pattern_note(row["instructions"]):
+                # Not stitch content -- leave the count off entirely so it
+                # can't be misread as a declared row count.
+                note_lines.append(row["instructions"].strip())
+            elif is_last_row_overall and _BORDER_ROW_RE.match(row["instructions"]):
                 finishing_lines.append(_row_line(row_number, row))
             else:
                 lines.append(_row_line(row_number, row))
@@ -205,6 +241,10 @@ def build_raw_text(payload: dict) -> str:
     if finishing_lines:
         lines.append("Finishing")
         lines.extend(finishing_lines)
+
+    if note_lines:
+        lines.append("Notes")
+        lines.extend(note_lines)
 
     return "\n".join(lines) + "\n"
 
