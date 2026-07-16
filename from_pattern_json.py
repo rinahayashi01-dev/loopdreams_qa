@@ -53,7 +53,25 @@ Row -> text mapping:
   the tool already strips the earlier, redundant annotation as noise.
 - A row whose instructions start with "Border:" and is the pattern's last
   row is treated as Finishing content instead of a numbered pattern row,
-  matching _RE_BORDER_MARKER's own convention.
+  matching _RE_BORDER_MARKER's own convention. Deliberately NOT generalized
+  to "any last row" the way the sibling loopdreams repo's
+  generatePatternApi.ts (`isFinishing`) now is (tried it, then reverted):
+  _parse_finishing only knows how to extract a checkable RoundRow from a
+  "Border:"- or "<Label> (make N):"-shaped blob, so moving an ordinary
+  plain-text closing row (no such marker) under a synthesized "Finishing"
+  heading silently drops it from stitch-count verification entirely
+  (nothing else in pattern_parser recognizes it there) -- trading a real
+  completeness gap for a worse, silent one.
+  completeness.py's _check_finishing_present is, on inspection, working as
+  intended here rather than buggy: its own comment explains flat-panel
+  constructions (blanket, tote, dishcloth) are deliberately held to a
+  stricter standard than continuous-spiral amigurumi ones (which get an
+  explicit "no seams to join" exception) -- so "No Finishing" on Dishcloth/
+  Throw Blanket/Shawl/Tote Bag/Amigurumi Egg (whose oval foundation isn't
+  magic-ring, so it doesn't qualify for that exception either) most likely
+  reflects a genuine content gap in those templates' generators (no
+  separate weave-in-ends/assembly guidance), not a false positive worth
+  routing around here.
 - Consecutive rows sharing the same non-null `section` (multi-piece
   garments, e.g. the drop-shoulder sweater's Back/Front/Sleeves/Assembly)
   get an all-caps component header line before them, matching
