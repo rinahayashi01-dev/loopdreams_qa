@@ -77,6 +77,8 @@ loopdreams_qa/
   extraction.py             PDF/docx -> raw text, with OCR fallback for scanned PDF pages
   report.py                  Pattern + issues -> JSON-able report / human-readable text
   cli.py                      Entry point: extract -> parse -> check -> report
+  from_pattern_json.py         Entry point for the sibling loopdreams repo's batch-test.ts:
+                                 JSON (stdin) -> raw text -> parse -> check -> report (stdout)
   checks/
     stitch_count.py            The round-by-round algebra solver
     terminology.py              US/UK consistency check
@@ -2077,3 +2079,63 @@ Pattern Steps is a genuinely new, independently-numbered piece.
   moss-panel-plus-ribbing construction otherwise verifying cleanly
   (modulo the border caveat above).
 
+
+## Batch-generation integration (Jul 16, 2026) — `from_pattern_json.py`
+
+The sibling `loopdreams` repo built `scripts/batch-test.ts`: a regression
+runner that calls `generate-pattern`'s new `dry_run` mode across a curated
+matrix of (template, skill level, materials) cases, checking each result
+against the app's own in-process `validate-pattern` rule engine (gauge/
+size/turning-chain/stitch-multiple math — a simpler, faster rule set than
+this tool's, since it runs inside the same request as generation and
+never sees rendered text).
+
+Rina asked whether this tool could be leveraged there too. The gap: `dry_run`
+produces structured JSON (`rows[]` with `row_number`/`stitch_count`/
+`instructions`), not a PDF/docx file — nothing for `extraction.py` to read.
+Rather than have the TypeScript side duplicate this tool's text-format
+knowledge (section headers, the required trailing `(N sts)` per row,
+required Materials fields), added `from_pattern_json.py`: reads a small
+JSON payload from stdin, builds the raw text `pattern_parser.parse()`
+expects, runs the normal `stitch_count`/`terminology`/`completeness`/
+`known_constructions` check pipeline, prints the same JSON report shape
+`cli.run_for_pattern` does. Invoked as `python3 -m loopdreams_qa.from_pattern_json`
+from the parent of this repo, JSON piped via stdin — no file I/O, no OCR
+path touched at all.
+
+Row → text mapping decisions:
+- Round-construction output ends `(N dc)`/`(N sc)` etc., not `(N sts)` —
+  `row_re` requires the latter to recognize a row. Append a normalized
+  `(N sts)` whenever one isn't already present. This mirrors real samples
+  this tool was already built against (coaster/mitten batches, Jun–Jul):
+  those restate the count twice for exactly this reason, and the tool
+  already strips the earlier, now-redundant annotation as noise — so this
+  isn't a new behavior, just deliberately triggering the existing one.
+- A last row whose instructions start with `Border:` is moved under a
+  synthesized `Finishing` heading rather than staying a numbered `Row N:`
+  line in `PATTERN STEPS`. The `Row N:` prefix is left in place ahead of
+  `Border:` rather than stripped — `_parse_finishing`'s own regex is an
+  unanchored `re.search`, so it doesn't matter.
+- Rows carrying a non-null `section` (the drop-shoulder sweater's
+  Back/Front/Sleeves/Assembly pieces) get an all-caps component header
+  line injected before the first row of each new section, matching
+  `_RE_COMPONENT_HEADER`'s convention — reuses data the sweater builder
+  already tags each row with, no new parsing needed on either side.
+
+**Verified**: piped a real dry-run Coaster payload through by hand — got a
+real REVIEW status back (2 stitch-count warnings: "Magic ring" and "11 dc
+in ring" aren't clauses `stitch_parser.py` recognizes yet, an honest gap in
+this tool's own vocabulary, not a defect in the generated pattern). This is
+the expected, correct behavior for an unrecognized construction — flagged
+rather than guessed, per this tool's whole design philosophy.
+
+**Known gap, deliberately out of scope for now**: this only validates what
+can be derived from the synthesized text approximation. It says nothing
+about the real exported PDF's actual layout/formatting (page breaks, font
+rendering, images) — validating *that* is a separate problem, to be solved
+separately once this text-level integration proves useful in practice.
+
+New file: `tests/test_from_pattern_json.py` (6 tests: row-line
+normalization both directions, required-fields presence, the Border→
+Finishing move, component header injection, one full pipeline smoke test).
+Full suite passes (136 tests, 1 skip).
