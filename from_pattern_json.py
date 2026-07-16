@@ -57,10 +57,18 @@ Row -> text mapping:
 - Consecutive rows sharing the same non-null `section` (multi-piece
   garments, e.g. the drop-shoulder sweater's Back/Front/Sleeves/Assembly)
   get an all-caps component header line before them, matching
-  _RE_COMPONENT_HEADER's convention for multi-panel patterns. Each section
-  restarts its own foundation-chain detection and row renumbering
-  independently, since generate-pattern's own row_number is section-relative
-  too (every panel's own row 1 is its own fresh foundation chain).
+  _RE_COMPONENT_HEADER's convention for multi-panel patterns. generate-
+  pattern's own row_number is GLOBAL across the whole pattern, not
+  section-relative (Back 1-49, Front 50-98, Sleeves 99-135, ...) -- but the
+  real app restarts numbering per piece for display (see the "Multi-piece
+  garments... restart row numbering within it" comment on PatternStep's
+  `section` field in generatePatternApi.ts), and pattern_parser.py expects
+  that same per-piece renumbering. So each section independently checks its
+  own first row for a foundation shape (plain chain-only, or the sweater
+  sleeves' "<Label> (make N): Ch X." shape) and renumbers everything after
+  it in that section starting from 1 (or 2, when the foundation itself
+  consumes row 1) -- never trusting the incoming global row_number once a
+  section boundary is crossed.
 """
 import json
 import re
@@ -77,10 +85,23 @@ _FOUNDATION_CHAIN_RE = re.compile(
     r"Ch\s+\d+\.?,?\s*(?:turn\.?)?$",
     re.I,
 )
+# A repeated-piece foundation (e.g. the drop-shoulder sweater's "Sleeves
+# (make 2): Ch 39.") -- pattern_parser.py's own _RE_ROW_AS_FOUNDATION
+# expects this rendered as a numbered row (crucially with NO colon after
+# the row number -- "Row 1 Sleeves (make 2): ...", unlike every other row
+# shape this adapter emits) carrying its own trailing "(N sts)", unlike the
+# plain "Foundation: Ch N." shape which never has a count at all. Confirmed
+# against pattern_parser.py's own comment: "Row 1 Sleeves (make 2): Ch 35.
+# (32 sts)" -- real sample, sweater Jul 12 batch.
+_MAKE_N_FOUNDATION_RE = re.compile(r"^[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+\d+\.?\s*$", re.I)
 
 
 def _is_chain_only_foundation(instructions: str) -> bool:
     return bool(_FOUNDATION_CHAIN_RE.match(instructions.strip()))
+
+
+def _is_make_n_foundation(instructions: str) -> bool:
+    return bool(_MAKE_N_FOUNDATION_RE.match(instructions.strip()))
 
 
 def _foundation_line(row: dict) -> str:
@@ -90,11 +111,15 @@ def _foundation_line(row: dict) -> str:
     return f"Foundation: {instructions}"
 
 
-def _row_line(row_number: int, row: dict) -> str:
+def _with_trailing_count(row: dict) -> str:
     instructions = row["instructions"].strip()
     if not _TRAILING_COUNT_RE.search(instructions):
         instructions = f"{instructions.rstrip('.')}. ({row['stitch_count']} sts)"
-    return f"Row {row_number}: {instructions}"
+    return instructions
+
+
+def _row_line(row_number: int, row: dict) -> str:
+    return f"Row {row_number}: {_with_trailing_count(row)}"
 
 
 def _section_groups(body_rows: list) -> list:
@@ -143,6 +168,10 @@ def build_raw_text(payload: dict) -> str:
             lines.append(_foundation_line(remaining[0]))
             remaining = remaining[1:]
             renumber_from = 1
+        elif remaining and _is_make_n_foundation(remaining[0]["instructions"]):
+            lines.append(f"Row 1 {_with_trailing_count(remaining[0])}")
+            remaining = remaining[1:]
+            renumber_from = 2
         else:
             renumber_from = None  # keep each row's own row_number as-is
 

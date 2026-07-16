@@ -160,6 +160,48 @@ class TestChainOnlyFoundationDetection(unittest.TestCase):
         self.assertEqual(gap_issues, [], f"unexpected row-gap issues: {gap_issues}")
 
 
+class TestMakeNFoundationDetection(unittest.TestCase):
+    # Real sample (sweater, dry-run batch): the drop-shoulder sweater's
+    # Sleeves section is a single component covering both sleeves, whose
+    # own first row reads "Sleeves (make 2): Ch 39." rather than a plain
+    # "Foundation: Ch N." -- and row_number is GLOBAL across the whole
+    # pattern (Back 1-49, Front 50-98, Sleeves 99-135, ...), not relative
+    # to each section, unlike every other fixture in this file. Before this
+    # fix, "Sleeves (make 2): Ch 39." fell through to a plain numbered row
+    # (keeping the global row_number, e.g. 99) with a fabricated "(36 sts)"
+    # appended, which the row-after-foundation stitch-count check then read
+    # as a real declared count on a genuine chain -- producing a false
+    # "should produce 36 sts but declares 39" style FAIL against a
+    # correctly-generated pattern.
+
+    def test_make_n_row_renumbers_to_row_1_no_colon_with_trailing_count(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 99, "stitch_count": 36, "instructions": "Sleeves (make 2): Ch 39.", "section": "Sleeves"},
+            {"row_number": 100, "stitch_count": 36, "instructions": "Dc in 4th ch from hook and in each ch across. Ch 3, turn.", "section": "Sleeves"},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        # No colon after the row number -- pattern_parser.py's
+        # _RE_ROW_AS_FOUNDATION requires exactly this shape.
+        self.assertIn("Row 1 Sleeves (make 2): Ch 39. (36 sts)", lines)
+        self.assertIn("Row 2: Dc in 4th ch from hook and in each ch across. Ch 3, turn. (36 sts)", lines)
+
+    def test_component_foundation_is_recorded_and_no_stitch_count_errors(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 99, "stitch_count": 36, "instructions": "Sleeves (make 2): Ch 39.", "section": "Sleeves"},
+            {"row_number": 100, "stitch_count": 36, "instructions": "Dc in 4th ch from hook and in each ch across. Ch 3, turn.", "section": "Sleeves"},
+            {"row_number": 101, "stitch_count": 36, "instructions": "Dc in each st across. Ch 3, turn.", "section": "Sleeves"},
+        ]}
+        raw = build_raw_text(payload)
+        pattern = parse(raw)
+        # component names are the exact all-caps header text (see
+        # _split_component_chunks), so "SLEEVES" not "Sleeves".
+        self.assertEqual(pattern.component_foundations.get("SLEEVES"), (39, False))
+        issues = stitch_count.check(pattern)
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {errors}")
+
+
 class TestEndToEnd(unittest.TestCase):
     def test_full_pipeline_runs_without_crashing_and_finds_the_right_row_count(self):
         payload = {**BASE_PAYLOAD, "rows": [
