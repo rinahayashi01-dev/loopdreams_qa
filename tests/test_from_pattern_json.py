@@ -51,7 +51,7 @@ class TestRequiredMaterialsFields(unittest.TestCase):
         self.assertEqual(missing_field_issues, [], f"unexpected: {missing_field_issues}")
 
 
-class TestBorderRowBecomesFinishing(unittest.TestCase):
+class TestFinishingRowRecognition(unittest.TestCase):
     def test_last_row_starting_with_border_is_finishing_not_a_numbered_row(self):
         payload = {**BASE_PAYLOAD, "rows": [
             {"row_number": 1, "stitch_count": 36, "instructions": "Ch 37, turn. (36 sts)", "section": None},
@@ -73,6 +73,39 @@ class TestBorderRowBecomesFinishing(unittest.TestCase):
         border_rows = [r for r in pattern.rows if r.label == "Border"]
         self.assertEqual(len(border_rows), 1)
         self.assertEqual(border_rows[0].declared_count, 144)
+
+    def test_tote_bag_handles_row_is_finishing_and_clears_no_finishing_check(self):
+        # Real generate-pattern shape (buildToteBagRows, no zipper/liner/pocket
+        # add-ons -- the only configuration the batch-test matrix seeds):
+        # body rows, an "Assembly:" note, then "Handles (make N): ...(N sts)"
+        # as the actual last row. Neither label carries a trailing colon
+        # right after the word the way "Border:" does -- Handles' label is
+        # always followed by a parenthetical variant clause first.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 45, "instructions": "Ch 46, turn. (45 sts)", "section": None},
+            {"row_number": 2, "stitch_count": 45, "instructions": "Dc in each st across. Fasten off, weave in ends. (45 sts)", "section": None},
+            {"row_number": 3, "stitch_count": 45, "instructions": "Assembly: Fold the rectangle in half with WS together so the fold forms the bottom.", "section": None},
+            {"row_number": 4, "stitch_count": 14, "instructions": "Handles (make 2): Ch 15, turn. Sc in 2nd ch from hook and in each ch across. Fasten off, weave in ends. (14 sts)", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Finishing", lines)
+        finishing_idx = lines.index("Finishing")
+        self.assertTrue(any("Handles (make 2):" in ln for ln in lines[finishing_idx:]))
+        pattern_steps_idx = lines.index("PATTERN STEPS")
+        self.assertNotIn("Handles (make 2):", "\n".join(lines[pattern_steps_idx:finishing_idx]))
+        # The Assembly row (not the last row) stays a normal numbered row --
+        # only the pattern's actual last row gets the Finishing treatment.
+        self.assertIn("Assembly:", "\n".join(lines[pattern_steps_idx:finishing_idx]))
+
+        pattern = parse(raw)
+        handles_rows = [r for r in pattern.rows if r.label == "Handles (make 2)"]
+        self.assertEqual(len(handles_rows), 1)
+        self.assertEqual(handles_rows[0].declared_count, 14)
+
+        issues = completeness.check(pattern)
+        no_finishing_issues = [i for i in issues if "No Finishing" in i.message]
+        self.assertEqual(no_finishing_issues, [], f"unexpected: {no_finishing_issues}")
 
 
 class TestComponentSections(unittest.TestCase):
