@@ -51,27 +51,40 @@ Row -> text mapping:
   built against actually look (see pattern_parser.py's row_re comment:
   coaster/mitten samples restate the count twice, "(24 dc) (24 sts)") --
   the tool already strips the earlier, redundant annotation as noise.
-- A row whose instructions start with "Border:" and is the pattern's last
-  row is treated as Finishing content instead of a numbered pattern row,
-  matching _RE_BORDER_MARKER's own convention. Deliberately NOT generalized
-  to "any last row" the way the sibling loopdreams repo's
+- A row whose instructions start with "Border:"/"Assembly:", or start with
+  "Handles (", and is the pattern's last row, is treated as Finishing
+  content instead of a numbered pattern row, matching _RE_BORDER_MARKER's/
+  _parse_finishing's own "<Label> (make N):" convention. Deliberately NOT
+  generalized to "any last row" the way the sibling loopdreams repo's
   generatePatternApi.ts (`isFinishing`) now is (tried it, then reverted):
   _parse_finishing only knows how to extract a checkable RoundRow from a
   "Border:"- or "<Label> (make N):"-shaped blob, so moving an ordinary
   plain-text closing row (no such marker) under a synthesized "Finishing"
   heading silently drops it from stitch-count verification entirely
   (nothing else in pattern_parser recognizes it there) -- trading a real
-  completeness gap for a worse, silent one.
+  completeness gap for a worse, silent one. "Assembly:"/"Handles (" are
+  safe additions to this allowlist for the same reason "Border:" was: Tote
+  Bag's buildToteBagRows already emits real assembly/handle content in
+  exactly this shape (e.g. "Handles (make 2): Ch 15... (14 sts)"), so
+  routing it under Finishing doesn't drop anything from verification --
+  it was just never being recognized as Finishing content at all, despite
+  already existing. (Only "Handles" needs the open-paren form rather than a
+  trailing colon -- its label is always followed by a parenthetical variant
+  clause, e.g. "(make 2)"/"(leather, purchased)"/"(make 2, shoulder-strap
+  length)", before the colon.)
   completeness.py's _check_finishing_present is, on inspection, working as
   intended here rather than buggy: its own comment explains flat-panel
   constructions (blanket, tote, dishcloth) are deliberately held to a
   stricter standard than continuous-spiral amigurumi ones (which get an
   explicit "no seams to join" exception) -- so "No Finishing" on Dishcloth/
-  Throw Blanket/Shawl/Tote Bag/Amigurumi Egg (whose oval foundation isn't
-  magic-ring, so it doesn't qualify for that exception either) most likely
-  reflects a genuine content gap in those templates' generators (no
-  separate weave-in-ends/assembly guidance), not a false positive worth
-  routing around here.
+  Throw Blanket/Shawl/Amigurumi Egg (whose oval foundation isn't magic-ring,
+  so it doesn't qualify for that exception either) most likely reflects a
+  genuine content gap in those templates' generators (no separate
+  weave-in-ends/assembly guidance) -- see generate-pattern's
+  buildGenericFlatRows/buildScarfRows and the moss/linen/waffle/sedge/
+  bobble/shell builders, all fixed to fasten off with "weave in ends" on
+  2026-07-17. Tote Bag was the one exception: its generator already had
+  real Assembly/Handles content: this adapter just wasn't recognizing it.
 - A last row whose text tells the crocheter to redo the whole pattern for a
   second item ("To complete the pair, repeat Rows 1-29 once more to make a
   second, matching mitten.") isn't stitch content at all -- goes to a
@@ -107,7 +120,7 @@ from .cli import run_for_pattern
 from .pattern_parser import parse
 
 _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
-_BORDER_ROW_RE = re.compile(r"^\s*Border\s*:", re.I)
+_FINISHING_ROW_RE = re.compile(r"^\s*(?:Border|Assembly)\s*:|^\s*Handles\s*\(", re.I)
 _FOUNDATION_CHAIN_RE = re.compile(
     r"^(?:Foundation(?:\s+chain)?:?\s*)?"
     r"(?:With\s+Colour\s+\S+\s*[—-]\s*\w+,?\s*)?"
@@ -233,7 +246,7 @@ def build_raw_text(payload: dict) -> str:
                 # Not stitch content -- leave the count off entirely so it
                 # can't be misread as a declared row count.
                 note_lines.append(row["instructions"].strip())
-            elif is_last_row_overall and _BORDER_ROW_RE.match(row["instructions"]):
+            elif is_last_row_overall and _FINISHING_ROW_RE.match(row["instructions"]):
                 finishing_lines.append(_row_line(row_number, row))
             else:
                 lines.append(_row_line(row_number, row))
