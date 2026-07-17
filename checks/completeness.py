@@ -64,15 +64,29 @@ def _check_finishing_present(pattern) -> list:
     if has_finishing:
         return []
 
-    # A continuous magic-ring construction (amigurumi-style, real sample:
-    # mittens Jul 7 batch) has no seams to join at all -- unlike flat-panel
+    # A continuous round construction (amigurumi-style, real sample: mittens
+    # Jul 7 batch) has no seams to join at all -- unlike flat-panel
     # constructions (blankets, totes), which always need a separate
-    # Finishing/assembly step this check should still require. Skip the
-    # error only when the piece's own last body row already closes it
-    # inline (a drawstring-cinch "closure" clause, or a plain fasten-off).
+    # Finishing/assembly step this check should still require. Originally
+    # this only recognized a magic-ring foundation (sphere/cylinder/mitten),
+    # but Amigurumi Egg's oval foundation is a chain, not a magic ring, even
+    # though it's just as seamless a continuous spiral -- it closes with the
+    # exact same "Fasten off, leaving a long tail... weave in the end."
+    # clause buildOvalRoundRows shares with the magic-ring shapes (real
+    # sample: Amigurumi Egg Jul 17 batch). "Never turns" is the more general
+    # signal that actually distinguishes the two cases: every flat-panel row
+    # but the last says "..., turn." (the last row swaps that for a
+    # fasten-off instead, which is why checking the last row alone can't
+    # tell continuous-round and flat-panel constructions apart), while a
+    # continuous-round construction never turns at all, foundation included.
+    # Skip the error only when the piece's own last body row already closes
+    # it inline (a drawstring-cinch "closure" clause, or a plain fasten-off).
     body_rows = [r for r in pattern.rows if r.row_start > 0]
     last_row = max(body_rows, key=lambda r: r.row_end) if body_rows else None
-    if pattern.foundation_is_magic_ring and last_row is not None:
+    never_turns = bool(body_rows) and not any(
+        c.clause_type == "turn" for r in body_rows for c in r.clauses
+    )
+    if (pattern.foundation_is_magic_ring or never_turns) and last_row is not None:
         if any(c.clause_type in ("closure", "fasten_off") for c in last_row.clauses):
             return []
 
