@@ -2139,3 +2139,51 @@ New file: `tests/test_from_pattern_json.py` (6 tests: row-line
 normalization both directions, required-fields presence, the Border→
 Finishing move, component header injection, one full pipeline smoke test).
 Full suite passes (136 tests, 1 skip).
+
+## "No Finishing" false-positive follow-ups (Jul 17, 2026)
+
+Two of the four flat-panel/oval templates flagged by the batch integration's
+"No Finishing/assembly section found" check turned out to be genuine
+false positives once examined individually, not content gaps — fixed here
+rather than in the sibling `loopdreams` repo's generators. (Dishcloth,
+Throw Blanket, and Shawl *were* real content gaps — the sibling repo's
+`buildGenericFlatRows`/`buildScarfRows`/moss-linen-waffle-sedge-bobble-shell
+builders now fasten off with "weave in ends" instead of a bare "Fasten
+off.", same-day fix, not tracked here.)
+
+- **Tote Bag**: `buildToteBagRows` already emits real `Assembly:` and
+  `Handles (make N): ...(N sts)` content as its last row (in the default,
+  no zipper/liner/pocket configuration `scripts/batch-test.ts`'s seeded
+  matrix exercises) — this adapter just never recognized either shape as
+  Finishing content, only `Border:`. Renamed `_BORDER_ROW_RE` →
+  `_FINISHING_ROW_RE`, broadened to `^(?:Border|Assembly)\s*:` or
+  `^Handles\s*\(` (Handles' label is always followed by a parenthetical
+  variant clause — `(make 2)`/`(leather, purchased)`/`(make 2,
+  shoulder-strap length)` — before its colon, unlike Border/Assembly).
+  `_parse_finishing`'s existing `<Label> (make N):` extraction (built
+  originally for the sweater's sleeve component) already knows how to pull
+  a checkable `RoundRow` out of the Handles shape, so nothing is lost from
+  stitch-count verification by moving it under Finishing.
+- **Amigurumi Egg**: `buildOvalRoundRows`'s oval foundation is a real
+  chain (`Ch 5. Sc in 2nd ch from hook...`), not a magic ring, so it never
+  qualified for `_check_finishing_present`'s existing "no seams to join"
+  exception — even though it closes with the *exact same* "Fasten off,
+  leaving a long tail... weave in the end." clause the magic-ring shapes
+  (sphere/cylinder/mitten) use, and is just as seamless a continuous
+  spiral. Replaced the `foundation_is_magic_ring` gate with "never turns
+  anywhere in the body" — checking every row's clauses for `clause_type ==
+  "turn"`, not just the last row. That distinction matters: a flat panel's
+  *last* row also just fastens off without turning (same as a continuous
+  round's last row), so checking only the last row can't tell a flat
+  panel and a continuous-round construction apart — but a flat panel's
+  earlier rows always do turn, while a continuous round's never do,
+  foundation included. Verified this doesn't swallow the real gaps:
+  Dishcloth (still turns on every row but its last) still correctly fails
+  "No Finishing" with no explicit Finishing section.
+
+New file: `tests/test_completeness_finishing_exception.py` (4 tests: oval
+foundation + closure clause clears the check, oval foundation without a
+closure clause still fails it, flat panel with a plain fasten-off last row
+still fails it). `tests/test_from_pattern_json.py` gained a
+`TestFinishingRowRecognition` case for the Tote Bag Handles shape. Full
+suite passes (148 tests, 1 skip).
