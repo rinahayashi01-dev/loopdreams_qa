@@ -121,9 +121,23 @@ from .pattern_parser import parse
 
 _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
 _FINISHING_ROW_RE = re.compile(r"^\s*(?:Border|Assembly)\s*:|^\s*Handles\s*\(", re.I)
+# Colour name after the identifier is itself optional -- real sample
+# (LoopDreams generator, colourwork rows): "With Colour 1, Ch 33, turn."
+# states the identifier alone with no "-- Name" suffix at all (the name is
+# a frontend-only display enrichment, never part of the stored pattern text
+# this tool actually receives -- same real cause as pattern_parser.py's own
+# colour-clause regexes, which had this same mandatory-name bug fixed
+# separately; this site was missed in that pass since it lives in this
+# adapter file, not pattern_parser.py itself). Without this, a bare-colour
+# Row 1 fails _is_chain_only_foundation, falls through to being rendered as
+# an ordinary numbered row with its "next row's" stitch_count wrongly
+# stamped onto ITS OWN declared count, and pattern.foundation_chain is never
+# set at all -- producing a genuine false stitch-count-mismatch on Row 2
+# (the checker misreads the foundation chain count from that wrongly
+# labeled "(N sts)" instead of the real Ch N in the text).
 _FOUNDATION_CHAIN_RE = re.compile(
     r"^(?:Foundation(?:\s+chain)?:?\s*)?"
-    r"(?:With\s+Colour\s+\S+\s*[—-]\s*\w+,?\s*)?"
+    r"(?:With\s+Colour\s+\S+(?:\s*[—-]\s*\w+)?,?\s*)?"
     r"Ch\s+\d+\.?,?\s*(?:turn\.?)?$",
     re.I,
 )

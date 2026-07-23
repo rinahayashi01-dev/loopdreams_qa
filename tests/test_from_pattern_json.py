@@ -150,6 +150,33 @@ class TestChainOnlyFoundationDetection(unittest.TestCase):
         errors = [i for i in issues if i.severity == "error"]
         self.assertEqual(errors, [], f"unexpected: {errors}")
 
+    def test_bare_colour_identifier_chain_row_recognized_as_foundation(self):
+        # Real sample (LoopDreams generator, colourwork Scarf): the stored
+        # row text states the colour identifier alone, with no "-- Name"
+        # suffix at all -- the name is a frontend-only display enrichment,
+        # never part of the actual pattern text this tool receives. Before
+        # this fix, _FOUNDATION_CHAIN_RE required the name whenever a colour
+        # clause was present at all, so this bare form failed to match,
+        # fell through to a plain numbered row with the NEXT row's
+        # stitch_count wrongly stamped onto its own declared count, and
+        # pattern.foundation_chain was never set -- producing a genuine
+        # false "should produce 31 sts but declares 32" stitch-count
+        # mismatch on Row 2 against a correctly generated 33-chain pattern.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 32, "instructions": "With Colour 1, Ch 33, turn.", "section": None},
+            {"row_number": 2, "stitch_count": 32, "instructions": "Sc in 2nd ch from hook and in each ch across. Ch 1, turn.", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Foundation: With Colour 1, Ch 33, turn.", lines)
+        self.assertIn("Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (32 sts)", lines)
+
+        pattern = parse(raw)
+        self.assertEqual(pattern.foundation_chain, 33)
+        issues = stitch_count.check(pattern)
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {errors}")
+
     def test_foundation_prefix_variant_is_used_as_is(self):
         payload = {**BASE_PAYLOAD, "rows": [
             {"row_number": 1, "stitch_count": 56, "instructions": "Foundation: Ch 59.", "section": None},
