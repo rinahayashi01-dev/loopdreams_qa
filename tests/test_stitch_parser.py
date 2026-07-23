@@ -239,6 +239,18 @@ class TestMittensClauseShapes(unittest.TestCase):
         self.assertIn("fasten_off", types)
         self.assertTrue(all(t in ("fasten_off", "closure") for t in types))
 
+    def test_plain_weave_in_ends_recognized_not_unknown(self):
+        # Real, by far the most common closing phrasing (LoopDreams
+        # generator, every non-amigurumi construction): "Fasten off, weave
+        # in ends." -- plural, no "and"/"the" at all, distinct from the
+        # drawstring-cinch single-tail form above. Previously only the
+        # singular "weave in the end" matched, so this fell through as an
+        # unrecognized clause on essentially every pattern's last row.
+        clauses = tokenize_round("Fasten off, weave in ends")
+        types = [c.clause_type for c in clauses]
+        self.assertNotIn("unknown", types)
+        self.assertIn("fasten_off", types)
+
 
 if __name__ == "__main__":
     unittest.main()
