@@ -340,8 +340,13 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     # itself now optional too -- real sample (sweater, Jul 12 batch):
     # "Foundation Ch 87." is a badge-label heading with no colon at all,
     # same convention as the colonless "Row N" badges.
+    # Colour name after the identifier is itself optional -- real sample
+    # (LoopDreams generator, colourwork rows): "With Colour 1, Ch 33, turn."
+    # states the identifier alone with no "-- Name" suffix at all (the name
+    # is a frontend-only display enrichment, never part of the stored
+    # pattern text this tool actually receives).
     m = re.search(
-        r"Foundation(?:\s+chain)?\s*:?\s*(?:With\s+Colour\s+[A-Za-z0-9]+\s*[—-]\s*[A-Za-z]+\s*,\s*)?Ch\s+(\d+)",
+        r"Foundation(?:\s+chain)?\s*:?\s*(?:With\s+Colour\s+[A-Za-z0-9]+(?:\s*[—-]\s*[A-Za-z]+)?\s*,\s*)?Ch\s+(\d+)",
         blob, re.I,
     )
     if m:
@@ -394,9 +399,12 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     # Jul 12 batch) has OCR noise gluing a stray "_" onto a row number
     # ("Row 8_ Increase row:..."), which silently defeated the \b version
     # of this same boundary check.
+    # Colour name after the identifier is itself optional -- see the
+    # Foundation-clause fix above (same real-sample cause: the LoopDreams
+    # generator's stored row text never includes the name).
     row_re = re.compile(
         r"Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*:?\s*"
-        r"(?:With\s+Colour\s+([A-Za-z0-9]+)\s*[—-]\s*([A-Za-z]+)\s*[:,]\s*)?"
+        r"(?:With\s+Colour\s+([A-Za-z0-9]+)(?:\s*[—-]\s*([A-Za-z]+))?\s*[:,]\s*)?"
         r"((?:(?!Rows?\s*\d+(?!\d)).)*)"
         r"\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
         re.I,
@@ -435,9 +443,10 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     # These never match row_re above (no trailing "(N sts)"), so they need
     # their own pass or they'd silently vanish from the parsed pattern.
     # Colon after the row number optional -- see row_re above.
+    # Colour name after the identifier is itself optional -- see row_re above.
     repeat_ref_re = re.compile(
         r"Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*:?\s*"
-        r"(?:With\s+Colour\s+([A-Za-z0-9]+)\s*[—-]\s*([A-Za-z]+)\s*[:,]\s*)?"
+        r"(?:With\s+Colour\s+([A-Za-z0-9]+)(?:\s*[—-]\s*([A-Za-z]+))?\s*[:,]\s*)?"
         r"Repeat\s+Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\.?",
         re.I,
     )

@@ -120,8 +120,14 @@ _RE_SL_ST_EDGE_ATTACH = re.compile(
 # "changing to Colour 2 -- Moss in the last st" -- an inline colour change
 # stated as a trailing clause within a row (distinct from the existing
 # leading "With Colour B -- Moss:" row-opening marker pattern_parser.py
-# already handles). No stitch-count effect either way.
-_RE_INLINE_COLOUR_CHANGE = re.compile(r"^changing\s+to\s+colour\s+[\w]+\s*[—-]\s*[\w]+\s+in\s+the\s+last\s+st$", re.I)
+# already handles). No stitch-count effect either way. The "-- Name" suffix
+# is itself optional -- real sample (LoopDreams generator): "changing to
+# Colour 2 in the last st" with no name at all (the name is a frontend-only
+# display enrichment, never part of the stored pattern text this tool
+# actually receives).
+_RE_INLINE_COLOUR_CHANGE = re.compile(
+    r"^changing\s+to\s+colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?\s+in\s+the\s+last\s+st$", re.I
+)
 # "working the last 2 sts of the round into the 2 ch just made" -- the
 # comma-split half of the round-completion sentence that follows "sc in
 # each remaining st around,". No-op on its own: the gusset-transition row
@@ -144,7 +150,14 @@ _RE_THREAD_TAIL_FRONT_LOOP = re.compile(
     r"^thread\s+the\s+tail\s+through\s+the\s+front\s+loop\s+of\s+each\s+remaining\s+stitch$", re.I
 )
 _RE_PULL_TIGHT_CLOSE = re.compile(r"^pull\s+tight\s+to\s+close\s+the\s+.+$", re.I)
-_RE_WEAVE_IN_END = re.compile(r"^(?:and\s+)?weave\s+in\s+the\s+end$", re.I)
+# Two real closing phrasings: the drawstring-cinch single-tail form above
+# ("...pull tight to close the ..., and weave in the end.") and the far more
+# common plain closure used across nearly every other construction ("Fasten
+# off, weave in ends." -- plural, no "and"/"the" at all; see generate-pattern's
+# builders.ts, e.g. line 212). Previously only the singular "the end" form
+# matched, so the plain "weave in ends" close -- the majority case -- fell
+# through as an unrecognized clause on every non-amigurumi pattern's last row.
+_RE_WEAVE_IN_END = re.compile(r"^(?:and\s+)?weave\s+in\s+(?:the\s+end|ends)$", re.I)
 _RE_BRACKET_GROUP = re.compile(r"^\[(.*)\]\s*(once|twice|[a-z]+\s+times?|\d+\s*times?)\b", re.I)
 # "(sc, hdc, dc) in next st" -- a named list of different stitches, all into ONE shared spot.
 # Captures arbitrary lowercase words, so it works for custom tokens too without
