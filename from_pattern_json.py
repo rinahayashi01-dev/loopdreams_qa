@@ -137,7 +137,12 @@ _FINISHING_ROW_RE = re.compile(r"^\s*(?:Border|Assembly)\s*:|^\s*Handles\s*\(", 
 # labeled "(N sts)" instead of the real Ch N in the text).
 _FOUNDATION_CHAIN_RE = re.compile(
     r"^(?:Foundation(?:\s+chain)?:?\s*)?"
-    r"(?:With\s+Colour\s+\S+(?:\s*[—-]\s*\w+)?,?\s*)?"
+    # Also accepts a bare "With White," designator (no "Colour" word at
+    # all) -- margin/blank picture-grid cells not part of the chosen
+    # palette are labelled literally "White" by the generator's own
+    # colourLabel(), not a numbered "Colour N" (see pattern_parser.py's
+    # matching fix for the BLANK_COLOUR source).
+    r"(?:With\s+(?:Colour\s+\S+|White)(?:\s*[—-]\s*\w+)?,?\s*)?"
     r"Ch\s+\d+\.?,?\s*(?:turn\.?)?$",
     re.I,
 )

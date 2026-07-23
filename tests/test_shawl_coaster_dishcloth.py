@@ -193,6 +193,51 @@ class TestBareColourIdentifierNoName(unittest.TestCase):
         self.assertEqual([c for c in clauses if c.clause_type == "unknown"], [])
 
 
+class TestBareWhiteDesignator(unittest.TestCase):
+    # Real sample (LoopDreams generator, picture-grid colourwork Scarf):
+    # margin/blank cells that aren't part of the design's own chosen
+    # palette are labelled literally "With White," -- no "Colour" word at
+    # all -- distinct from both the numbered "With Colour N," form and its
+    # bare-identifier variant above (see generate-pattern's colourwork.ts:
+    # colourLabel() returns "White" directly for BLANK_COLOUR, never
+    # "Colour N"). Every one of these was previously left as an
+    # "unrecognized clause" since the colour clause always required the
+    # literal word "Colour" to match at all.
+    def test_foundation_with_white_designator(self):
+        pattern = _pattern(
+            "Foundation chain:With White, Ch 33, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (32 sts)\n"
+        )
+        self.assertEqual(pattern.foundation_chain, 33)
+
+    def test_row_with_white_designator_parses(self):
+        pattern = _pattern(
+            "Foundation chain:Ch 33, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (32 sts)\n"
+            "Row 2: With White, 32 sc in next 32 sts. Ch 1, turn. (32 sts)\n"
+        )
+        row2 = next(r for r in pattern.rows if r.row_start == 2)
+        self.assertEqual([c for c in row2.clauses if c.clause_type == "unknown"], [])
+        stitch_clauses = [c for c in row2.clauses if c.clause_type == "literal_count"]
+        self.assertEqual(len(stitch_clauses), 1)
+        self.assertEqual(stitch_clauses[0].consumes, 32)
+        self.assertEqual(stitch_clauses[0].produces, 32)
+
+    def test_repeat_reference_with_white_designator_parses(self):
+        pattern = _pattern(
+            "Foundation chain:Ch 33, turn.\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (32 sts)\n"
+            "Row 2: With White, 32 sc in next 32 sts. Ch 1, turn. (32 sts)\n"
+            "Row 3: With White, Repeat Row 1.\n"
+        )
+        row3 = next(r for r in pattern.rows if r.row_start == 3)
+        self.assertEqual(row3.referenced_rows, [1])
+
+    def test_inline_white_change_not_unrecognized(self):
+        clauses = tokenize_round("sc in each st around, changing to White in the last st")
+        self.assertEqual([c for c in clauses if c.clause_type == "unknown"], [])
+
+
 class TestDuplicateCountAnnotationStripping(unittest.TestCase):
     # Mittens (Jul 7) only needed to strip a single trailing "(N sc)".
     # Shawl (Jul 8) added a same-unit duplicate "(N sts) (N sts)"; coaster
