@@ -94,9 +94,13 @@ class TestFinishingRowRecognition(unittest.TestCase):
         self.assertTrue(any("Handles (make 2):" in ln for ln in lines[finishing_idx:]))
         pattern_steps_idx = lines.index("PATTERN STEPS")
         self.assertNotIn("Handles (make 2):", "\n".join(lines[pattern_steps_idx:finishing_idx]))
-        # The Assembly row (not the last row) stays a normal numbered row --
-        # only the pattern's actual last row gets the Finishing treatment.
-        self.assertIn("Assembly:", "\n".join(lines[pattern_steps_idx:finishing_idx]))
+        # Assembly is ALSO part of the trailing finishing-shaped run (it
+        # directly precedes Handles, the true last row) -- both move to
+        # Finishing together, not just the single final row. See
+        # TestMultipleTrailingFinishingRows below for the fuller Tote Bag
+        # case (Assembly + Handles + Pocket + Liner all in one trailing run).
+        self.assertTrue(any("Assembly:" in ln for ln in lines[finishing_idx:]))
+        self.assertNotIn("Assembly:", "\n".join(lines[pattern_steps_idx:finishing_idx]))
 
         pattern = parse(raw)
         handles_rows = [r for r in pattern.rows if r.label == "Handles (make 2)"]
@@ -105,6 +109,55 @@ class TestFinishingRowRecognition(unittest.TestCase):
 
         issues = completeness.check(pattern)
         no_finishing_issues = [i for i in issues if "No Finishing" in i.message]
+        self.assertEqual(no_finishing_issues, [], f"unexpected: {no_finishing_issues}")
+
+
+class TestMultipleTrailingFinishingRows(unittest.TestCase):
+    # Real generate-pattern shape (buildToteBagRows with pocket + liner
+    # add-ons): the trailing run is Assembly, Handles, Pocket, then "Adding
+    # a Liner" -- FOUR consecutive finishing-shaped rows, not just the
+    # single last one. Before this fix, only the true last row was ever
+    # checked against _FINISHING_ROW_RE, so a Liner/Zipper row at the very
+    # end left Assembly/Handles/Pocket stuck as ordinary numbered rows --
+    # Assembly and Pocket then produced genuine false stitch-count errors
+    # ("unrecognized clause: 'Assembly'"/"'Pocket'"), since neither is real
+    # numbered-row content.
+
+    def test_assembly_handles_pocket_and_liner_all_move_to_finishing(self):
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 45, "instructions": "Ch 46, turn. (45 sts)", "section": None},
+            {"row_number": 2, "stitch_count": 45, "instructions": "Dc in each st across. Fasten off, weave in ends. (45 sts)", "section": None},
+            {"row_number": 3, "stitch_count": 45, "instructions": "Assembly: Fold the rectangle in half with WS together so the fold forms the bottom.", "section": None},
+            {"row_number": 4, "stitch_count": 14, "instructions": "Handles (make 2): Ch 15, turn. Sc in 2nd ch from hook and in each ch across. Fasten off, weave in ends. (14 sts)", "section": None},
+            {"row_number": 5, "stitch_count": 18, "instructions": "Pocket: Ch 19, turn. Sc in 2nd ch from hook and in each ch across. Fasten off. (18 sts)", "section": None},
+            {"row_number": 6, "stitch_count": 45, "instructions": "Adding a Liner: Cut one piece of light-to-medium weight non-stretch fabric 15 in wide x 33 in long.", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Finishing", lines)
+        finishing_idx = lines.index("Finishing")
+        pattern_steps_idx = lines.index("PATTERN STEPS")
+        body_blob = "\n".join(lines[pattern_steps_idx:finishing_idx])
+        finishing_blob = "\n".join(lines[finishing_idx:])
+
+        for label in ("Assembly:", "Handles (make 2):", "Pocket:", "Adding a Liner:"):
+            self.assertNotIn(label, body_blob, f"{label} should have moved out of PATTERN STEPS")
+            self.assertIn(label, finishing_blob, f"{label} should be under Finishing")
+
+        pattern = parse(raw)
+        handles_rows = [r for r in pattern.rows if r.label == "Handles (make 2)"]
+        self.assertEqual(len(handles_rows), 1)
+        self.assertEqual(handles_rows[0].declared_count, 14)
+        pocket_rows = [r for r in pattern.rows if r.label == "Pocket"]
+        self.assertEqual(len(pocket_rows), 1)
+        self.assertEqual(pocket_rows[0].declared_count, 18)
+
+        # Assembly/Liner have no stitch content at all -- correctly absorbed
+        # into Finishing's raw text with zero rows extracted, not an error.
+        issues = stitch_count.check(pattern)
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {errors}")
+        no_finishing_issues = [i for i in completeness.check(pattern) if "No Finishing" in i.message]
         self.assertEqual(no_finishing_issues, [], f"unexpected: {no_finishing_issues}")
 
 

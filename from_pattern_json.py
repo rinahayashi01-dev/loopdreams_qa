@@ -51,27 +51,46 @@ Row -> text mapping:
   built against actually look (see pattern_parser.py's row_re comment:
   coaster/mitten samples restate the count twice, "(24 dc) (24 sts)") --
   the tool already strips the earlier, redundant annotation as noise.
-- A row whose instructions start with "Border:"/"Assembly:", or start with
-  "Handles (", and is the pattern's last row, is treated as Finishing
-  content instead of a numbered pattern row, matching _RE_BORDER_MARKER's/
-  _parse_finishing's own "<Label> (make N):" convention. Deliberately NOT
-  generalized to "any last row" the way the sibling loopdreams repo's
-  generatePatternApi.ts (`isFinishing`) now is (tried it, then reverted):
-  _parse_finishing only knows how to extract a checkable RoundRow from a
-  "Border:"- or "<Label> (make N):"-shaped blob, so moving an ordinary
-  plain-text closing row (no such marker) under a synthesized "Finishing"
-  heading silently drops it from stitch-count verification entirely
-  (nothing else in pattern_parser recognizes it there) -- trading a real
-  completeness gap for a worse, silent one. "Assembly:"/"Handles (" are
-  safe additions to this allowlist for the same reason "Border:" was: Tote
-  Bag's buildToteBagRows already emits real assembly/handle content in
-  exactly this shape (e.g. "Handles (make 2): Ch 15... (14 sts)"), so
-  routing it under Finishing doesn't drop anything from verification --
-  it was just never being recognized as Finishing content at all, despite
-  already existing. (Only "Handles" needs the open-paren form rather than a
-  trailing colon -- its label is always followed by a parenthetical variant
-  clause, e.g. "(make 2)"/"(leather, purchased)"/"(make 2, shoulder-strap
-  length)", before the colon.)
+- A row whose instructions start with "Border:"/"Assembly:"/"Pocket:"/
+  "Adding a Zipper:"/"Adding a Liner:"/"Adding a Zipper and Liner:", or
+  start with "Handles (", is treated as Finishing content instead of a
+  numbered pattern row, matching _RE_BORDER_MARKER's/_parse_finishing's own
+  "<Label> (make N):" convention. Deliberately NOT generalized to "any last
+  row" the way the sibling loopdreams repo's generatePatternApi.ts
+  (`isFinishing`) now is (tried it, then reverted): _parse_finishing only
+  knows how to extract a checkable RoundRow from a "Border:"/"Pocket:"- or
+  "<Label> (make N):"-shaped blob, so moving an ordinary plain-text closing
+  row (no such marker) under a synthesized "Finishing" heading silently
+  drops it from stitch-count verification entirely (nothing else in
+  pattern_parser recognizes it there) -- trading a real completeness gap
+  for a worse, silent one. These are safe additions to the allowlist for
+  the same reason "Border:" was: Tote Bag's buildToteBagRows already emits
+  real assembly/handle/pocket/liner content in exactly these shapes, so
+  routing them under Finishing doesn't drop anything from verification --
+  they were just never being recognized as Finishing content at all,
+  despite already existing. (Only "Handles" needs the open-paren form
+  rather than a trailing colon -- its label is always followed by a
+  parenthetical variant clause, e.g. "(make 2)"/"(leather, purchased)"/
+  "(make 2, shoulder-strap length)", before the colon.)
+  Real sample (Tote Bag with pocket + liner, no zipper/straps): the
+  trailing run is Assembly, Handles, Pocket, then "Adding a Liner" -- FOUR
+  consecutive finishing-shaped rows, not just one. Checking only the
+  single last row (as this adapter did until now) left Assembly/Handles/
+  Pocket stuck as ordinary numbered rows even when a Liner/Zipper row
+  followed them, since a real body row that happens to be finishing-shaped
+  is never anything other than the true trailing run in practice (nothing
+  in generate-pattern EVER puts non-finishing body content after Assembly)
+  -- so this now walks backward from the pattern's actual last row,
+  collecting every consecutive row that matches the finishing-row pattern,
+  not just checking the single final one.
+  Assembly/Zipper/Liner rows have no "(N sts)"/"(make N)" shape at all (no
+  stitch content -- pure fabric/sewing prose) and _parse_finishing has no
+  regex that matches them, so they're safely absorbed into the Finishing
+  section's raw text with zero rows extracted -- exactly the same "nothing
+  to verify" outcome as if they'd been hand-written directly under a real
+  "Finishing" heading. Pocket, like Border, DOES have real stitch content
+  and a trailing "(N sts)", so _parse_finishing's Border regex is
+  generalized to accept "Pocket" as an alternate label.
   completeness.py's _check_finishing_present is, on inspection, working as
   intended here rather than buggy: its own comment explains flat-panel
   constructions (blanket, tote, dishcloth) are deliberately held to a
@@ -84,7 +103,8 @@ Row -> text mapping:
   buildGenericFlatRows/buildScarfRows and the moss/linen/waffle/sedge/
   bobble/shell builders, all fixed to fasten off with "weave in ends" on
   2026-07-17. Tote Bag was the one exception: its generator already had
-  real Assembly/Handles content: this adapter just wasn't recognizing it.
+  real Assembly/Handles/Pocket/Liner content: this adapter just wasn't
+  recognizing all of it.
 - A last row whose text tells the crocheter to redo the whole pattern for a
   second item ("To complete the pair, repeat Rows 1-29 once more to make a
   second, matching mitten.") isn't stitch content at all -- goes to a
@@ -120,7 +140,10 @@ from .cli import run_for_pattern
 from .pattern_parser import parse
 
 _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
-_FINISHING_ROW_RE = re.compile(r"^\s*(?:Border|Assembly)\s*:|^\s*Handles\s*\(", re.I)
+_FINISHING_ROW_RE = re.compile(
+    r"^\s*(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:|^\s*Handles\s*\(",
+    re.I,
+)
 # Colour name after the identifier is itself optional -- real sample
 # (LoopDreams generator, colourwork rows): "With Colour 1, Ch 33, turn."
 # states the identifier alone with no "-- Name" suffix at all (the name is
@@ -258,14 +281,34 @@ def build_raw_text(payload: dict) -> str:
             renumber_from = None  # keep each row's own row_number as-is
 
         last_group = group_idx == len(groups) - 1
+
+        # Real sample (Tote Bag with pocket + liner): the trailing run is
+        # Assembly, Handles, Pocket, then "Adding a Liner" -- four
+        # consecutive finishing-shaped rows, not just the single last one.
+        # Walk backward from the true last row collecting every consecutive
+        # match, rather than only ever checking the final row. The
+        # "repeat whole pattern" note (Mittens) is a separate, mutually
+        # exclusive case -- it isn't finishing-shaped itself, so it's
+        # excluded from the scan below before walking backward from it.
+        note_row_idx = None
+        finishing_start_idx = len(remaining)
+        if last_group and remaining:
+            scan_end = len(remaining)
+            if _is_repeat_whole_pattern_note(remaining[-1]["instructions"]):
+                note_row_idx = len(remaining) - 1
+                scan_end = note_row_idx
+            idx = scan_end
+            while idx > 0 and _FINISHING_ROW_RE.match(remaining[idx - 1]["instructions"]):
+                idx -= 1
+            finishing_start_idx = idx
+
         for i, row in enumerate(remaining):
             row_number = renumber_from + i if renumber_from is not None else row["row_number"]
-            is_last_row_overall = last_group and i == len(remaining) - 1
-            if is_last_row_overall and _is_repeat_whole_pattern_note(row["instructions"]):
+            if i == note_row_idx:
                 # Not stitch content -- leave the count off entirely so it
                 # can't be misread as a declared row count.
                 note_lines.append(row["instructions"].strip())
-            elif is_last_row_overall and _FINISHING_ROW_RE.match(row["instructions"]):
+            elif last_group and i >= finishing_start_idx:
                 finishing_lines.append(_row_line(row_number, row))
             else:
                 lines.append(_row_line(row_number, row))

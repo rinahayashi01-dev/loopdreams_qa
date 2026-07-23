@@ -522,54 +522,100 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     pattern.rows.extend(found_rows)
 
 
+# Marks the start of a new independently-labeled Finishing clause. Real
+# sample (Tote Bag with pocket + liner add-ons): a single Finishing section
+# can hold SEVERAL of these back to back (Assembly, Handles, Pocket, then
+# Adding a Liner) -- see _parse_finishing's chunk-splitting below for why
+# that matters. Tolerates an optional leading "Row N: " badge -- the
+# from_pattern_json.py adapter's own _row_line() always prepends one, even
+# to lines it's routed into the Finishing section.
+_RE_FINISHING_LABEL_START = re.compile(
+    r"^\s*(?:Row\s*\d+\s*:\s*)?"
+    r"(?:(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"|[A-Z][a-z]+\s*\(make\s+\d+\)\s*:"
+    r"|Handles\s*\()",
+    re.I,
+)
+
+
 def _parse_finishing(section: Section, pattern: Pattern):
     from . import abbreviations as ab
     custom_compound = ab.custom_compound_tokens(pattern.abbreviation_key)
 
-    blob = re.sub(r"\s+", " ", section.raw_text.replace("\n", " ")).strip()
-    m = re.search(r"Border\s*:\s*(.*?)\(\s*(~?)\s*(\d+)\s*sts?\s*\)\.?", blob, re.I)
-    if m:
-        instr_text = m.group(1).strip().rstrip(".")
-        is_approx = m.group(2) == "~"
-        declared = int(m.group(3))
-        rr = RoundRow(label="Border", row_start=-1, row_end=-1, raw_text=instr_text,
-                      declared_count=declared, declared_count_is_approx=is_approx)
-        rr.clauses = tokenize_round(instr_text, custom_compound)
-        pattern.rows.append(rr)
+    # Group into per-label chunks before searching -- a Finishing section
+    # can contain several independent labeled clauses back to back (see
+    # _RE_FINISHING_LABEL_START above). Collapsing the WHOLE section into
+    # one blob (as this used to do) let one label's non-greedy-but-
+    # end-anchored capture bleed across into the NEXT label's own text,
+    # corrupting both (e.g. Handles' declared count getting overwritten by
+    # whatever "(N sts)" happened to appear later, in Pocket's own text).
+    # A real PDF sample that wraps a single label's own text across
+    # multiple lines still works correctly here: a wrapped continuation
+    # line doesn't itself start a new label, so it's absorbed into the
+    # current chunk exactly like the old single blob did.
+    chunks = []
+    for ln in section.raw_text.split("\n"):
+        if _RE_FINISHING_LABEL_START.match(ln) or not chunks:
+            chunks.append([ln])
+        else:
+            chunks[-1].append(ln)
 
-    # A secondary component (e.g. handles/straps) stated in Finishing as
-    # "<Name> (make N): ..." rather than as a numbered pattern row. Capture
-    # from the label to the end of the section (or to an explicit "(N sts)"
-    # if one is given) so its construction still gets verified even though
-    # it isn't a "Row N:".
-    comp_m = re.search(r"\b([A-Z][a-z]+)\s*\(make\s+(\d+)\)\s*:\s*(.*?)\.?\s*$", blob)
-    if comp_m:
-        label = comp_m.group(1).strip()
-        # Real sample (sweater, Jul 12 batch): an assembly-diagram caption
-        # ("Sleeve (make 2): worked cuff-up, increasing evenly from 8 in to
-        # 15 in wide over 17 in.") matches this same "<Label> (make N):"
-        # shape, but it's describing a picture, not giving new
-        # construction -- the sleeve's real row-by-row instructions already
-        # exist as their own "SLEEVES (MAKE 2)" component elsewhere in
-        # Pattern Steps. Skip if a same-piece component (matched loosely,
-        # ignoring case and singular/plural) is already present, so this
-        # caption doesn't get parsed as if it were a second, undefined
-        # construction full of unrecognized prose.
-        existing_components = {(r.component or "").lower() for r in pattern.rows if r.component}
-        label_singular = label.lower().rstrip("s")
-        if any(label_singular in c for c in existing_components):
-            return
-        comp_text = comp_m.group(3).strip()
-        declared, is_approx = None, False
-        cm = re.search(r"\(\s*(~?)\s*(\d+)\s*sts?\s*\)\.?\s*$", comp_text)
-        if cm:
-            is_approx = cm.group(1) == "~"
-            declared = int(cm.group(2))
-            comp_text = comp_text[: cm.start()].strip().rstrip(".")
-        rr = RoundRow(label=f"{label} (make {comp_m.group(2)})", row_start=-2, row_end=-2,
-                      raw_text=comp_text, declared_count=declared, declared_count_is_approx=is_approx)
-        rr.clauses = tokenize_round(comp_text, custom_compound)
-        pattern.rows.append(rr)
+    for chunk_lines in chunks:
+        blob = re.sub(r"\s+", " ", " ".join(chunk_lines)).strip()
+
+        # "Pocket" shares Border's exact shape (a label, real stitch
+        # content, a trailing "(N sts)", no "(make N)") -- real sample
+        # (Tote Bag with a pocket add-on): "Pocket: Ch 19. Sc in 2nd ch...
+        # (18 sts)".
+        m = re.search(r"(Border|Pocket)\s*:\s*(.*?)\(\s*(~?)\s*(\d+)\s*sts?\s*\)\.?", blob, re.I)
+        if m:
+            label = m.group(1)
+            instr_text = m.group(2).strip().rstrip(".")
+            is_approx = m.group(3) == "~"
+            declared = int(m.group(4))
+            rr = RoundRow(label=label, row_start=-1, row_end=-1, raw_text=instr_text,
+                          declared_count=declared, declared_count_is_approx=is_approx)
+            rr.clauses = tokenize_round(instr_text, custom_compound)
+            pattern.rows.append(rr)
+            continue
+
+        # A secondary component (e.g. handles/straps) stated in Finishing
+        # as "<Name> (make N): ..." rather than as a numbered pattern row.
+        # Capture from the label to the end of THIS chunk (or to an
+        # explicit "(N sts)" if one is given) so its construction still
+        # gets verified even though it isn't a "Row N:".
+        comp_m = re.search(r"\b([A-Z][a-z]+)\s*\(make\s+(\d+)\)\s*:\s*(.*?)\.?\s*$", blob)
+        if comp_m:
+            label = comp_m.group(1).strip()
+            # Real sample (sweater, Jul 12 batch): an assembly-diagram
+            # caption ("Sleeve (make 2): worked cuff-up, increasing evenly
+            # from 8 in to 15 in wide over 17 in.") matches this same
+            # "<Label> (make N):" shape, but it's describing a picture, not
+            # giving new construction -- the sleeve's real row-by-row
+            # instructions already exist as their own "SLEEVES (MAKE 2)"
+            # component elsewhere in Pattern Steps. Skip if a same-piece
+            # component (matched loosely, ignoring case and singular/
+            # plural) is already present, so this caption doesn't get
+            # parsed as if it were a second, undefined construction full of
+            # unrecognized prose. `continue` (not `return`) -- one chunk
+            # being a caption doesn't mean the REST of the section's chunks
+            # (e.g. a genuine Pocket/Liner clause after it) should be
+            # skipped too.
+            existing_components = {(r.component or "").lower() for r in pattern.rows if r.component}
+            label_singular = label.lower().rstrip("s")
+            if any(label_singular in c for c in existing_components):
+                continue
+            comp_text = comp_m.group(3).strip()
+            declared, is_approx = None, False
+            cm = re.search(r"\(\s*(~?)\s*(\d+)\s*sts?\s*\)\.?\s*$", comp_text)
+            if cm:
+                is_approx = cm.group(1) == "~"
+                declared = int(cm.group(2))
+                comp_text = comp_text[: cm.start()].strip().rstrip(".")
+            rr = RoundRow(label=f"{label} (make {comp_m.group(2)})", row_start=-2, row_end=-2,
+                          raw_text=comp_text, declared_count=declared, declared_count_is_approx=is_approx)
+            rr.clauses = tokenize_round(comp_text, custom_compound)
+            pattern.rows.append(rr)
 
 
 # The optional "(?:[A-Za-z]+:\s*)?" tolerates a label before the date
