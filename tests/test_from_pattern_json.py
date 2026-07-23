@@ -177,6 +177,31 @@ class TestChainOnlyFoundationDetection(unittest.TestCase):
         errors = [i for i in issues if i.severity == "error"]
         self.assertEqual(errors, [], f"unexpected: {errors}")
 
+    def test_bare_white_designator_chain_row_recognized_as_foundation(self):
+        # Real sample (LoopDreams generator, picture-grid colourwork Scarf):
+        # margin/blank cells not part of the design's own chosen palette are
+        # labelled literally "With White," -- no "Colour" word at all --
+        # distinct from the bare-identifier "With Colour N," form above (see
+        # generate-pattern's colourwork.ts: colourLabel() returns "White"
+        # directly for BLANK_COLOUR). Same failure mode as that fix if left
+        # unhandled: _FOUNDATION_CHAIN_RE never matches, so the foundation
+        # row falls through to an ordinary numbered row and
+        # pattern.foundation_chain is never set.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 32, "instructions": "With White, Ch 33, turn.", "section": None},
+            {"row_number": 2, "stitch_count": 32, "instructions": "Sc in 2nd ch from hook and in each ch across. Ch 1, turn.", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        lines = raw.split("\n")
+        self.assertIn("Foundation: With White, Ch 33, turn.", lines)
+        self.assertIn("Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (32 sts)", lines)
+
+        pattern = parse(raw)
+        self.assertEqual(pattern.foundation_chain, 33)
+        issues = stitch_count.check(pattern)
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {errors}")
+
     def test_foundation_prefix_variant_is_used_as_is(self):
         payload = {**BASE_PAYLOAD, "rows": [
             {"row_number": 1, "stitch_count": 56, "instructions": "Foundation: Ch 59.", "section": None},

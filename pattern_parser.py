@@ -344,9 +344,15 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     # (LoopDreams generator, colourwork rows): "With Colour 1, Ch 33, turn."
     # states the identifier alone with no "-- Name" suffix at all (the name
     # is a frontend-only display enrichment, never part of the stored
-    # pattern text this tool actually receives).
+    # pattern text this tool actually receives). Also accepts a bare "White"
+    # designator with no "Colour" word at all -- real sample: margin/blank
+    # cells in a picture-grid colourwork design (not part of the chosen
+    # palette) are labelled literally "White" by the generator's own
+    # colourLabel(), not a numbered "Colour N" (see generate-pattern's
+    # colourwork.ts: `if (idx === -1 && hex === BLANK_COLOUR) return
+    # "White";`).
     m = re.search(
-        r"Foundation(?:\s+chain)?\s*:?\s*(?:With\s+Colour\s+[A-Za-z0-9]+(?:\s*[—-]\s*[A-Za-z]+)?\s*,\s*)?Ch\s+(\d+)",
+        r"Foundation(?:\s+chain)?\s*:?\s*(?:With\s+(?:Colour\s+[A-Za-z0-9]+|White)(?:\s*[—-]\s*[A-Za-z]+)?\s*,\s*)?Ch\s+(\d+)",
         blob, re.I,
     )
     if m:
@@ -401,10 +407,15 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     # of this same boundary check.
     # Colour name after the identifier is itself optional -- see the
     # Foundation-clause fix above (same real-sample cause: the LoopDreams
-    # generator's stored row text never includes the name).
+    # generator's stored row text never includes the name). Also accepts a
+    # bare "White" designator (margin/blank picture-grid cells -- see the
+    # Foundation-clause fix's comment on colourLabel()'s BLANK_COLOUR case).
+    # Group 3 (the id/designator) is captured but never read downstream --
+    # only group 4 (the optional name) feeds RoundRow.color -- so wrapping
+    # both alternatives in the same group position needs no reindexing below.
     row_re = re.compile(
         r"Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*:?\s*"
-        r"(?:With\s+Colour\s+([A-Za-z0-9]+)(?:\s*[—-]\s*([A-Za-z]+))?\s*[:,]\s*)?"
+        r"(?:With\s+(Colour\s+[A-Za-z0-9]+|White)(?:\s*[—-]\s*([A-Za-z]+))?\s*[:,]\s*)?"
         r"((?:(?!Rows?\s*\d+(?!\d)).)*)"
         r"\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
         re.I,
@@ -443,10 +454,11 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
     # These never match row_re above (no trailing "(N sts)"), so they need
     # their own pass or they'd silently vanish from the parsed pattern.
     # Colon after the row number optional -- see row_re above.
-    # Colour name after the identifier is itself optional -- see row_re above.
+    # Colour name after the identifier is itself optional, and a bare
+    # "White" designator is also accepted -- see row_re above for both.
     repeat_ref_re = re.compile(
         r"Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*:?\s*"
-        r"(?:With\s+Colour\s+([A-Za-z0-9]+)(?:\s*[—-]\s*([A-Za-z]+))?\s*[:,]\s*)?"
+        r"(?:With\s+(Colour\s+[A-Za-z0-9]+|White)(?:\s*[—-]\s*([A-Za-z]+))?\s*[:,]\s*)?"
         r"Repeat\s+Rows?\s*(\d+)(?:\s*[–-]\s*(\d+))?\.?",
         re.I,
     )

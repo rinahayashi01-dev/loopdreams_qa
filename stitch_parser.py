@@ -124,9 +124,13 @@ _RE_SL_ST_EDGE_ATTACH = re.compile(
 # is itself optional -- real sample (LoopDreams generator): "changing to
 # Colour 2 in the last st" with no name at all (the name is a frontend-only
 # display enrichment, never part of the stored pattern text this tool
-# actually receives).
+# actually receives). Also accepts a bare "changing to White in the last
+# st" -- no "colour" word at all -- for margin/blank picture-grid cells,
+# which the generator's own colourLabel() names literally "White" rather
+# than a numbered "Colour N" (see pattern_parser.py's Foundation-clause fix
+# comment for the BLANK_COLOUR source).
 _RE_INLINE_COLOUR_CHANGE = re.compile(
-    r"^changing\s+to\s+colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?\s+in\s+the\s+last\s+st$", re.I
+    r"^changing\s+to\s+(?:colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?|white)\s+in\s+the\s+last\s+st$", re.I
 )
 # "working the last 2 sts of the round into the 2 ch just made" -- the
 # comma-split half of the round-completion sentence that follows "sc in
