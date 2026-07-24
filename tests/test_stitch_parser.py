@@ -161,6 +161,41 @@ class TestMittensClauseShapes(unittest.TestCase):
         self.assertEqual(len(clauses), 1)
         self.assertEqual(clauses[0].clause_type, "unknown")
 
+    def test_loop_variant_stitches_recognized_with_fixed_1to1_ratio(self):
+        # Real samples (LoopDreams generator, real production patterns): bl
+        # sc/fl sc/hhdc/wc st are each a single insertion-point variant of an
+        # existing base stitch (back/front loop only, front-loop-pull-through,
+        # or the post below), not a compound/decorative stitch with a
+        # pattern-defined ratio -- every instance still consumes exactly 1
+        # previous-row stitch and produces exactly 1 current-row stitch.
+        # Previously entirely absent from this tool's known tokens, so every
+        # row using one came back as a mass of "unrecognized clause" findings.
+        for phrase, stitch in [
+            ("32 bl sc in next 32 sts", "bl sc"),
+            ("32 fl sc in next 32 sts", "fl sc"),
+            ("32 hhdc in next 32 sts", "hhdc"),
+            ("32 wc st in next 32 sts", "wc st"),
+        ]:
+            clauses = tokenize_round(phrase)
+            self.assertEqual(len(clauses), 1, phrase)
+            c = clauses[0]
+            self.assertEqual(c.clause_type, "literal_count", phrase)
+            self.assertEqual(c.stitch, stitch, phrase)
+            self.assertEqual(c.consumes, 32, phrase)
+            self.assertEqual(c.produces, 32, phrase)
+
+    def test_loop_variant_stitches_recognized_at_start_of_row(self):
+        # Real row shape: "Hhdc in 3rd ch from hook and in each ch across."
+        # (Title-cased at the start of a sentence) -- confirms case-
+        # insensitive lookup, not just the mid-sentence lowercase form above.
+        for phrase in [
+            "Hhdc in 3rd ch from hook and in each ch across",
+            "Wc st in 2nd ch from hook and in each ch across",
+            "Bl sc in 2nd ch from hook and in each ch across",
+        ]:
+            clauses = tokenize_round(phrase)
+            self.assertEqual([c for c in clauses if c.clause_type == "unknown"], [], phrase)
+
     def test_multi_into_each_next(self):
         clauses = tokenize_round("2 sc in each of next 2 sts")
         self.assertEqual(len(clauses), 1)

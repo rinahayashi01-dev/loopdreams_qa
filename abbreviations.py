@@ -66,6 +66,24 @@ STITCH_MATH = {
     "tr2tog": (2, 1),
     "htr2tog": (2, 1),
     "dtr2tog": (2, 1),
+    # Loop-variant stitches (LoopDreams' Stitch_Library skill-tier expansion,
+    # loopdreams repo) -- each is a SINGLE insertion-point variant of an
+    # existing base stitch, not a compound/decorative stitch with a
+    # pattern-defined ratio: bl sc/fl sc insert under one loop only (back or
+    # front) instead of both, same as a plain sc; hhdc inserts under the
+    # front loop and pulls through only the first loop before finishing like
+    # a regular hdc; wc st (waistcoat stitch) inserts into the "v" post
+    # below rather than the top two loops. All still consume exactly 1
+    # previous-row stitch and produce exactly 1 current-row stitch per
+    # instance -- these were simply never taught to this tool, so every
+    # real pattern using one came back as a mass of "unrecognized clause"
+    # findings instead of a real opinion (confirmed via loopdreams'
+    # scripts/metric-sweep.ts + qa-triage.ts output against real production
+    # patterns).
+    "bl sc": (1, 1),
+    "fl sc": (1, 1),
+    "hhdc": (1, 1),
+    "wc st": (1, 1),
 }
 
 # Named/compound decorative stitches with no fixed universal ratio.
