@@ -31,12 +31,19 @@ class TestStitchInChain1Space(unittest.TestCase):
     def test_skip_next_st_recognized_not_just_skip_first(self):
         # _RE_SKIP_POSITIONAL previously only matched "skip (the) first
         # st" -- "skip next st"/"skip last st" fell through to unknown.
-        for word in ("first", "next", "last"):
+        for word in ("next", "last"):
             clauses = tokenize_round(f"skip {word} st")
             self.assertEqual(len(clauses), 1)
             self.assertEqual(clauses[0].clause_type, "skip")
             self.assertEqual(clauses[0].consumes, 1)
             self.assertEqual(clauses[0].produces, 0)
+        # "skip first st" is the one position word that gets a different
+        # produces value -- see TestSkipFirstStAsRowOpener below for why.
+        clauses = tokenize_round("skip first st")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "skip")
+        self.assertEqual(clauses[0].consumes, 1)
+        self.assertEqual(clauses[0].produces, 1)
 
     def test_moss_style_row_with_new_phrasing_verifies_end_to_end(self):
         # Confirms the fix doesn't just tokenize correctly in isolation --
@@ -63,6 +70,78 @@ class TestStitchInChain1Space(unittest.TestCase):
         issues = stitch_count.check(pattern)
         row2_issues = [i for i in issues if i.location == "Row 2"]
         self.assertEqual(row2_issues, [])
+
+
+class TestSkipFirstStAsRowOpener(unittest.TestCase):
+    def test_bare_skip_first_st_opening_a_row_produces_one(self):
+        # Real sample (Waffle Tote Bag, post-loopdreams#318 wording fix,
+        # Jul 26 batch): that PR dropped the row-opening "Ch 2 (counts as
+        # dc)" restatement after real tester feedback showed it read as
+        # two separate turning chains -- the chain is already made by the
+        # PREVIOUS row's own trailing "Ch 2, turn.", so nothing in THIS
+        # row's text needs to say so again. Before this fix, the checker
+        # read the row's now-bare "skip first st" as a genuine, unbalanced
+        # decrease (consumes=1, produces=0) and flagged every waffle row
+        # as a stitch-count mismatch.
+        clauses = tokenize_round(
+            "Skip first st, *fpdc around next st, dc in next 2 sts; "
+            "rep from * to last 2 sts, fpdc around next st, dc in top of ch. Ch 2, turn."
+        )
+        self.assertEqual(clauses[0].clause_type, "skip")
+        self.assertEqual(clauses[0].consumes, 1)
+        self.assertEqual(clauses[0].produces, 1)
+
+    def test_leading_counted_chain_still_balances_the_old_way(self):
+        # The older "Ch 2 (counts as dc), skip first st, ..." phrasing
+        # still works exactly as before -- the skip clause here is index
+        # 1, not 0, so the new row-opener adjustment never fires; the
+        # counted_chain clause (produces=1) is what balances it, same as
+        # always.
+        clauses = tokenize_round(
+            "Ch 2 (counts as dc), skip first st, *fpdc around next st, dc in next 2 sts; "
+            "rep from * to last 2 sts, fpdc around next st, dc in top of ch. Ch 2, turn."
+        )
+        self.assertEqual(clauses[0].clause_type, "counted_chain")
+        self.assertEqual(clauses[0].produces, 1)
+        self.assertEqual(clauses[1].clause_type, "skip")
+        self.assertEqual(clauses[1].consumes, 1)
+        self.assertEqual(clauses[1].produces, 0)
+
+    def test_skip_first_st_mid_row_not_touched(self):
+        # Scoping check: "skip first st" only gets the row-opener
+        # adjustment at clause index 0. A (synthetic) row where it shows up
+        # later must be left as a genuine decrease -- never seen in a real
+        # LoopDreams sample, but the fix must not silently reinterpret one
+        # if it existed.
+        clauses = tokenize_round("Sc in next st, skip first st, sc in next st")
+        skip_clause = next(c for c in clauses if c.clause_type == "skip")
+        self.assertEqual(skip_clause.consumes, 1)
+        self.assertEqual(skip_clause.produces, 0)
+
+    def test_waffle_tote_bag_row_verifies_end_to_end(self):
+        # Confirms the fix doesn't just tokenize correctly in isolation --
+        # the full stitch-count check resolves the new waffle phrasing
+        # cleanly, matching the real deployed generator's output (dry-run
+        # against Tote Bag/waffle, 14x16in/24in handles, Jul 26 QA check).
+        raw = (
+            "Waffle Tote Bag\n"
+            "MATERIALS\n"
+            "Gauge: 5 sts x 2.5 rows = 1 in\n"
+            "Terminology: US\n"
+            "Yarn: Test yarn\n"
+            "Hook: 4.0 mm\n"
+            "ABBREVIATIONS\n"
+            "ch = chain, dc = double crochet, fpdc = front post double crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation: Ch 71.\n"
+            "Row 1: Dc in 3rd ch from hook (skipped 2-ch does not count as st) and in each ch across. Ch 2, turn. (69 sts)\n"
+            "Row 2: Skip first st, *fpdc around next st, dc in next 2 sts; rep from * to last 2 sts, fpdc around next st, dc in top of ch. Ch 2, turn. (69 sts)\n"
+            "Row 3: Skip first st, *dc in next st, fpdc around next 2 sts; rep from * to last 2 sts, dc in next st, dc in top of ch. Fasten off. (69 sts)\n"
+        )
+        pattern = parse(raw)
+        issues = stitch_count.check(pattern)
+        stitch_count_errors = [i for i in issues if i.category == "stitch_count"]
+        self.assertEqual(stitch_count_errors, [])
 
 
 class TestFoundationIntoChainParenthetical(unittest.TestCase):
