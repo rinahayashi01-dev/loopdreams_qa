@@ -21,6 +21,7 @@ calls for the same pattern don't pay a rebuild cost per row.
 """
 import functools
 import re
+from dataclasses import replace
 
 from .models import StitchClause
 from . import abbreviations as ab
@@ -56,6 +57,10 @@ _RE_SETUP = re.compile(r"^with (rs|ws) facing\b", re.I)
 _RE_REP_FROM = re.compile(r"^rep(?:eat)? from \*\s*(.*)$", re.I)
 _RE_SKIP = re.compile(r"^sk(?:ip)?\s+(\d+)", re.I)
 _RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+{_POS}\s+{_NOUN}$", re.I)
+# A row's OWN opening clause reading exactly "skip first st" (not "skip
+# next st" or "skip last st" -- those aren't this convention, see
+# tokenize_round's use of this below).
+_RE_SKIP_FIRST_ST = re.compile(r"^skip\s+first\s+sts?\b", re.I)
 # "skip (the) ch-1 sp(ace)" -- skips a chain-1 SPACE created by an earlier
 # 'ch 1' in the pattern, not a real previous-row stitch (e.g. linen/moss
 # stitch's "*ch 1, skip the ch-1 space, sc in next sc*"). Distinct from
@@ -453,6 +458,27 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
                                          f"could not parse repeat multiplier '{m.group(2)}'"))
             continue
         clauses.append(_classify(part, patterns, custom_compound))
+
+    # A row's very first clause being a bare "skip first st" (consumes=1,
+    # produces=0, no counted_chain clause ahead of it -- it IS clause 0) is
+    # the modern, more concise phrasing for a turning-chain-replaces-the-
+    # first-stitch row. The older phrasing stated this explicitly as a
+    # leading "Ch N (counts as dc), skip first st, ..." pair -- counted_chain
+    # (produces=1) balancing this skip (consumes=1, produces=0) to a wash --
+    # but the shorter form relies on the PREVIOUS row's own trailing
+    # "Ch N, turn." having already made that chain, so nothing in THIS row's
+    # text states it (real sample: Waffle Tote Bag, post-loopdreams#318
+    # wording fix, Jul 26 batch -- that PR intentionally dropped the
+    # restatement after real tester feedback showed it read as two separate
+    # chains, see loopdreams builders.ts's Assembly-area comment). Scoped
+    # tightly to the exact "skip first st" phrasing and clause position 0 so
+    # it can't reinterpret a real mid-row decrease (e.g. bobble's "*dc in
+    # next st, skip next st, ...*", or moss/linen's "skip next st" chain-1-
+    # space offset, both of which are never clause 0 and never say "first").
+    if (clauses and clauses[0].clause_type == "skip" and clauses[0].consumes == 1
+            and clauses[0].produces == 0 and _RE_SKIP_FIRST_ST.match(clauses[0].raw.strip())):
+        clauses[0] = replace(clauses[0], produces=1)
+
     return clauses
 
 
