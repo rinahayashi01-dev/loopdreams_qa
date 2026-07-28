@@ -281,20 +281,25 @@ _RE_ROW_AS_FOUNDATION = re.compile(
     r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+(\d+)\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
     re.I,
 )
-# "Row 136 With RS facing, join yarn to the first stitch of the foundation
-# chain. Ch 11, turn. (10 sts)" -- real sample (scarf-mossribbed, Jul 15
-# batch): a ribbing strip worked perpendicular to the main panel and fused
+# "Row 136 With RS facing, join yarn to the first stitch of the sc row.
+# Ch 11, turn. (10 sts)" -- current phrasing (loopdreams PR #333, Jul 28
+# batch): a ribbing strip worked perpendicular to the main panel is fused
 # to it row-by-row, re-joining yarn and starting a BRAND NEW, narrower
 # foundation chain mid-pattern -- structurally the same "raw chain declared
 # alongside its own already-resolved post-skip stitch count" shape as
 # _RE_ROW_AS_FOUNDATION above, just introduced by different surrounding
-# text (no "(make N):" label). Can occur MORE THAN ONCE within the same
-# component (this file re-joins along "the final row"'s edge for a second
-# ribbing strip later in the same "RIBBING" section) -- see the loop below
-# that applies both patterns repeatedly, not just once.
+# text (no "(make N):" label). As of #333 the strip attaches into a
+# preliminary sc row worked across the raw edge first (see loopdreams
+# builders.ts's buildScarfEdgeScRow), so this row now says "the sc row"
+# rather than "the foundation chain"/"the final row" directly -- both older
+# phrasings kept for backward compat with any pattern generated before #333
+# shipped (scarf-mossribbed, Jul 15 batch). Can occur MORE THAN ONCE within
+# the same component (this file re-joins along the second edge's sc row for
+# a second ribbing strip later in the same "RIBBING" section) -- see the
+# loop below that applies both patterns repeatedly, not just once.
 _RE_ROW_AS_EDGE_FOUNDATION = re.compile(
     r"Row\s*(\d+)\.?\s+With\s+RS\s+facing,?\s+join\s+yarn\s+to\s+the\s+(?:first|last)\s+stitch\s+of\s+the\s+"
-    r"(?:foundation\s+chain|final\s+row)\.?\s+Ch\s*(\d+),?\s*turn\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
+    r"(?:sc\s+row|foundation\s+chain|final\s+row)\.?\s+Ch\s*(\d+),?\s*turn\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
     re.I,
 )
 

@@ -109,18 +109,21 @@ _RE_BRIDGE_CHAIN = re.compile(r"^ch\s+(\d+)\s+to\s+bridge\s+the\s+gap$", re.I)
 _RE_SL_ST_JOIN = re.compile(
     r"^sl\s*st\s+to\s+(?:top\s+of\s+ch\s+\d+|first\s+[a-z]+)\s+to\s+join$", re.I
 )
-# "sl st in next 2 sts of the foundation chain"/"...of the final row" --
-# real phrasing (scarf-mossribbed, Jul 15 batch): a separate ribbing strip
-# is worked perpendicular to the main panel and fused to it row-by-row via
-# extra slip stitches into the panel's OWN edge (the foundation chain on
-# one side, the final row on the other), not into the ribbing's own
-# stitches. A no-op for the ribbing row's own declared width -- that width
-# is already fully accounted for by the row's other clause(s) (e.g. "sl st
-# in back loop only of each st across"); this is a side action consuming
-# from a DIFFERENT reference frame (the main panel's edge), not adding to
-# or subtracting from this row's own stitch count.
+# "sl st in next 2 sts of the sc row" (current phrasing, loopdreams PR #333,
+# Jul 28 batch) / "...of the foundation chain"/"...of the final row" (older
+# phrasing, scarf-mossribbed, Jul 15 batch, kept for backward compat with
+# any pattern generated before #333 shipped): a separate ribbing strip is
+# worked perpendicular to the main panel and fused to it row-by-row via
+# extra slip stitches into the panel's OWN edge -- as of #333, a preliminary
+# sc row worked across the raw foundation-chain/final-row edge first (see
+# loopdreams builders.ts's buildScarfEdgeScRow), not the raw edge itself.
+# A no-op for the ribbing row's own declared width -- that width is already
+# fully accounted for by the row's other clause(s) (e.g. "sl st in back
+# loop only of each st across"); this is a side action consuming from a
+# DIFFERENT reference frame (the main panel's edge), not adding to or
+# subtracting from this row's own stitch count.
 _RE_SL_ST_EDGE_ATTACH = re.compile(
-    r"^sl\s*st\s+in\s+next\s+\d+\s+sts?\s+of\s+the\s+(?:foundation\s+chain|final\s+row)$", re.I
+    r"^sl\s*st\s+in\s+next\s+\d+\s+sts?\s+of\s+the\s+(?:sc\s+row|foundation\s+chain|final\s+row)$", re.I
 )
 # "changing to Colour 2 -- Moss in the last st" -- an inline colour change
 # stated as a trailing clause within a row (distinct from the existing

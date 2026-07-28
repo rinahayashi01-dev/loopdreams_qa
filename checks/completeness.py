@@ -31,6 +31,7 @@ def check(pattern) -> list:
     issues.extend(_check_row_gaps(pattern))
     issues.extend(_check_fasten_off(pattern))
     issues.extend(_check_duplicate_turn(pattern))
+    issues.extend(_check_ribbing_redundant_leading_chain(pattern))
     issues.extend(_check_foundation_row_ambiguity(pattern))
     issues.extend(_check_non_stitch_rows(pattern))
     issues.extend(_check_missing_component_count(pattern))
@@ -251,6 +252,45 @@ def _check_duplicate_turn(pattern) -> list:
                     f"chain ({'; '.join(chain_texts)}) -- it's unclear which chain is the actual turning "
                     f"chain for this row. This looks like leftover template text from splicing in the "
                     f"colour-join instruction."
+                ),
+            ))
+    return issues
+
+
+def _check_ribbing_redundant_leading_chain(pattern) -> list:
+    """A ribbing alternating row's own leading clause restating a bare
+    'Ch N' immediately before its own stitch clause is a leftover,
+    redundant turning chain -- the PREVIOUS row's own trailing 'Ch N,
+    turn.' already made it. Real tester-reported defect (loopdreams
+    builders.ts's ribbingAlternatingRow, Jul 28 batch): every alternating
+    row after a panel's own setup row used to open with "Ch N, sl st..."/
+    "Ch N, *fpdc...", restating the exact chain the row before it had just
+    stated as its own trailing chain. Numerically invisible to the
+    stitch-count algebra -- a bare, uncounted "ch N" clause always
+    produces=0 either way -- but a real defect in the printed instructions:
+    a crocheter reading two "Ch N"s back to back either double-chains or is
+    left guessing which one is real. Scoped to rows inside a component
+    whose name contains "ribbing" (case-insensitive) so it can't misfire on
+    a legitimate leading chain used elsewhere in the app for an unrelated
+    reason (e.g. moss/linen's own ch-1-space technique, which is never
+    inside a ribbing component)."""
+    issues = []
+    for r in pattern.rows:
+        if not r.component or "ribbing" not in r.component.lower():
+            continue
+        if len(r.clauses) < 2:
+            continue
+        first, second = r.clauses[0], r.clauses[1]
+        if (first.clause_type == "chain" and first.explicit_count is not None
+                and second.clause_type in _REAL_STITCH_CLAUSE_TYPES):
+            issues.append(Issue(
+                category="completeness", severity="warning", location=r.label,
+                message=(
+                    f"{r.label} opens with 'ch {first.explicit_count}' immediately before its own stitch "
+                    f"clause -- this looks like a redundant restatement of the previous row's own trailing "
+                    f"turning chain, not a genuine leading chain this row needs. Standard convention: after "
+                    f"a row ends 'ch N, turn.', the next row continues straight into its own stitches with "
+                    f"no restatement."
                 ),
             ))
     return issues
