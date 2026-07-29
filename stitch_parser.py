@@ -140,6 +140,12 @@ _RE_SL_ST_EDGE_ATTACH = re.compile(
 _RE_INLINE_COLOUR_CHANGE = re.compile(
     r"^changing\s+to\s+(?:colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?|white)\s+in\s+the\s+last\s+st$", re.I
 )
+# "Body measures approximately 67 in." -- a length checkpoint appended to a
+# scarf body's own last row before Ribbing/Fringe/Tassels (loopdreams PR
+# #335, Jul 28 batch) -- purely informational, no stitch-count effect.
+_RE_BODY_LENGTH_CHECKPOINT = re.compile(
+    r"^body\s+measures\s+approximately\s+[\d.]+\s*in\.?$", re.I
+)
 # "working the last 2 sts of the round into the 2 ch just made" -- the
 # comma-split half of the round-completion sentence that follows "sc in
 # each remaining st around,". No-op on its own: the gusset-transition row
@@ -392,18 +398,24 @@ def _stitch_lookup(token: str, custom_compound: frozenset = frozenset()):
 
 
 def _split_top_level(text: str, seps: str = ",;.:") -> list:
-    """Split on separator chars, but never inside ( ) or [ ] -- real patterns
-    write multi-stitch clusters like "(sc, hdc, dc) in next st", which a
-    naive comma split would tear apart."""
+    """Split on separator chars, but never inside ( ) or [ ], and never on a
+    "." that's a decimal point (digit immediately before AND after it, real
+    sample: loopdreams' "Body measures approximately 19.5 in." length
+    checkpoint, Jul 28 batch) rather than a real sentence-ending period --
+    real patterns write multi-stitch clusters like "(sc, hdc, dc) in next
+    st", which a naive comma split would tear apart, and a naive period
+    split would tear "19.5" into "19" + "5"."""
     parts = []
     depth = 0
     buf = []
-    for ch in text:
+    for i, ch in enumerate(text):
         if ch in "([":
             depth += 1
             buf.append(ch)
         elif ch in ")]":
             depth = max(0, depth - 1)
+            buf.append(ch)
+        elif depth == 0 and ch == "." and i > 0 and i + 1 < len(text) and text[i - 1].isdigit() and text[i + 1].isdigit():
             buf.append(ch)
         elif depth == 0 and ch in seps:
             parts.append("".join(buf))
@@ -511,7 +523,8 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
-    if _RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p):
+    if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p)
+            or _RE_BODY_LENGTH_CHECKPOINT.match(p)):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_SL_ST_JOIN.match(p):
