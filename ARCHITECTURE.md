@@ -2187,3 +2187,252 @@ closure clause still fails it, flat panel with a plain fasten-off last row
 still fails it). `tests/test_from_pattern_json.py` gained a
 `TestFinishingRowRecognition` case for the Tote Bag Handles shape. Full
 suite passes (148 tests, 1 skip).
+
+## Real-pattern triage follow-ups (Jul 23, 2026) — loopdreams_qa#20-23
+
+LoopDreams shipped its own maker-facing issue triage (`report_pattern_issue`
++ `scripts/qa-triage.ts`), which runs the real production pattern backlog
+through this tool for the first time at scale. That surfaced four real
+generator phrasings this tool had never been exercised against, since the
+curated `Batch_Test_Case` matrix never happened to cover multi-colour
+colourwork or every Tote Bag add-on combination.
+
+- **#20 — bare colour identifier, no name.** Every colour-clause regex
+  (foundation, row-opening, repeat-reference, inline colour-change) required
+  a `"-- Name"` suffix (e.g. `"With Colour 2 -- Moss,"`), but the generator's
+  *stored* pattern text never actually includes one — the name is a
+  frontend-only display enrichment added at render time, never persisted.
+  Caused `"unrecognized clause"` on essentially every row of every
+  colourwork pattern. Also fixed the far more common plain closing
+  `"Fasten off, weave in ends."` (plural, no "and"/"the"), which only the
+  amigurumi/mitten drawstring-cinch singular form had matched before.
+  Re-ran the real backlog (41 previously-flagged patterns) before/after: 2
+  additional patterns now come back clean.
+- **#21 — the same bug, missed in a fifth site.** #20 fixed
+  `pattern_parser.py`/`stitch_parser.py` but missed `from_pattern_json.py`'s
+  own `_FOUNDATION_CHAIN_RE`. A bare `"With Colour 1, Ch 33, turn."`
+  foundation row failed `_is_chain_only_foundation`, fell through to being
+  rendered as an ordinary numbered row with the *next* row's `stitch_count`
+  wrongly stamped onto its own declared count, and `pattern.foundation_chain`
+  was never set — the true root cause of a recurring false positive seen
+  across 14+ real production Scarf patterns after #20 shipped (`"Row 2:
+  ... should produce 31 sts, but the pattern declares 32 sts"`), which
+  looked like a real generator bug but was this tool double-applying the
+  "-1 for 2nd-ch-from-hook" rule on top of an already-correct chain-to-stitch
+  conversion. Re-ran the backlog: that false positive dropped from 14+ to 0.
+- **#22 — bare "With White" designator.** Margin/blank cells in a
+  picture-grid colourwork design that aren't part of the chosen palette are
+  labelled literally `"With White,"` / `"changing to White in the last
+  st"` by `generate-pattern`'s own `colourLabel()` (`colourwork.ts`) — no
+  "Colour" word at all, so it fell through every one of the same five sites
+  #20/#21 had just fixed, which all required that literal word. Confirmed
+  against a real production pattern mixing both forms in the same row.
+  Re-ran the backlog: `"With White"` false positives dropped from 2 affected
+  patterns (57 row-level occurrences) to 0.
+- **#23 — Tote Bag's full Assembly/Handles/Pocket/Liner trailing run.**
+  `buildToteBagRows` with add-ons emits up to four consecutive
+  finishing-shaped rows (Assembly, Handles, Pocket, then an Adding-a-Zipper/
+  Liner row), but this adapter only ever checked the single last row against
+  `_FINISHING_ROW_RE` — whenever a Liner/Zipper row came last, Assembly/
+  Handles/Pocket stayed stuck as ordinary numbered rows, producing genuine
+  false stitch-count errors (`"unrecognized clause: 'Assembly'"`). Broadened
+  `_FINISHING_ROW_RE` and made `build_raw_text` walk backward from the true
+  last row collecting every *consecutive* finishing-shaped row, rather than
+  checking only the final one. Also fixed a second real bug this surfaced in
+  `_parse_finishing`: collapsing the whole Finishing section into one blob
+  let one label's capture bleed into the next label's own text once more
+  than one labeled clause was present (e.g. Handles' declared count silently
+  overwritten by a later `"(N sts)"` from Pocket's own text) — fixed by
+  chunking per-label first, searching each independently. The real
+  production Tote Bag pattern that originally surfaced this went from FAIL
+  to PASS (0 errors, 0 warnings), and `qa-triage.ts` correctly auto-promoted
+  it past `review_needed`.
+
+New tests across `test_shawl_coaster_dishcloth.py`, `test_stitch_parser.py`,
+and a new `TestMultipleTrailingFinishingRows` case in
+`test_from_pattern_json.py`; each confirmed to fail with the exact real
+symptom when temporarily reverted, before being fixed. Full suite passes
+(160 tests, 1 skip) as of #23.
+
+## Loop-variant stitches: bl sc / fl sc / hhdc / wc st (Jul 24, 2026) — loopdreams_qa#24
+
+The last open item from the Jul 23 triage round. `bl sc`/`fl sc`/`hhdc`/
+`wc st` had been assumed to be typos or test-only data — they turned out to
+be real, fully-supported stitches in the app (Back/Front Loop Single
+Crochet, Herringbone Half Double Crochet, Waistcoat Stitch), each with its
+own stitch guide, yardage factor, and `Stitch_Library` entry in the sibling
+`loopdreams` repo (its Stitch_Library skill-tier expansion had reclassified
+and wired them in shortly before).
+Each is a single insertion-point variant of an existing base stitch (back/
+front loop only, front-loop-pull-through, or the post below) with the same
+fixed 1:1 consumes/produces ratio as a plain `sc`/`hdc` — not a compound/
+decorative stitch needing a pattern-defined construction — so this tool had
+simply never learned the words, and every real pattern using one came back
+as a mass of "unrecognized clause" findings instead of a real opinion.
+Added to `abbreviations.STITCH_MATH`.
+
+**Verified**: re-ran the real production backlog — `"hhdc"`/`"wc st"`/
+`"bl sc"` findings dropped to 0, down from several across multiple
+patterns. **This closed the last open item from the real-pattern triage
+work — the only FAIL findings remaining anywhere in the backlog were the
+already-documented "No Finishing" content gap.**
+
+New tests covering both the mid-sentence lowercase form (`"32 bl sc in next
+32 sts"`) and the Title-cased sentence-start form (`"Hhdc in 3rd ch from
+hook..."`). Full suite passes (162 tests, 1 skip).
+
+## Waffle Tote Bag's dropped turning-chain restatement (Jul 26, 2026) — loopdreams_qa#25
+
+Running the Waffle Tote Bag (post-loopdreams#318/#319 fixes, the tester
+round-2 wording/gauge round in the sibling `loopdreams` repo) through this
+tool false-flagged all 79 working rows as stitch-count mismatches (68 vs
+declared 69).
+Root cause: loopdreams#318 dropped the redundant `"Ch 2 (counts as dc)"`
+restatement from each waffle row's opener, in response to real tester
+feedback that it read as a second turning chain and caused makers to
+over-chain. This tool's stitch-count algebra had relied on that exact
+phrase's `counted_chain` clause (produces=1) to balance the paired `"skip
+first st"` clause (consumes=1, produces=0) — with the restatement gone,
+`"skip first st"` alone read as an unbalanced decrease.
+
+`tokenize_round` now recognizes a bare `"skip first st"` at clause index 0
+(the row's own opening clause, with no preceding `counted_chain`) as
+implicitly balanced by the *previous* row's own trailing `"Ch N, turn."` —
+produces=1 instead of 0. Scoped tightly to the literal phrase and clause
+index 0 only, so it can't reinterpret a real mid-row decrease (bobble's
+`"*dc in next st, skip next st, ...*"`, or moss/linen's chain-1-space
+offset) — neither of those is ever clause 0 or says "first". Verified the
+older `"Ch 2 (counts as dc), skip first st"` phrasing is untouched (the
+skip clause sits at index 1 there, not 0).
+
+**Verified**: re-ran the actual Waffle Tote Bag dry-run payload (14x16in,
+24in handles) that originally triggered this — PASS with 0 errors/0
+warnings, was FAIL with 79 stitch-count errors before. Control: fed the
+tool the OLD pre-#318 wording for the same rows — unaffected, verifies
+exactly as before.
+
+Full suite passes (166 tests, 1 skip).
+
+## Scarf ribbing wording fixes (Jul 28, 2026) — loopdreams_qa#26, #27
+
+Two same-day rounds of scarf-ribbing wording fixes, both triggered by
+loopdreams' own same-day follow-up PRs to `buildAppliedRibbingPanel` (its
+Scarf finish-options feature, still under active tester-feedback iteration
+at the time).
+
+**#26** — two fixes found together while investigating a tester-reported
+bug:
+- **Real breakage from loopdreams PR #333** (unrelated to the reported bug,
+  discovered while investigating it): #333 changed the ribbing panel's
+  attach-anchor text from "of the foundation chain"/"of the final row" to
+  "of the sc row" (a new preliminary sc row worked across the raw edge
+  first). `_RE_SL_ST_EDGE_ATTACH` (stitch_parser.py) and
+  `_RE_ROW_AS_EDGE_FOUNDATION` (pattern_parser.py) only recognized the older
+  wording — every ribbing row in a pattern generated since #333 shipped was
+  silently misparsed. Both now also accept "sc row" (old wording kept for
+  backward compat).
+- **The actual reported bug**: a tester-visible duplicate turning chain in
+  scarf ribbing, fixed same-day in loopdreams' `builders.ts`
+  (`ribbingAlternatingRow`) — every alternating ribbing row used to restate
+  its own leading `"Ch N,"`, redundantly duplicating the previous row's own
+  trailing `"Ch N, turn."`. Numerically invisible to this tool's algebra (a
+  bare, uncounted chain always produces=0), so a new dedicated completeness
+  check (`_check_ribbing_redundant_leading_chain`) flags it directly by text
+  shape, scoped to rows inside a "RIBBING" component so it can't misfire
+  elsewhere.
+- Directly tokenized real ribbing row text (both old-buggy and new-fixed
+  wording) via `tokenize_round()` to confirm the exact clause shapes before
+  writing the check.
+
+**#27** — two more wording fixes, needed by loopdreams' own further
+same-day follow-ups:
+1. **Merged ribbing opening row.** `buildAppliedRibbingPanel` now folds the
+   preliminary sc pass directly into the panel's own opening row (join → sc
+   across → chain straight up, no fasten off/rejoin) — real crocheter
+   feedback flagged the earlier two-row version as an unnecessary fasten
+   off immediately followed by a rejoin, since the sc pass and the chain-up
+   traverse the same edge in the same direction. `_RE_ROW_AS_EDGE_FOUNDATION`
+   required the chain-up to immediately follow the join clause with nothing
+   in between; now tolerates an optional sc-pass clause folded in the
+   middle, with both older phrasings still matching unchanged.
+2. **Body-length checkpoint.** loopdreams' new `"Body measures
+   approximately X in."` checkpoint (appended to a scarf body's own last
+   row before Ribbing/Fringe/Tassels) wasn't recognized at all, flagging a
+   spurious "Cannot verify stitch-count math" warning on every such row.
+   Added as a no-op `note` clause.
+3. **General bug found along the way**: `_split_top_level`'s period-based
+   clause splitter was tearing a decimal number like `"19.5"` into two
+   separate clauses (`"19"` + `"5"`) — nothing before this had ever needed
+   an inline decimal. Fixed: a `"."` with a digit immediately before AND
+   after is now part of the number, not a clause boundary.
+- Ran a full realistic current-day scarf-ribbing sample (including the
+  body-length checkpoint) through the actual `stitch_count.check()`/
+  `completeness.check()` pipeline before and after, confirming zero
+  spurious issues either way and isolating one unrelated test-data typo of
+  its own along the way from the real regressions.
+
+`tests/test_scarf_ribbing.py` updated/extended across both PRs. Full suite
+passes (171 tests, 1 skip) as of #26, (176 tests, 1 skip) as of #27.
+
+## Magic-ring/oval foundation clauses + the "bo" bobble abbreviation (Jul 29, 2026) — loopdreams_qa#28
+
+Running `scripts/batch-test.ts` against a local Supabase stack (all 39
+curated `Batch_Test_Case` rows — 13 templates × 3 skill levels) for the
+first time closed the exact gap this tool had flagged as a known
+limitation of its own back on Jul 16 (see "Batch-generation integration"
+above: *"'Magic ring' and '11 dc in ring' aren't clauses `stitch_parser.py`
+recognizes yet"*). Two related gaps, both real:
+
+- **Magic-ring/continuous-round constructions** (Amigurumi Ball/Cone/Limb,
+  Coaster, Mittens, plus Amigurumi Egg's two-sided oval foundation chain):
+  `"Magic ring"`, `"N <stitch> in ring"`, `"do not join or turn"`, and a
+  `"Ch N (counts as first X)"` variant — only the "first"-less `"(counts as
+  X)"` form (used elsewhere, e.g. motif corner rounds) had ever matched.
+  `"N <stitch> in ring"` gets a real `literal_count` clause: the ring has no
+  independently-stated previous count, so the stated N directly is both the
+  consumed "ring size" and (via the stitch's own ratio) the produced count
+  — the same "N == N" collapsing already used elsewhere for redundant
+  restatements. For the Coaster's counted-chain joined-round shape, a
+  tokenize-time adjustment makes the counted chain claim 1 of the ring's own
+  slots (`consumes=1`) right after a `"Magic ring"` clause specifically —
+  `pattern_parser.py`'s own magic-ring foundation detection already folds
+  that chain's implicit stitch into the ring's total size (`foundation_chain
+  = N + 1`), so the row's own consumed total has to reach that same N + 1.
+- **Tote Bag advanced's `"*bo in next st"` bobble abbreviation** — the
+  generator hardcodes this literal `"bo"` text inline
+  (`buildToteBagRows`'s `isBobble` branch) and never emits an
+  abbreviation-key definition for it anywhere in the pattern text, so the
+  existing per-pattern `custom_compound_tokens` mechanism (built for
+  exactly this class of problem — its own docstring cites a real "bobble
+  tote bag, Jun 29 batch" sample) could never catch it, since that
+  mechanism needs such a definition to recognize a token at all. Confirmed
+  against `builders.ts` that a bobble is always a fixed
+  1-in/1-out stitch regardless of which pattern uses it (unlike
+  shell/cluster/moss, whose construction genuinely varies pattern to
+  pattern) — so `"bo"` is taught as a real, always-known ratio in
+  `abbreviations.STITCH_MATH`, the same category as `bl sc`/`fl sc`/`hhdc`/
+  `wc st` from #24, rather than a per-pattern compound token.
+
+**Verified against the real integration path, not just hand-written
+text**: piping realistic row text through `from_pattern_json.build_raw_text`
++ `parse()` + `stitch_count.check()` (not just `tokenize_round()` in
+isolation) caught two things a text-only check would have missed —
+`pattern_parser.py`'s `row_re` only ever recognizes a row via a trailing
+`"(N sts)"` annotation, never the stitch-abbreviation unit the generator
+embeds inline (e.g. `"(12 dc)"`), which would have made early hand-written
+unit tests pass *vacuously* (0 rows actually parsed) without this check;
+and the missing "first" variant of `"counts as"`, only found by tracing
+through why a from-real-payload Coaster round still didn't balance after
+the ring-literal fix alone.
+
+Left untouched: the accepted "No Finishing" content gap on Dishcloth/Shawl/
+Throw Blanket (product decision, out of scope, see the Jul 17 entry above).
+
+New files: `tests/test_magic_ring_foundation.py`,
+`tests/test_bobble_abbreviation.py` (27 new tests total, covering both
+clause-level `tokenize_round()` checks and full-pattern
+`parse()`/`stitch_count.check()` verification per construction, including a
+wrong-declared-count regression check for each). One pre-existing test in
+`tests/test_stitch_parser.py` updated: its arbitrary custom-compound
+placeholder token happened to be `"bo"`, renamed to `"zz"` now that `"bo"`
+is a real recognized token. Full suite passes (203 tests, 1 skip).
