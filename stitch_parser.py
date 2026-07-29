@@ -146,6 +146,28 @@ _RE_INLINE_COLOUR_CHANGE = re.compile(
 _RE_BODY_LENGTH_CHECKPOINT = re.compile(
     r"^body\s+measures\s+approximately\s+[\d.]+\s*in\.?$", re.I
 )
+# "Magic ring" -- opens a continuous-spiral or joined-round construction
+# (real samples: Amigurumi Ball/Cone/Limb, Coaster, Mittens -- loopdreams
+# generate-pattern/builders.ts, Jul 29 batch). On its own it's a pure setup
+# no-op (0 stitches exist yet) -- the real stitch count comes from the
+# following "N <stitch> in ring" clause (see patterns.ring_literal below).
+# Matched as its own top-level clause because "Magic ring." is always
+# immediately followed by a "." in the real generator text, which
+# _split_top_level treats as a separator.
+_RE_MAGIC_RING = re.compile(r"^magic\s+ring$", re.I)
+# "do not join or turn" -- states the continuous-spiral convention (no join,
+# no turning chain) for the rest of the construction. Purely informational,
+# same class of no-op as _RE_PLACE_MARKER just before it in the same
+# sentence (real samples: Amigurumi Ball/Cone/Limb, Mittens, Amigurumi Egg).
+_RE_DO_NOT_JOIN_OR_TURN = re.compile(r"^do\s+not\s+join\s+or\s+turn$", re.I)
+# "working on the opposite side of the foundation chain" -- a construction
+# note in the Amigurumi Egg/Basic Oval foundation round, marking the pivot
+# from working down one side of the starting chain to working back up the
+# other side. No stitch-count effect of its own -- the stitches on each side
+# are fully accounted for by the ordinal/each-of clauses around it.
+_RE_OPPOSITE_SIDE_CHAIN = re.compile(
+    r"^working\s+on\s+the\s+opposite\s+side\s+of\s+the\s+foundation\s+chain$", re.I
+)
 # "working the last 2 sts of the round into the 2 ch just made" -- the
 # comma-split half of the round-completion sentence that follows "sc in
 # each remaining st around,". No-op on its own: the gusset-transition row
@@ -203,10 +225,18 @@ class _Patterns:
         "stitch_in_ch1_space", "foundation_ordinal_single",
         "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
         "each_st_to_marker", "each_st_to_last", "same_st",
+        "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
     )
 
     def __init__(self, stitch_alt: str):
-        self.counts_as_chain = re.compile(rf"^ch\s+(\d+)\s*\(counts\s+as\s+({stitch_alt})\)$", re.I)
+        # Optional "first" before the stitch word -- real phrasing found on
+        # a real sample (Coaster HDC/DC round 1, loopdreams builders.ts
+        # buildCoasterRows, Jul 29 batch): "Ch 3 (counts as first dc)",
+        # alongside the previously-seen "(counts as dc)" form used
+        # elsewhere (e.g. motif rounds) with no "first" at all.
+        self.counts_as_chain = re.compile(
+            rf"^ch\s+(\d+)\s*\(counts\s+as\s+(?:first\s+)?({stitch_alt})\)$", re.I
+        )
         # Optional parenthetical clarification between the ordinal clause and
         # "and (in) each ch across" -- real phrasing found on a real sample
         # (waffle, Jul 6 batch): "Dc in 3rd ch from hook (skipped 2-ch does
@@ -360,6 +390,39 @@ class _Patterns:
         self.foundation_ordinal_single = re.compile(
             rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook$", re.I
         )
+        # "<N> <stitch> in ring" -- the opening round of a magic-ring
+        # construction (real samples: Amigurumi Ball/Cone/Limb "6 sc in
+        # ring", Coaster "9 hdc in ring" / "11 dc in ring" / "8 sc in ring",
+        # Mittens "38 sc in ring"). Unlike a real previous row, the ring
+        # itself has no independently-stated stitch count of its own -- the
+        # N stated HERE *is* the count, so consumes and produces are both
+        # directly N (times the stitch's own ratio for produces), the same
+        # "N == N" collapsing already used by literal_next's redundant-
+        # restatement case above.
+        self.ring_literal = re.compile(rf"^(\d+)\s+({stitch_alt})\s+in\s+ring$", re.I)
+        # "<stitch> in 2nd ch from hook and each of next N chs" -- the first
+        # side of a two-sided foundation-chain start (real sample:
+        # Amigurumi Egg / Basic Oval round 1, loopdreams builders.ts
+        # buildOvalRoundRows: "Sc in 2nd ch from hook and each of next 2
+        # chs"). Distinct from foundation_into_chain's whole-row "...and
+        # each ch across" shape: this one names an explicit count of
+        # further chains rather than running to the end of the row, because
+        # a second, symmetric clause covers the chain's other side later in
+        # the same row (see each_of_next_chs below). Total stitches made:
+        # 1 (the ordinal "2nd ch" itself) + N (the "next N chs").
+        self.foundation_ordinal_and_next_chs = re.compile(
+            rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook\s+and\s+each\s+of\s+next\s+(\d+)\s*chs?$",
+            re.I,
+        )
+        # "<stitch> in each of next N chs" -- the second (opposite) side of
+        # the same two-sided foundation-chain start, worked back along the
+        # chain's other loop after the "working on the opposite side of the
+        # foundation chain" pivot note (_RE_OPPOSITE_SIDE_CHAIN). Same
+        # "chs" noun as foundation_ordinal_and_next_chs above; distinct from
+        # each_of_position, which is anchored to "sts" only.
+        self.each_of_next_chs = re.compile(
+            rf"^({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(first|last|next)\s+(\d+)\s*chs?$", re.I
+        )
 
 
 @functools.lru_cache(maxsize=64)
@@ -494,6 +557,29 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
             and clauses[0].produces == 0 and _RE_SKIP_FIRST_ST.match(clauses[0].raw.strip())):
         clauses[0] = replace(clauses[0], produces=1)
 
+    # A row opening with "Magic ring" immediately followed by a counted
+    # chain ("Ch N (counts as first X)") is the joined-round magic-ring
+    # shape (real sample: Coaster HDC/DC round 1, loopdreams builders.ts
+    # buildCoasterRows: "Magic ring. Ch 3 (counts as first dc), 11 dc in
+    # ring, sl st to top of ch 3 to join."). Everywhere ELSE this same
+    # counted_chain clause shape appears, it sits atop a REAL previous
+    # round of stitches and correctly consumes=0 (the chain adds a new
+    # stitch-equivalent without using up one of the previous round's own
+    # stitches -- those are consumed by the row's other clauses instead).
+    # Here there is no previous round: the ring itself is exactly as big as
+    # this row's own stated stitch count (pattern_parser.py's magic-ring
+    # foundation detection sets pattern.foundation_chain to N+1 for this
+    # exact shape, folding the counted chain's own implicit stitch into the
+    # total) -- so the counted chain has to claim one of the ring's N+1
+    # slots itself, or this row's own consumed total could never reach the
+    # ring size it's checked against. Scoped tightly to clause position
+    # 0/1 (an exact "Magic ring" clause immediately followed by a
+    # counted_chain) so it can't reinterpret a real mid-pattern counted
+    # chain anywhere else.
+    if (len(clauses) > 1 and clauses[0].raw.strip().lower() == "magic ring"
+            and clauses[1].clause_type == "counted_chain"):
+        clauses[1] = replace(clauses[1], consumes=1)
+
     return clauses
 
 
@@ -524,7 +610,11 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p)
-            or _RE_BODY_LENGTH_CHECKPOINT.match(p)):
+            or _RE_BODY_LENGTH_CHECKPOINT.match(p) or _RE_DO_NOT_JOIN_OR_TURN.match(p)
+            or _RE_OPPOSITE_SIDE_CHAIN.match(p)):
+        return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
+
+    if _RE_MAGIC_RING.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_SL_ST_JOIN.match(p):
@@ -560,6 +650,35 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
         return StitchClause(raw=raw_part, stitch=canon, clause_type="foundation_into_chain",
                              explicit_count=int(m.group(2)), is_compound=is_compound)
+
+    # "<stitch> in 2nd ch from hook and each of next N chs" -- one side of a
+    # two-sided oval/egg foundation-chain start (see patterns.foundation_
+    # ordinal_and_next_chs's own comment). Checked before foundation_
+    # ordinal_single below, whose own "...from hook$" shape would otherwise
+    # never match this anyway (extra trailing text after "hook").
+    m = patterns.foundation_ordinal_and_next_chs.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        n = 1 + int(m.group(3))  # the ordinal "Nth ch" stitch itself, plus the N further chs
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "<stitch> in each of next N chs" -- the opposite side of the same
+    # two-sided foundation-chain start (see patterns.each_of_next_chs's own
+    # comment). consumes=0: worked into the foundation chain, not a
+    # previous round of real stitches.
+    m = patterns.each_of_next_chs.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        n = int(m.group(3))
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
 
     m = patterns.each_st_to_last.match(p)
     if m:
@@ -669,6 +788,21 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                              explicit_count=n_stitches, consumes=consumed_target,
                              produces=produces, is_compound=is_compound,
                              unverifiable_reason=unverifiable_reason)
+
+    # "<N> <stitch> in ring" -- the opening round of a magic-ring
+    # construction (see patterns.ring_literal's own comment). The stated N
+    # directly is both the consumed "ring size" and (via the stitch's own
+    # ratio) the produced stitch count -- there's no separate previous-row
+    # count to cross-check it against.
+    m = patterns.ring_literal.match(p)
+    if m:
+        n = int(m.group(1))
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=n, consumes=n, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
 
     # "<stitch> in each of (the) first/last N sts" -- non-repeated edge
     # stitches stated with an explicit count rather than "in next N".

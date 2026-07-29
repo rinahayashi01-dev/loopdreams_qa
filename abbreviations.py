@@ -84,6 +84,23 @@ STITCH_MATH = {
     "fl sc": (1, 1),
     "hhdc": (1, 1),
     "wc st": (1, 1),
+    # "bo" -- LoopDreams' own Tote Bag bobble-stitch abbreviation (real
+    # sample: Tote Bag advanced, Jul 29 batch: "*bo in next st, sc in next
+    # st; rep from * to last st, sc in last st."). Unlike the pattern-
+    # defined compound words below (shell/cluster/moss/etc., whose actual
+    # construction varies pattern to pattern and must be verified against
+    # that pattern's own definition), this is the generator's OWN hardcoded
+    # template (loopdreams builders.ts buildToteBagRows' isBobble branch) --
+    # always exactly "5 incomplete dc pulled through together in the same
+    # st", i.e. one worked stitch replacing one previous-row stitch,
+    # regardless of which pattern it appears in. Same category as bl sc/
+    # fl sc/hhdc/wc st above: a fixed single-insertion-point variant, not a
+    # genuinely pattern-configurable decorative stitch -- and the generator
+    # never actually emits an abbreviation-key entry defining "bo" anywhere
+    # in the pattern text, so the custom_compound_tokens() per-pattern path
+    # (which needs such a definition to recognize a token at all) can never
+    # catch this one; it has to be taught here instead, the same as sc/dc.
+    "bo": (1, 1),
 }
 
 # Named/compound decorative stitches with no fixed universal ratio.
