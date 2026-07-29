@@ -194,14 +194,20 @@ class TestCornerClause(unittest.TestCase):
         # verify" for a compound stitch. Must now leave produces unset and
         # carry a specific unverifiable_reason, exactly like every other
         # compound-stitch clause shape (each_st_across/around, etc.).
-        clauses = tokenize_round("3 bo in corner", custom_compound=frozenset({"bo"}))
+        # "zz" is an arbitrary stand-in custom-compound token here, not tied
+        # to any real abbreviation -- "bo" itself no longer works as this
+        # placeholder as of the Tote Bag bobble fix (Jul 29 batch), which
+        # gave "bo" a real, fixed, always-known (1, 1) ratio in
+        # abbreviations.STITCH_MATH (see there for why), so it would no
+        # longer take the compound/unverifiable path this test exercises.
+        clauses = tokenize_round("3 zz in corner", custom_compound=frozenset({"zz"}))
         self.assertEqual(len(clauses), 1)
         c = clauses[0]
         self.assertEqual(c.clause_type, "corner")
         self.assertEqual(c.explicit_count, 3)
         self.assertTrue(c.is_compound)
         self.assertIsNone(c.produces)
-        self.assertIn("bo", c.unverifiable_reason)
+        self.assertIn("zz", c.unverifiable_reason)
 
 
 class TestMittensClauseShapes(unittest.TestCase):
