@@ -299,7 +299,14 @@ _RE_ROW_AS_FOUNDATION = re.compile(
 # loop below that applies both patterns repeatedly, not just once.
 _RE_ROW_AS_EDGE_FOUNDATION = re.compile(
     r"Row\s*(\d+)\.?\s+With\s+RS\s+facing,?\s+join\s+yarn\s+to\s+the\s+(?:first|last)\s+stitch\s+of\s+the\s+"
-    r"(?:sc\s+row|foundation\s+chain|final\s+row)\.?\s+Ch\s*(\d+),?\s*turn\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
+    r"(?:sc\s+row|foundation\s+chain|final\s+row)\.?"
+    # Current phrasing (loopdreams, same-day follow-up to PR #333): the
+    # preliminary sc pass across the raw edge is now folded directly into
+    # this same row instead of being a separate row that fastens off and
+    # gets rejoined -- optional so the OLDER two-row "sc row" phrasing
+    # (chain immediately follows the join, no sc pass here) still matches.
+    r"(?:\s+Sc\s+in\s+each\s+st\s+evenly\s+across,\s+ending\s+at\s+the\s+opposite\s+corner\.?)?"
+    r"\s+Ch\s*(\d+),?\s*turn\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
     re.I,
 )
 

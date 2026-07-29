@@ -87,6 +87,75 @@ class TestSlStEdgeAttachNoOp(unittest.TestCase):
         self.assertEqual(clauses[0].produces, 0)
 
 
+class TestBodyLengthCheckpointNoOp(unittest.TestCase):
+    # "Body measures approximately X in." -- appended to a scarf body's own
+    # last row before Ribbing/Fringe/Tassels (loopdreams PR #335, Jul 28
+    # batch). Purely informational, no stitch-count effect -- must not be
+    # reported as an unrecognized clause (real regression found while
+    # testing today's other scarf-ribbing fixes: every scarf with this
+    # checkpoint was flagging a spurious "Cannot verify stitch-count math"
+    # warning on its body's own last row).
+    def test_checkpoint_is_a_noop(self):
+        clauses = tokenize_round("Body measures approximately 67 in.")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "note")
+        self.assertEqual(clauses[0].consumes, 0)
+        self.assertEqual(clauses[0].produces, 0)
+
+    def test_checkpoint_with_decimal_length_is_a_noop(self):
+        clauses = tokenize_round("Body measures approximately 19.5 in.")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "note")
+
+    def test_checkpoint_trailing_on_a_real_row_does_not_break_its_math(self):
+        clauses = tokenize_round("Dc in each st across. Fasten off, weave in ends. Body measures approximately 67 in.")
+        self.assertEqual([c.clause_type for c in clauses], ["each_st_across", "fasten_off", "closure", "note"])
+        self.assertIsNone(clauses[-1].unverifiable_reason)
+
+
+class TestRibbingOpeningRowMergedScPass(unittest.TestCase):
+    """Current construction (loopdreams, Jul 28 batch, same-day follow-up to
+    PR #333): the preliminary sc pass across the raw edge is folded directly
+    into the ribbing panel's own opening row (join, sc across, chain
+    straight up -- no fasten off, no rejoin) rather than being a separate
+    row. _RE_ROW_AS_EDGE_FOUNDATION must still recognize this merged shape
+    as a row-declared-foundation (establishing component_foundations for
+    the panel that follows), not just the older two-row phrasing."""
+
+    def _raw(self, opening_row: str):
+        return (
+            "Test Scarf\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, sl st = slip stitch, sc = single crochet, dc = double crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "FORMING THE BODY\n"
+            "Foundation Ch 10, turn.\n"
+            "Row1 Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (9 sts)\n"
+            "RIBBING\n"
+            f"Row 2 {opening_row}\n"
+            "Row 3 Sl st in 2nd ch from hook and in each ch across. Fasten off. (5 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+
+    def test_merged_opening_row_still_establishes_the_ribbing_foundation(self):
+        raw = self._raw(
+            "With RS facing, join yarn to the first stitch of the foundation chain. Sc in each st evenly "
+            "across, ending at the opposite corner. Ch 6, turn. (9 sts)"
+        )
+        pattern = parse(raw)
+        self.assertEqual(pattern.component_foundations["RIBBING"], (6, False))
+
+    def test_older_two_row_phrasing_still_works_too(self):
+        # Backward compat: a pattern generated before today's fix (or the
+        # older "sc row" wording from PR #333 alone) has no sc-pass clause
+        # folded into this row at all -- must still match.
+        raw = self._raw("With RS facing, join yarn to the first stitch of the sc row. Ch 6, turn. (5 sts)")
+        pattern = parse(raw)
+        self.assertEqual(pattern.component_foundations["RIBBING"], (6, False))
+
+
 class TestRibbingSectionLabelContinuation(unittest.TestCase):
     """Mirrors the real scarf-mossribbed construction: a moss-stitch main
     panel ("FORMING THE BODY") followed by a "RIBBING" section that (a)
@@ -97,19 +166,22 @@ class TestRibbingSectionLabelContinuation(unittest.TestCase):
     of the panel's own stitch count."""
 
     def _raw(self):
-        # As of loopdreams PR #333 (Jul 28 batch): a preliminary sc row is
-        # worked across the raw foundation-chain/final-row edge first (see
-        # buildScarfEdgeScRow) -- the panel attaches into THAT row instead
-        # of the raw edge directly, and the "Ribbing (Panel N):" label moved
-        # onto this new sc row (stripped from the PDF text, same as it
-        # always was on whichever row carried it -- see
-        # PatternPrintView.tsx's isRibbingStep-driven stripping). Also
-        # post loopdreams PR #333-adjacent bug fix (Jul 28 batch, real
-        # tester-visible defect): each alternating row used to restate its
-        # own leading "Ch N," -- e.g. "Ch 1, sl st in back loop..." --
+        # Current phrasing (loopdreams, Jul 28 batch, same-day follow-up to
+        # PR #333): the preliminary sc pass across the raw foundation-chain/
+        # final-row edge is folded directly into the panel's own opening row
+        # (real crocheter feedback: the earlier two-row version -- a
+        # separate sc row that fastened off, immediately followed by a
+        # rejoin -- was an unnecessary fasten off/rejoin, since the sc pass
+        # and the panel's own chain-up traverse the same edge in the same
+        # direction). The "Ribbing (Panel N):" label stays on this same
+        # merged row (stripped from the PDF text, same as it always was on
+        # whichever row carried it -- see PatternPrintView.tsx's
+        # isRibbingStep-driven stripping). Also reflects the same-day
+        # tester-reported fix: each alternating row used to restate its own
+        # leading "Ch N," -- e.g. "Ch 1, sl st in back loop..." --
         # duplicating the PREVIOUS row's own trailing "Ch N, turn." Fixed to
         # open directly with the stitch clause instead, same convention this
-        # sample's Row 6 always used correctly for the setup row already.
+        # sample's Row 5 always used correctly for the setup row already.
         return (
             "Test Scarf\n"
             + MATERIALS_BLOCK
@@ -119,15 +191,14 @@ class TestRibbingSectionLabelContinuation(unittest.TestCase):
             "FORMING THE BODY\n"
             "Foundation Ch 10, turn.\n"
             "Row1 Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (9 sts)\n"
-            "Row 2 Sc in each st across. Ch 1, turn. (9 sts)\n"
+            "Row 2 Sc in each st across. Fasten off, weave in ends. Body measures approximately 5 in. (9 sts)\n"
             "RIBBING\n"
             "Row 3 With RS facing, join yarn to the first stitch of the foundation chain. Sc in each st "
-            "evenly across, ending at the opposite corner. Fasten off. (9 sts)\n"
-            "Row 4 With RS facing, join yarn to the first stitch of the sc row. Ch 6, turn. (5 sts)\n"
-            "Row 5 Sl st in 2nd ch from hook and in each ch across. Sl st in next 2 sts of the sc row. "
+            "evenly across, ending at the opposite corner. Ch 6, turn. (9 sts)\n"
+            "Row 4 Sl st in 2nd ch from hook and in each ch across. Sl st in next 2 sts of the sc row. "
             "Ch 1, turn. (5 sts)\n"
-            "Row 6 Sl st in back loop only of each st across. Ch 1, turn. (5 sts)\n"
-            "Row 7 Sl st in back loop only of each st across. Sl st in next 1 st of the sc row. "
+            "Row 5 Sl st in back loop only of each st across. Ch 1, turn. (5 sts)\n"
+            "Row 6 Sl st in back loop only of each st across. Sl st in next 1 st of the sc row. "
             "Fasten off. (5 sts)\n"
             "Finishing\n"
             "Border: Fasten off. (40 sts)\n"
@@ -147,7 +218,7 @@ class TestRibbingSectionLabelContinuation(unittest.TestCase):
         self.assertEqual(pattern.component_foundations["RIBBING"], (6, False))
 
     def test_ribbing_stitch_math_verifies_against_its_own_foundation(self):
-        # Row 5 must derive its in-count from RIBBING's own 6-chain
+        # Row 4 must derive its in-count from RIBBING's own 6-chain
         # foundation (-> 5 sts), NOT from Row 2's 9 sts.
         pattern = parse(self._raw())
         issues = stitch_count.check(pattern)
@@ -156,15 +227,15 @@ class TestRibbingSectionLabelContinuation(unittest.TestCase):
 
     def test_wrong_declared_count_in_ribbing_still_caught(self):
         raw = self._raw().replace(
-            "Row 5 Sl st in 2nd ch from hook and in each ch across. Sl st in next 2 sts of the sc row. "
+            "Row 4 Sl st in 2nd ch from hook and in each ch across. Sl st in next 2 sts of the sc row. "
             "Ch 1, turn. (5 sts)",
-            "Row 5 Sl st in 2nd ch from hook and in each ch across. Sl st in next 2 sts of the sc row. "
+            "Row 4 Sl st in 2nd ch from hook and in each ch across. Sl st in next 2 sts of the sc row. "
             "Ch 1, turn. (99 sts)",
         )
         pattern = parse(raw)
         issues = stitch_count.check(pattern)
-        row5_errors = [i for i in issues if i.location == "Row 5" and i.severity == "error"]
-        self.assertEqual(len(row5_errors), 1)
+        row4_errors = [i for i in issues if i.location == "Row 4" and i.severity == "error"]
+        self.assertEqual(len(row4_errors), 1)
 
     def test_second_reset_within_same_component_not_stale(self):
         # The core bug found this session: a SECOND "join yarn...Ch N,
