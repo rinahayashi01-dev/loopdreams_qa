@@ -2547,3 +2547,39 @@ content gap. If a *new* template's Finishing section ever produces a REVIEW
 again, don't default to "accepted content gap" without first tracing
 whether it's this same checker-side gap in a new shape, given this was
 wrongly assumed once already.
+
+## Amigurumi stuffing/tail clauses (Aug 1, 2026) — loopdreams_qa#32
+
+Continuing to work down the remaining `scripts/batch-test.ts` REVIEW list
+after PRs #30/#31 cleared enough noise to see it clearly: Amigurumi Ball
+(all 3 tiers), Amigurumi Limb (all 3 tiers), and Amigurumi Cone (all 3
+tiers) were flagged "unrecognized clause" on their decrease/closing rounds.
+Three real, current generator clause shapes, all in
+`generate-pattern/builders.ts`'s shaped-round builders, none previously
+recognized by `stitch_parser.py`:
+
+- `"Stuff the piece firmly as you go."` — prefixed onto the FIRST
+  decrease-phase round (Ball/Limb).
+- `"Finish stuffing firmly."` — prefixed onto the closing drawstring-cinch
+  round (Ball/Limb) — the shape already recognized (mittens Jul 7 batch)
+  minus this new leading reminder.
+- `"Fasten off, leaving a long tail for seaming."` — Amigurumi Cone's own
+  closing row (left open, no drawstring closure, meant to be stuffed and
+  attached to a body — see the builder's own comment); the existing
+  `_RE_LEAVING_LONG_TAIL` only matched the bare "leaving a long tail" form,
+  not this one with a stated purpose.
+
+A single unrecognized clause fails stitch-count verification for the WHOLE
+row it's in, not just itself — so these three purely-informational,
+zero-stitch-count-effect reminders were masking otherwise-correctly-shaped
+rows underneath them. Fixed with a new `_RE_STUFF_NOTE` (both stuffing
+reminders, same `note`/no-op treatment as the existing "do not join or
+turn"/magic-ring construction notes) and a broadened `_RE_LEAVING_LONG_TAIL`
+(optional trailing `"for <word>"` purpose phrase).
+
+3 new tests in `tests/test_magic_ring_foundation.py`. Full suite passes
+(214 tests, 1 skip). Re-ran `scripts/batch-test.ts` against production: all
+9 Amigurumi Ball/Cone/Limb cases moved REVIEW → PASS (26 → 35 passing).
+Remaining REVIEWs are unrelated, pre-existing findings (Amigurumi Egg's
+oval two-sided foundation clause, Coaster shell's centre-dc width, Shawl's
+moss-ratio/Row-1 foundation) — untouched.
