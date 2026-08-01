@@ -171,6 +171,95 @@ class TestFoundationIntoChainParenthetical(unittest.TestCase):
         self.assertEqual(clauses[0].explicit_count, 2)
 
 
+class TestSkipFirstChainsFoundationClause(unittest.TestCase):
+    def test_singular_chain_form_sc(self):
+        # Real, current, widely-used generator output (loopdreams generate-
+        # pattern/builders.ts's skipChainsClause() helper, used across most
+        # flat-row builders): "Skip the first 1 chain from the hook (it
+        # doesn't count as a stitch). Sc in the next chain and in each ch
+        # across." A loopdreams batch-test run against production (Aug 1
+        # 2026) flagged this exact shape as an "unrecognized clause" on Row
+        # 1 of nearly the whole flat-panel matrix (Scarf, Sweater, Tote Bag,
+        # Throw Blanket, Dishcloth, Cardigan, square Coaster).
+        clauses = tokenize_round(
+            "Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Sc in the next chain and in each ch across"
+        )
+        self.assertEqual(len(clauses), 2)
+        skip_clause, stitch_clause = clauses
+        self.assertEqual(skip_clause.clause_type, "skip_first_chains_from_hook")
+        self.assertEqual(skip_clause.explicit_count, 1)
+        self.assertEqual(skip_clause.consumes, 0)
+        self.assertEqual(skip_clause.produces, 0)
+        self.assertEqual(stitch_clause.clause_type, "foundation_into_chain")
+        self.assertEqual(stitch_clause.stitch, "sc")
+        self.assertEqual(stitch_clause.explicit_count, 2)  # skip 1 -> starts in the 2nd ch from hook
+
+    def test_plural_chains_form_dc(self):
+        clauses = tokenize_round(
+            "Skip the first 3 chains from the hook (they don't count as a stitch). "
+            "Dc in the next chain and in each ch across"
+        )
+        self.assertEqual(len(clauses), 2)
+        skip_clause, stitch_clause = clauses
+        self.assertEqual(skip_clause.clause_type, "skip_first_chains_from_hook")
+        self.assertEqual(skip_clause.explicit_count, 3)
+        self.assertEqual(stitch_clause.clause_type, "foundation_into_chain")
+        self.assertEqual(stitch_clause.stitch, "dc")
+        self.assertEqual(stitch_clause.explicit_count, 4)  # skip 3 -> starts in the 4th ch from hook
+
+    def test_hdc_variant(self):
+        clauses = tokenize_round(
+            "Skip the first 2 chains from the hook (they don't count as a stitch). "
+            "Hdc in the next chain and in each ch across"
+        )
+        self.assertEqual(len(clauses), 2)
+        stitch_clause = clauses[1]
+        self.assertEqual(stitch_clause.clause_type, "foundation_into_chain")
+        self.assertEqual(stitch_clause.stitch, "hdc")
+        self.assertEqual(stitch_clause.explicit_count, 3)  # skip 2 -> starts in the 3rd ch from hook
+
+    def test_unpaired_next_chain_clause_left_unverifiable_not_misread(self):
+        # Scoping check: without the preceding skip clause, the starting
+        # position genuinely isn't stated, so this must NOT be silently
+        # treated as some default ordinal -- it should fall through to an
+        # unverifiable, not-"unknown", not-a-guessed-foundation clause.
+        clauses = tokenize_round("Sc in the next chain and in each ch across")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "foundation_stitch_in_next_chain")
+        self.assertIsNone(c.consumes)
+        self.assertIsNone(c.produces)
+        self.assertIsNotNone(c.unverifiable_reason)
+
+    def test_split_foundation_row_verifies_end_to_end(self):
+        # Confirms the fix doesn't just tokenize correctly in isolation --
+        # the full stitch-count check resolves the split "skip the first N
+        # chains .../<stitch> in the next chain..." shape exactly as it
+        # already resolves the single-clause ordinal phrasing.
+        raw = (
+            "Test Scarf\n"
+            "MATERIALS\n"
+            "Gauge: 14 sc x 16 rows = 4 in [10 cm]\n"
+            "Terminology: US\n"
+            "Yarn: Test yarn\n"
+            "Hook: 5.0 mm\n"
+            "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet\n"
+            "PATTERN STEPS\n"
+            "Foundation: Ch 22, turn.\n"
+            "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Sc in the next chain and in each ch across. Ch 1, turn. (21 sts)\n"
+            "Row 2: Sc in each st across. Ch 1, turn. (21 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (21 sts)\n"
+        )
+        pattern = parse(raw)
+        issues = stitch_count.check(pattern)
+        row1_issues = [i for i in issues if i.location == "Row 1"]
+        self.assertEqual(row1_issues, [])
+
+
 class TestCornerClause(unittest.TestCase):
     def test_simple_stitch_corner_produces_count(self):
         # A plain stitch in a corner (every real sample seen so far, always
