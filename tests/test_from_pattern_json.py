@@ -112,6 +112,41 @@ class TestFinishingRowRecognition(unittest.TestCase):
         self.assertEqual(no_finishing_issues, [], f"unexpected: {no_finishing_issues}")
 
 
+class TestUnlabeledFinishingSectionMetadata(unittest.TestCase):
+    def test_generic_flat_row_closing_with_only_section_metadata_is_recognized(self):
+        # Real generate-pattern shape (Dishcloth/Throw Blanket/square
+        # Coaster beginner variant, buildGenericFlatRows): the closing row
+        # carries its label purely via the JSON `section` field
+        # ("Assembly"), with the `instructions` text itself completely bare
+        # ("Fasten off, weave in ends.") -- unlike Tote Bag's Assembly/
+        # Handles content above, which embeds the label directly in
+        # `instructions`. build_raw_text renders this as an all-caps
+        # "ASSEMBLY" header line followed by an ordinary "Row N: ... (0
+        # sts)" line (no label text in the row itself), which previously
+        # fell through pattern_parser.py's _parse_finishing entirely --
+        # producing a false "no fasten off" REVIEW on an otherwise complete
+        # pattern. pattern_parser.py's own unlabeled-closing-content
+        # fallback (see its _parse_finishing) now recognizes this shape
+        # even with the leftover "Row N:"/"(0 sts)" cruft still attached.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 36, "instructions": "Ch 39, turn.", "section": None},
+            {"row_number": 2, "stitch_count": 36, "instructions": "Dc in 3rd ch from hook and in each ch across. Ch 3, turn.", "section": None},
+            {"row_number": 3, "stitch_count": 36, "instructions": "Dc in each st across.", "section": None},
+            {"row_number": 4, "stitch_count": 0, "instructions": "Fasten off, weave in ends.", "section": "Assembly"},
+        ]}
+        raw = build_raw_text(payload)
+        self.assertIn("ASSEMBLY", raw.split("\n"))
+
+        pattern = parse(raw)
+        finishing_rows = [r for r in pattern.rows if r.label == "Finishing"]
+        self.assertEqual(len(finishing_rows), 1)
+        self.assertIn("fasten_off", [c.clause_type for c in finishing_rows[0].clauses])
+
+        issues = stitch_count.check(pattern) + completeness.check(pattern)
+        fasten_off_issues = [i for i in issues if "fasten off" in i.message.lower()]
+        self.assertEqual(fasten_off_issues, [], f"unexpected: {fasten_off_issues}")
+
+
 class TestMultipleTrailingFinishingRows(unittest.TestCase):
     # Real generate-pattern shape (buildToteBagRows with pocket + liner
     # add-ons): the trailing run is Assembly, Handles, Pocket, then "Adding

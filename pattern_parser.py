@@ -628,6 +628,40 @@ def _parse_finishing(section: Section, pattern: Pattern):
                           raw_text=comp_text, declared_count=declared, declared_count_is_approx=is_approx)
             rr.clauses = tokenize_round(comp_text, custom_compound)
             pattern.rows.append(rr)
+            continue
+
+        # A plain, unlabeled closing instruction with no Border/Pocket/
+        # component label at all ("Fasten off, weave in ends.") -- the real
+        # shape a flat single-panel construction with no separate finishing
+        # component produces (real sample: Dishcloth/Throw Blanket/square
+        # Coaster beginner variant, generate-pattern's buildGenericFlatRows;
+        # confirmed against the real PDF renderer, PatternPrintView.tsx,
+        # which prints this content as a plain paragraph under a bare
+        # "Finishing" heading -- no label text anywhere in the rendered
+        # output). Without this fallback the chunk matches neither shape
+        # above and is silently dropped: a complete, correct pattern then
+        # reads as a false "no fasten off" finding, since the closing
+        # instruction was never captured as a checkable row at all --
+        # previously misdiagnosed as a genuine content gap in these
+        # templates (loopdreams_qa ARCHITECTURE.md's Jul 17 "No Finishing"
+        # entry), when the real content was always there; this checker just
+        # couldn't see it. Tolerates an optional leading "Row N:" badge and
+        # trailing "(N sts)" annotation -- a real PDF's own text has
+        # neither, but the from_pattern_json.py JSON adapter's generic
+        # row-rendering path can still route unlabeled finishing content
+        # through here with both still attached (it renders every row not
+        # otherwise claimed as an ordinary "Row N: ... (N sts)" line,
+        # regardless of section). Scoped to chunks that actually tokenize
+        # into real closing content (a fasten_off or closure clause) so
+        # this can't misfire on unrelated prose swept into the finishing
+        # section (e.g. a sub-heading caption) as a bogus row.
+        stripped = re.sub(r"^Row\s*\d+\s*:\s*", "", blob, flags=re.I)
+        stripped = re.sub(r"\s*\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", "", stripped).strip()
+        fallback_clauses = tokenize_round(stripped, custom_compound)
+        if any(c.clause_type in ("fasten_off", "closure") for c in fallback_clauses):
+            rr = RoundRow(label="Finishing", row_start=-1, row_end=-1, raw_text=stripped)
+            rr.clauses = fallback_clauses
+            pattern.rows.append(rr)
 
 
 # The optional "(?:[A-Za-z]+:\s*)?" tolerates a label before the date

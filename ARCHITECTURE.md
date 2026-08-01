@@ -2488,3 +2488,62 @@ PASS. Dishcloth, Throw Blanket, and square Coaster still show REVIEW, but
 now only for pre-existing, unrelated reasons (missing "fasten off",
 bobble/shell-ratio solving) — confirming this fix closed exactly the target
 finding and nothing else shifted.
+
+## "No Finishing" content gap on Dishcloth/Throw Blanket/square Coaster: reopened and actually fixed (Aug 1, 2026) — loopdreams_qa#31
+
+The Jul 17 "No Finishing" thread (see above) concluded Dishcloth/Throw
+Blanket's missing-fasten-off REVIEW was an accepted *content* gap in those
+templates, not a checker bug — reasoning that a real Finishing/Assembly
+section header was required and flat single-panel constructions could never
+produce one. Re-investigated after the split-foundation-clause fix (previous
+entry) cleared enough noise to look at the remaining REVIEWs directly, and
+that conclusion was wrong: `generate-pattern`'s `buildGenericFlatRows`
+already ends these templates correctly ("Fasten off, weave in ends.",
+`section: "Assembly"`), and the real PDF (`PatternPrintView.tsx`) already
+renders it under a genuine "Finishing" heading — the content was never
+missing. The bug was entirely in this tool.
+
+Root cause, traced end to end: `pattern_parser.py`'s top-level section
+splitter already maps an "ASSEMBLY" heading line to the `finishing` section
+(`SECTION_HEADERS["assembly"] = "finishing"`), so `_check_finishing_present`
+(which only checks whether a `finishing` *section* exists at all) was
+already satisfied and never the source of the REVIEW. The actual culprit is
+a sibling check, `_check_fasten_off`, which only looks at rows that became
+real `RoundRow` objects — and `_parse_finishing` only ever recognized
+labeled content (`Border:`/`Pocket:`/`"<Label> (make N):"`). A closing
+instruction with NO label at all — real shape for any template using
+`buildGenericFlatRows` with no separate Border/Handles/Pocket component —
+matched neither shape and was silently dropped, leaving `_check_fasten_off`
+with nothing to find. Confirmed this reproduces on real-PDF-shaped text
+directly (`"Finishing\nFasten off, weave in ends.\n"`), not just the JSON
+adapter's own rendering quirks, so it wasn't just an adapter-side gap either.
+
+Fix: `_parse_finishing` gets a final fallback — a chunk with no recognized
+label is still captured as a real `Finishing` row (`row_start=-1`, same
+sentinel `_check_fasten_off` already knows how to read) whenever it
+tokenizes into genuine closing content (a `fasten_off`/`closure` clause),
+tolerating an optional leftover `"Row N:"` badge and `"(N sts)"` annotation
+so it also covers the JSON adapter's messier rendering of the same
+generator output (which routes unlabeled finishing content through as an
+ordinary numbered row under a bare all-caps header, rather than embedding
+the label in the instruction text the way Tote Bag's Assembly/Handles
+content does). Scoped narrowly to chunks with real closing content so it
+can't sweep up unrelated Finishing-section prose as a bogus row.
+
+3 new tests (`tests/test_pattern_parser.py`'s direct real-PDF-shape case +
+an unrelated-prose scoping check, `tests/test_from_pattern_json.py`'s
+JSON-adapter-shape case with the leftover "Row N:"/"(N sts)" cruft). Full
+suite passes (211 tests, 1 skip). Re-ran `scripts/batch-test.ts` against
+production: Dishcloth (all 3 tiers), Throw Blanket (all 3 tiers), and
+square Coaster's beginner + bobble-intermediate variants all moved
+REVIEW → PASS (18 → 26 passing). Remaining REVIEWs are unrelated,
+pre-existing findings (Amigurumi stuffing/tail clauses, square Coaster
+shell's centre-dc width, Shawl's moss-ratio/Row-1 foundation) — untouched,
+confirming this closed exactly its target and nothing else shifted.
+
+**How to apply:** the "No Finishing" thread is now genuinely closed for
+every template in the curated batch matrix — there is no remaining known
+content gap. If a *new* template's Finishing section ever produces a REVIEW
+again, don't default to "accepted content gap" without first tracing
+whether it's this same checker-side gap in a new shape, given this was
+wrongly assumed once already.

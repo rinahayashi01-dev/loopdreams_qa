@@ -1,7 +1,7 @@
 import unittest
 
 from loopdreams_qa.pattern_parser import parse
-from loopdreams_qa.checks import completeness
+from loopdreams_qa.checks import completeness, stitch_count
 
 MATERIALS_BLOCK = """MATERIALS
 Gauge: 18 sc x 20 rows = 4 in [10 cm]
@@ -186,6 +186,65 @@ class TestTitleMetadataLineLabel(unittest.TestCase):
         )
         pattern = parse(raw)
         self.assertEqual(pattern.title, "Tote Bag — Jul 10")
+
+
+class TestPlainUnlabeledFinishingContent(unittest.TestCase):
+    def test_bare_fasten_off_with_no_label_is_recognized_not_dropped(self):
+        # Real generator/PDF shape (Dishcloth/Throw Blanket/square Coaster
+        # beginner variant, generate-pattern's buildGenericFlatRows -- a
+        # flat single-panel construction with no separate Border/Pocket/
+        # Handles component): the Finishing section's own content is a
+        # plain, unlabeled closing instruction ("Fasten off, weave in
+        # ends."), confirmed against the real PDF renderer
+        # (PatternPrintView.tsx), which prints this under a bare "Finishing"
+        # heading with no label text at all. Before this fix, _parse_
+        # finishing only recognized Border:/Pocket:/"<Label> (make N):"
+        # shapes, so this content was silently dropped -- a real, complete
+        # pattern then produced a false "no fasten off" REVIEW (previously
+        # misdiagnosed as a genuine content gap in these templates; the
+        # content was always there, this checker just couldn't see it).
+        raw = (
+            "Test Dishcloth\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, dc = double crochet\n"
+            "PATTERN STEPS\n"
+            "Foundation: Ch 39, turn.\n"
+            "Row 1: Skip the first 3 chains from the hook (they don't count as a stitch). "
+            "Dc in the next chain and in each ch across. Ch 3, turn. (36 sts)\n"
+            "Row 2: Dc in each st across. (36 sts)\n"
+            "Finishing\n"
+            "Fasten off, weave in ends.\n"
+        )
+        pattern = parse(raw)
+        finishing_rows = [r for r in pattern.rows if r.label == "Finishing"]
+        self.assertEqual(len(finishing_rows), 1)
+        self.assertEqual(finishing_rows[0].row_start, -1)
+        clause_types = [c.clause_type for c in finishing_rows[0].clauses]
+        self.assertIn("fasten_off", clause_types)
+
+        issues = stitch_count.check(pattern) + completeness.check(pattern)
+        fasten_off_issues = [i for i in issues if "fasten off" in i.message.lower()]
+        self.assertEqual(fasten_off_issues, [], f"unexpected: {fasten_off_issues}")
+
+    def test_unrelated_prose_with_no_closing_content_still_left_unrecognized(self):
+        # Scoping check: the fallback only claims a chunk that actually
+        # tokenizes into real closing content (fasten_off/closure) -- it
+        # must not sweep up arbitrary unrelated Finishing-section prose as
+        # a bogus row.
+        raw = (
+            "Test Blanket\n"
+            + MATERIALS_BLOCK
+            + "ABBREVIATIONS\n"
+            "ch = chain, dc = double crochet\n"
+            "PATTERN STEPS\n"
+            "Foundation: Ch 22, turn.\n"
+            "Row 1: Dc in 3rd ch from hook and in each ch across. Ch 2, turn. (19 sts)\n"
+            "Finishing\n"
+            "Some unrelated caption text with no real instruction at all.\n"
+        )
+        pattern = parse(raw)
+        self.assertNotIn("Finishing", [r.label for r in pattern.rows])
 
 
 if __name__ == "__main__":
