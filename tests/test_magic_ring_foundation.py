@@ -145,6 +145,38 @@ class TestOvalEggFoundationClauses(unittest.TestCase):
         self.assertEqual(clauses[0].consumes, 0)
         self.assertEqual(clauses[0].produces, 0)
 
+    # Current, real generator text (buildOvalRoundRows, confirmed against a
+    # loopdreams batch-test run against production, Aug 1 2026): the ordinal
+    # "2nd ch from hook" form above is no longer what this builder actually
+    # emits -- it now pairs skipChainsClause(1) (see the split-foundation-
+    # clause fix's own TestSkipFirstChainsFoundationClause) with "Sc in the
+    # next chain and each of next N chs" instead. Neither previously
+    # existing shape matched this, so it fell through to "unrecognized
+    # clause" and broke Row 1's stitch-count verification entirely.
+    def test_next_chain_and_next_chs(self):
+        clauses = tokenize_round("Sc in the next chain and each of next 2 chs")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "literal_count")
+        self.assertEqual(c.stitch, "sc")
+        self.assertEqual(c.consumes, 0)
+        self.assertEqual(c.produces, 3)  # 1 (the "next chain" itself) + 2 (next 2 chs)
+
+    def test_full_egg_row_1_with_skip_clause_verifies_end_to_end(self):
+        raw = (
+            "Row 1: Ch 5. Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Sc in the next chain and each of next 2 chs, 3 sc in last ch, "
+            "working on the opposite side of the foundation chain: sc in each of next 3 chs, 3 sc in next ch. "
+            "Place a stitch marker in the first st — work in a continuous spiral from here on, "
+            "do not join or turn. (12 sts)\n"
+            "Row 2: 2 sc in next st, sc in each of next 2 sts, sc in each of next 3 sts, "
+            "2 sc in next st, sc in each of next 2 sts, sc in each of next 3 sts. (14 sts)\n"
+        )
+        pattern = _pattern(raw)
+        self.assertEqual(len(pattern.rows), 2)
+        issues = stitch_count.check(pattern)
+        self.assertEqual([i for i in issues if i.severity == "error"], [])
+
 
 # Every full-pattern test below writes each row's trailing declared count as
 # "(N sts)" -- pattern_parser.py's row_re only ever recognizes a row at all
