@@ -160,6 +160,19 @@ _RE_MAGIC_RING = re.compile(r"^magic\s+ring$", re.I)
 # same class of no-op as _RE_PLACE_MARKER just before it in the same
 # sentence (real samples: Amigurumi Ball/Cone/Limb, Mittens, Amigurumi Egg).
 _RE_DO_NOT_JOIN_OR_TURN = re.compile(r"^do\s+not\s+join\s+or\s+turn$", re.I)
+# "Stuff the piece firmly as you go" (prefixed onto the first decrease-phase
+# round) / "Finish stuffing firmly" (prefixed onto the closing round) --
+# real, current generator text (loopdreams generate-pattern/builders.ts,
+# Amigurumi Ball/Limb's shaped-round and continuous-round builders). A
+# loopdreams batch-test run against production (Aug 1 2026) flagged both as
+# "unrecognized clause", which broke recognition of the REST of the same
+# row too (a single unknown clause fails the whole row's stitch-count
+# check) -- purely a maker-facing reminder, no stitch-count effect of its
+# own, same class of no-op as the "do not join or turn"/magic-ring
+# construction notes above.
+_RE_STUFF_NOTE = re.compile(
+    r"^(?:stuff\s+the\s+piece\s+firmly\s+as\s+you\s+go|finish\s+stuffing\s+firmly)$", re.I
+)
 # "working on the opposite side of the foundation chain" -- a construction
 # note in the Amigurumi Egg/Basic Oval foundation round, marking the pivot
 # from working down one side of the starting chain to working back up the
@@ -185,7 +198,15 @@ _RE_WORKING_LAST_INTO_CH = re.compile(
 # rest. All no-ops for stitch-count purposes: the trailing declared count
 # restates how many stitches existed going into the closure, not something
 # this text itself produces.
-_RE_LEAVING_LONG_TAIL = re.compile(r"^leaving\s+a\s+long\s+tail$", re.I)
+# Optional trailing purpose phrase -- real sample (Amigurumi Cone,
+# loopdreams generate-pattern's buildContinuousShapedRoundRows, Aug 1 2026
+# batch-test run against production): "Fasten off, leaving a long tail for
+# seaming." A cone is left open (no drawstring-cinch closure, per the
+# builder's own comment: meant to be stuffed and attached to a body, not
+# closed up like a stuffed ball), so its own long tail serves a different,
+# stated purpose than the bare "leaving a long tail" form above -- same
+# no-op semantics either way.
+_RE_LEAVING_LONG_TAIL = re.compile(r"^leaving\s+a\s+long\s+tail(?:\s+for\s+[a-z]+)?$", re.I)
 _RE_THREAD_TAIL_FRONT_LOOP = re.compile(
     r"^thread\s+the\s+tail\s+through\s+the\s+front\s+loop\s+of\s+each\s+remaining\s+stitch$", re.I
 )
@@ -673,7 +694,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p)
             or _RE_BODY_LENGTH_CHECKPOINT.match(p) or _RE_DO_NOT_JOIN_OR_TURN.match(p)
-            or _RE_OPPOSITE_SIDE_CHAIN.match(p)):
+            or _RE_OPPOSITE_SIDE_CHAIN.match(p) or _RE_STUFF_NOTE.match(p)):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_MAGIC_RING.match(p):

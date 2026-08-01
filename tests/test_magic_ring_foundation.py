@@ -185,6 +185,56 @@ class TestAmigurumiBallFullPattern(unittest.TestCase):
         self.assertEqual(len(row1_errors), 1)
 
 
+class TestAmigurumiStuffingAndTailClauses(unittest.TestCase):
+    # Real construction (Amigurumi Ball/Limb, loopdreams generate-pattern's
+    # shaped-round builders) and Amigurumi Cone (buildContinuousShapedRoundRows).
+    # A loopdreams batch-test run against production (Aug 1 2026) flagged
+    # these as "unrecognized clause" REVIEWs -- a single unrecognized clause
+    # on a row breaks stitch-count verification for the WHOLE row, not just
+    # itself, so this was masking otherwise-clean rows.
+    def test_stuff_the_piece_firmly_prefix_on_decrease_round_verifies_clean(self):
+        raw = (
+            "Row 1: Magic ring. 6 sc in ring. Place a stitch marker in the first st — work in a continuous "
+            "spiral from here on, do not join or turn. (6 sts)\n"
+            "Row 2: Stuff the piece firmly as you go. *Sc2tog; rep from * around. (3 sts)\n"
+        )
+        pattern = _pattern(raw)
+        self.assertEqual(len(pattern.rows), 2)
+        issues = stitch_count.check(pattern)
+        self.assertEqual([i for i in issues if i.severity == "error"], [])
+
+    def test_finish_stuffing_firmly_prefix_on_closing_row_verifies_clean(self):
+        # Real closing shape (Amigurumi Ball/Limb): a drawstring-cinch
+        # closure (see TestGussetAndClosureRows' own mittens precedent for
+        # the un-prefixed form), here prefixed with its own stuffing
+        # reminder.
+        raw = (
+            "Row 1: Magic ring. 6 sc in ring. Place a stitch marker in the first st — work in a continuous "
+            "spiral from here on, do not join or turn. (6 sts)\n"
+            "Row 2: Finish stuffing firmly. Fasten off, leaving a long tail. Thread the tail through the front "
+            "loop of each remaining stitch, pull tight to close the opening, and weave in the end. (6 sts)\n"
+        )
+        pattern = _pattern(raw)
+        self.assertEqual(len(pattern.rows), 2)
+        issues = stitch_count.check(pattern)
+        self.assertEqual([i for i in issues if i.severity == "error"], [])
+
+    def test_leaving_a_long_tail_for_seaming_verifies_clean(self):
+        # Real Amigurumi Cone closing shape -- left open (no drawstring
+        # closure, meant to be stuffed and attached to a body), so its tail
+        # states a different purpose than the ball/limb form above.
+        raw = (
+            "Row 1: Magic ring. 6 sc in ring. Place a stitch marker in the first st — work in a continuous "
+            "spiral from here on, do not join or turn. (6 sts)\n"
+            "Row 2: 2 sc in each st around. (12 sts)\n"
+            "Row 3: Fasten off, leaving a long tail for seaming. (12 sts)\n"
+        )
+        pattern = _pattern(raw)
+        self.assertEqual(len(pattern.rows), 3)
+        issues = stitch_count.check(pattern)
+        self.assertEqual([i for i in issues if i.severity == "error"], [])
+
+
 class TestCoasterMagicRingFullPattern(unittest.TestCase):
     # Real construction (Coaster, loopdreams builders.ts buildCoasterRows).
     # Covers all three turning-chain conventions the builder produces: SC
