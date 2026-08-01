@@ -2436,3 +2436,55 @@ wrong-declared-count regression check for each). One pre-existing test in
 `tests/test_stitch_parser.py` updated: its arbitrary custom-compound
 placeholder token happened to be `"bo"`, renamed to `"zz"` now that `"bo"`
 is a real recognized token. Full suite passes (203 tests, 1 skip).
+
+## Split "skip the first N chain(s) from the hook" foundation clause (Aug 1, 2026) — loopdreams_qa#30
+
+Running `scripts/batch-test.ts` from loopdreams against production surfaced
+Row 1 (or Row 1-2) as an "unrecognized clause" REVIEW on 35+ of 42 test
+cases — nearly the whole flat-panel matrix (Scarf, Sweater, Tote Bag, Throw
+Blanket, Dishcloth, Cardigan, all three square-Coaster variants, every skill
+level). Not a generator bug: this is real, current, widely-used output from
+`generate-pattern/builders.ts`'s `skipChainsClause()` helper, shared across
+most flat-row builders. It states the foundation start as two sentences
+instead of the single ordinal clause `foundation_into_chain` already
+recognized:
+
+```
+Skip the first 1 chain from the hook (it doesn't count as a stitch). Sc in
+the next chain and in each ch across.
+```
+
+Neither half matched any existing shape — `foundation_into_chain` requires
+an ordinal ("2nd ch from hook"), and nothing recognized a bare "skip the
+first N chain(s)... (it/they doesn't/don't count as a stitch)" clause or a
+non-ordinal "in the next chain and in each ch across" continuation.
+
+Fix, in `stitch_parser.py`: two new regexes —
+`skip_first_chains_from_hook` (matches the skip sentence, singular/plural
+both handled, `explicit_count` = N chains skipped, `consumes=0`/`produces=0`
+since it's a skip, not a stitch) and `foundation_stitch_in_next_chain`
+(matches the stitch sentence alone, left deliberately unverifiable —
+`consumes`/`produces=None` — if it ever appears unpaired, since the
+starting position genuinely isn't stated without the skip clause ahead of
+it). A new post-processing pass in `tokenize_round()` (same convention as
+the existing "skip first st" row-opener and "Magic ring" + counted-chain
+fix-ups) then detects the two clauses adjacent and folds them into a single
+real `foundation_into_chain` clause with `explicit_count = N + 1` — skipping
+N chains and starting in the next one is exactly the same position as the
+`(N+1)`th chain from the hook, so every downstream consumer
+(`checks/stitch_count.py`'s dedicated foundation check,
+`checks/completeness.py`'s foundation-ambiguity check) verifies it through
+the exact same path it already used for the ordinal phrasing — no new
+verification logic, just a new way of recognizing the same shape.
+
+5 new tests in `tests/test_stitch_parser.py` (singular/plural chain-count
+forms, sc/dc/hdc variants, an unpaired-clause scoping check, and a
+full-pipeline `parse()` + `stitch_count.check()` regression). Full suite
+passes (208 tests, 1 skip).
+
+Re-ran `scripts/batch-test.ts` against production afterward: Scarf, Sweater,
+Tote Bag, Cardigan, all three round-Coaster variants, and Mittens moved to
+PASS. Dishcloth, Throw Blanket, and square Coaster still show REVIEW, but
+now only for pre-existing, unrelated reasons (missing "fasten off",
+bobble/shell-ratio solving) — confirming this fix closed exactly the target
+finding and nothing else shifted.

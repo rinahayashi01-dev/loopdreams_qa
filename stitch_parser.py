@@ -226,6 +226,7 @@ class _Patterns:
         "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
         "each_st_to_marker", "each_st_to_last", "same_st",
         "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
+        "skip_first_chains_from_hook", "foundation_stitch_in_next_chain",
     )
 
     def __init__(self, stitch_alt: str):
@@ -248,6 +249,46 @@ class _Patterns:
         self.foundation_into_chain = re.compile(
             rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook\s*(?:\([^)]*\)\s*)?"
             rf"and\s+(?:in\s+)?each\s+ch\s+across$", re.I
+        )
+        # Two-clause foundation-start shape, split across a sentence boundary
+        # instead of a single ordinal clause: "Skip the first N chain(s)
+        # from the hook (it/they doesn't/don't count as a stitch). <stitch>
+        # in the next chain and in each ch across." Real, current, widely-
+        # used generator output (loopdreams generate-pattern/builders.ts's
+        # skipChainsClause() helper, used across most flat-row builders) --
+        # found systemically, not a one-off: a loopdreams batch-test run
+        # against production (Aug 1 2026) flagged this shape as an
+        # "unrecognized clause" on Row 1 of nearly every flat-panel pattern
+        # (Scarf, Sweater, Tote Bag, Throw Blanket, Dishcloth, Cardigan,
+        # square Coaster), at every skill level. Semantically identical to
+        # foundation_into_chain's single-clause "<stitch> in Nth ch from
+        # hook and in each ch across" -- skipping the first N chains and
+        # starting the stitch in the next one is the same starting position
+        # as the (N+1)th chain from the hook -- just written as two
+        # sentences instead of one. The skip clause itself is purely
+        # informational (0 chains consumed as stitches, 0 stitches
+        # produced -- it's a skip, not a stitch); tokenize_round's own
+        # post-processing pairs it with the following stitch clause and
+        # folds both into a single foundation_into_chain-equivalent result,
+        # so the rest of the pipeline (checks/stitch_count.py's dedicated
+        # foundation check, checks/completeness.py's foundation-ambiguity
+        # check) sees exactly the same shape it already knows how to verify.
+        self.skip_first_chains_from_hook = re.compile(
+            rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
+            rf"\((?:it|they)\s+(?:doesn't|don't)\s+count\s+as\s+a\s+stitch\)$", re.I
+        )
+        # The second half of the pair above: no ordinal at all (the ordinal
+        # position is implied entirely by however many chains the preceding
+        # skip_first_chains_from_hook clause skipped), so this can only be
+        # resolved together with that clause -- see the post-processing step
+        # in tokenize_round. Matched on its own here as a distinct,
+        # deliberately incomplete shape (not folded into foundation_into_
+        # chain's own regex) so an unpaired occurrence -- e.g. this sentence
+        # appearing without its skip clause immediately before it -- still
+        # falls through to the normal "unknown" handling instead of being
+        # silently misread as starting in some arbitrary chain.
+        self.foundation_stitch_in_next_chain = re.compile(
+            rf"^({stitch_alt})\s+in\s+the\s+next\s+chain\s+and\s+(?:in\s+)?each\s+ch\s+across$", re.I
         )
         # Both allow an optional "in the back/front loop only of" infix
         # (real phrasing, mittens Jul 7 batch: "Sc in the back loop only of
@@ -580,6 +621,27 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
             and clauses[1].clause_type == "counted_chain"):
         clauses[1] = replace(clauses[1], consumes=1)
 
+    # Pair up the split foundation-start shape (see patterns.skip_first_
+    # chains_from_hook's own comment): "Skip the first N chain(s) from the
+    # hook (...)." immediately followed by "<stitch> in the next chain and
+    # in each ch across." is semantically identical to the single-clause
+    # "<stitch> in (N+1)th ch from hook and in each ch across" that
+    # foundation_into_chain already matches -- skipping N chains and
+    # starting in the next one IS starting in the (N+1)th chain from the
+    # hook. Fold the pair into that same clause_type here so every
+    # downstream consumer (checks/stitch_count.py's _check_foundation_into_
+    # chain, checks/completeness.py's foundation-ambiguity check) verifies
+    # it exactly as it already verifies the ordinal phrasing, with no
+    # separate code path to keep in sync.
+    for i in range(len(clauses) - 1):
+        if (clauses[i].clause_type == "skip_first_chains_from_hook"
+                and clauses[i + 1].clause_type == "foundation_stitch_in_next_chain"):
+            skipped = clauses[i].explicit_count
+            clauses[i + 1] = replace(
+                clauses[i + 1], clause_type="foundation_into_chain",
+                explicit_count=skipped + 1, consumes=None, produces=None, unverifiable_reason=None,
+            )
+
     return clauses
 
 
@@ -650,6 +712,28 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
         return StitchClause(raw=raw_part, stitch=canon, clause_type="foundation_into_chain",
                              explicit_count=int(m.group(2)), is_compound=is_compound)
+
+    # See patterns.skip_first_chains_from_hook's own comment: the informational
+    # first half of the split "Skip the first N chain(s) from the hook (...).
+    # <stitch> in the next chain and in each ch across." shape. consumes=0/
+    # produces=0 -- it's a skip, not a stitch -- paired with the following
+    # clause by tokenize_round's post-processing step.
+    m = patterns.skip_first_chains_from_hook.match(p)
+    if m:
+        return StitchClause(raw=raw_part, clause_type="skip_first_chains_from_hook",
+                             explicit_count=int(m.group(1)), consumes=0, produces=0)
+
+    # See patterns.foundation_stitch_in_next_chain's own comment: the second
+    # half of the same split shape, left unresolved (consumes/produces=None)
+    # unless tokenize_round's post-processing finds an immediately preceding
+    # skip_first_chains_from_hook clause to pair it with.
+    m = patterns.foundation_stitch_in_next_chain.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="foundation_stitch_in_next_chain",
+                             is_compound=is_compound,
+                             unverifiable_reason="'in the next chain' with no preceding 'skip the first N "
+                                                  "chains from the hook' clause to establish the starting position")
 
     # "<stitch> in 2nd ch from hook and each of next N chs" -- one side of a
     # two-sided oval/egg foundation-chain start (see patterns.foundation_
