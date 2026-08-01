@@ -248,6 +248,7 @@ class _Patterns:
         "each_st_to_marker", "each_st_to_last", "same_st",
         "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
         "skip_first_chains_from_hook", "foundation_stitch_in_next_chain",
+        "foundation_next_chain_and_next_chs",
     )
 
     def __init__(self, stitch_alt: str):
@@ -475,6 +476,26 @@ class _Patterns:
         self.foundation_ordinal_and_next_chs = re.compile(
             rf"^({stitch_alt})\s+in\s+(\d+)(?:st|nd|rd|th)\s+ch\s+from\s+hook\s+and\s+each\s+of\s+next\s+(\d+)\s*chs?$",
             re.I,
+        )
+        # "<stitch> in the next chain and each of next N chs" -- the SAME
+        # two-sided foundation-chain start as foundation_ordinal_and_next_chs
+        # above, but paired with a preceding skip_first_chains_from_hook
+        # clause instead of an ordinal (see that pattern's own comment) --
+        # current, real generator text (Amigurumi Egg/Basic Oval round 1,
+        # loopdreams generate-pattern's buildOvalRoundRows, confirmed against
+        # a loopdreams batch-test run against production, Aug 1 2026: "Skip
+        # the first 1 chain from the hook (it doesn't count as a stitch). Sc
+        # in the next chain and each of next 2 chs, ..."). Unlike foundation_
+        # into_chain's paired "and in each ch across" shape (see stitch_
+        # parser.py's tokenize_round post-processing), this one doesn't need
+        # pairing at all: the skipped-chain count only matters for computing
+        # a WHOLE-ROW ordinal position, but here the "N chains" span is
+        # stated directly and worked into the foundation chain regardless of
+        # how many were skipped before it (consumes=0 either way) -- so it
+        # classifies standalone, exactly like foundation_ordinal_and_next_chs
+        # itself. Total stitches made: 1 (the "next chain" itself) + N.
+        self.foundation_next_chain_and_next_chs = re.compile(
+            rf"^({stitch_alt})\s+in\s+the\s+next\s+chain\s+and\s+each\s+of\s+next\s+(\d+)\s*chs?$", re.I
         )
         # "<stitch> in each of next N chs" -- the second (opposite) side of
         # the same two-sided foundation-chain start, worked back along the
@@ -765,6 +786,21 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if m:
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
         n = 1 + int(m.group(3))  # the ordinal "Nth ch" stitch itself, plus the N further chs
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "<stitch> in the next chain and each of next N chs" -- the same shape
+    # as foundation_ordinal_and_next_chs above, paired with a preceding
+    # skip_first_chains_from_hook clause instead of an ordinal (see patterns.
+    # foundation_next_chain_and_next_chs's own comment for why no pairing
+    # step is needed here, unlike foundation_into_chain's paired form).
+    m = patterns.foundation_next_chain_and_next_chs.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        n = 1 + int(m.group(2))  # the "next chain" itself, plus the N further chs
         produces = (prod * n) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
                              explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,

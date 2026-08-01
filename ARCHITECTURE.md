@@ -2583,3 +2583,38 @@ turn"/magic-ring construction notes) and a broadened `_RE_LEAVING_LONG_TAIL`
 Remaining REVIEWs are unrelated, pre-existing findings (Amigurumi Egg's
 oval two-sided foundation clause, Coaster shell's centre-dc width, Shawl's
 moss-ratio/Row-1 foundation) — untouched.
+
+## Amigurumi Egg's oval foundation clause (Aug 1, 2026) — loopdreams_qa#33
+
+Last item on the post-PR-#30 REVIEW list: Amigurumi Egg (all 3 tiers)
+flagged "unrecognized clause: 'Sc in the next chain and each of next 2
+chs'" on Row 1. `stitch_parser.py` already had a two-sided-foundation
+clause shape for this exact construction (`foundation_ordinal_and_next_chs`,
+added in PR #28) — but it required an ORDINAL lead-in ("Sc in 2nd ch from
+hook and each of next 2 chs"). Reading `generate-pattern/builders.ts`'s
+`buildOvalRoundRows` directly confirmed the generator no longer emits that
+form: like the flat-row builders PR #30 fixed, it now calls the shared
+`skipChainsClause()` helper and follows it with "Sc in the next chain and
+each of next N chs" -- the ordinal test from PR #28 was accurate as of Jul
+29, but the generator has since moved on and this tool hadn't caught up.
+
+Unlike PR #30's paired shape (`foundation_into_chain`, which needs a
+`tokenize_round()` post-processing step to combine two sentences into one
+clause), this one classifies standalone: the "N chains" span is stated
+directly in the clause itself, and the skipped-chain count from the
+preceding `skip_first_chains_from_hook` clause isn't needed to compute
+this clause's own consumes/produces (both are foundation content either
+way, `consumes=0` regardless of how many chains were skipped before it).
+Added a new `foundation_next_chain_and_next_chs` regex, classified
+identically to the existing ordinal form (`clause_type="literal_count"`,
+`produces` = 1 + N). The old ordinal regex/test are left in place --
+harmless, and worth keeping in case any historical/legacy sample still
+uses that phrasing.
+
+3 new tests in `tests/test_magic_ring_foundation.py` (the new clause shape
+alone, plus a full Row 1 + Row 2 `parse()`/`stitch_count.check()`
+regression using the real paired skip+next-chain text). Full suite passes
+(216 tests, 1 skip). Re-ran `scripts/batch-test.ts` against production: all
+3 Amigurumi Egg cases moved REVIEW → PASS (35 → 38 passing). Only 4
+REVIEWs remain, all unrelated pre-existing findings (Coaster shell's
+centre-dc width, Shawl's moss-ratio/Row-1 foundation).
