@@ -325,18 +325,46 @@ def _check_foundation_row_ambiguity(pattern) -> list:
     # first st, SC in next st, 2 SC in last st" off a Ch 4 foundation
     # consumes only 3, with no ordinal clause explaining the shortfall.
     if not has_foundation_clause and each_st is None and pattern.foundation_chain is not None:
-        _, consumed, reasons = stitch_count_module._zone_sum(first.clauses)
-        if not reasons and consumed < pattern.foundation_chain:
-            return [Issue(
-                category="completeness", severity="warning", location=first.label,
-                message=(
-                    f"{first.label} works directly off the foundation chain ({pattern.foundation_chain} ch) "
-                    f"but its stitches only account for {consumed} of them, with no ordinal clause (e.g. '2nd "
-                    f"ch from hook') stating how many chains were meant as a turning-chain equivalent. "
-                    f"Skipping some chains this way is standard convention, but the exact number isn't "
-                    f"actually stated here."
-                ),
-            )]
+        # A row containing its own "*...; rep from *..." repeat group is
+        # already fully verified by stitch_count.py's dedicated
+        # _check_repeat_group, which correctly multiplies the repeated
+        # unit's own consumption by however many times it resolves to
+        # repeat. _zone_sum below has no concept of a repeat multiplier --
+        # it sums every clause exactly ONCE, flat -- so it's the wrong tool
+        # for a repeat-group row and was never meant to run on one; this
+        # just never surfaced before because every prior real sample either
+        # had no repeat group here, or (before this project taught the
+        # parser its clause shapes) had at least one genuinely unrecognized
+        # clause, which short-circuits via the `reasons` check below
+        # regardless. Real bug found on a real sample (Sedge Stitch,
+        # loopdreams commit "Fix Sedge Stitch construction", Aug 2026):
+        # once its clauses were all taught to the parser, a fully-stated,
+        # unambiguous, exactly-matching Row 1 (skip 1 + 2-st opener + 6x
+        # (skip 2, 3-st cluster) + 1-st closer = 21, matching a 21-chain
+        # foundation exactly) was still flagged here as accounting for
+        # only "6" of 21 chains -- _zone_sum counted the repeated unit
+        # once instead of six times. A repeat-group row's foundation math
+        # is either a clean match (verified elsewhere) or a clear,
+        # already-reported mismatch -- never merely "ambiguous" -- so skip
+        # this naive check entirely rather than have it recompute (and get
+        # wrong) math it was never designed to do.
+        has_repeat_group = (
+            any(c.raw.strip().startswith("*") for c in first.clauses)
+            and any(c.clause_type == "repeat_close" for c in first.clauses)
+        )
+        if not has_repeat_group:
+            _, consumed, reasons = stitch_count_module._zone_sum(first.clauses)
+            if not reasons and consumed < pattern.foundation_chain:
+                return [Issue(
+                    category="completeness", severity="warning", location=first.label,
+                    message=(
+                        f"{first.label} works directly off the foundation chain ({pattern.foundation_chain} ch) "
+                        f"but its stitches only account for {consumed} of them, with no ordinal clause (e.g. '2nd "
+                        f"ch from hook') stating how many chains were meant as a turning-chain equivalent. "
+                        f"Skipping some chains this way is standard convention, but the exact number isn't "
+                        f"actually stated here."
+                    ),
+                )]
     return []
 
 
