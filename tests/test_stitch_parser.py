@@ -461,6 +461,39 @@ class TestMittensClauseShapes(unittest.TestCase):
         self.assertIn("fasten_off", types)
 
 
+class TestBareMoreTimesFragment(unittest.TestCase):
+    # LoopDreams' timesWord() helper (generate-pattern/builders.ts, Aug 23)
+    # states every compound stitch's repeat count explicitly, e.g. "rep from
+    # * to last shell, 1 more time, sc in centre dc of last shell..." (Shell)
+    # or "rep from * to the last st, 5 more times, sc in last st." (Sedge).
+    # When the tail immediately after "rep from *" is itself a positional
+    # landmark ("to last shell", "to the last st"), the comma-separated "N
+    # more time(s)" that follows lands as its OWN clause -- there's no "rep
+    # from *" left in it for _RE_REP_FROM to match, so it fell straight
+    # through every pattern to "unknown", downgrading otherwise-clean rows to
+    # REVIEW (real batch-test finding against production, Aug 23: Square
+    # Coaster sedge and shell). Note this is a DIFFERENT shape than "rep from
+    # * 2 more times" with no positional landmark in between -- that whole
+    # thing already matches _RE_REP_FROM in one piece and was never broken.
+
+    def test_bare_more_times_fragment_recognized_as_repeat_close_not_unknown(self):
+        for text, n in (("1 more time", 1), ("2 more times", 2), ("38 more times", 38)):
+            clauses = tokenize_round(text)
+            self.assertEqual(len(clauses), 1, text)
+            self.assertEqual(clauses[0].clause_type, "repeat_close", text)
+            self.assertEqual(clauses[0].explicit_count, n, text)
+
+    def test_more_times_fragment_after_positional_landmark_end_to_end(self):
+        # The real shape this actually appears in: split across a comma from
+        # a "rep from * to last <landmark>" closer. Confirms _zone_sum treats
+        # it as the same no-op _RE_REP_FROM's own closer already is (see
+        # checks/stitch_count.py), not as an unrecognized-clause warning.
+        clauses = tokenize_round("rep from * to last shell, 1 more time")
+        types = [c.clause_type for c in clauses]
+        self.assertEqual(types, ["repeat_close", "repeat_close"])
+        self.assertNotIn("unknown", types)
+
+
 class TestSedgeStitchClauses(unittest.TestCase):
     # Real construction (Sedge Stitch, loopdreams commit "Fix Sedge Stitch
     # construction", Aug 2026 -- a real tester's hands-on attempt caught the
@@ -616,7 +649,7 @@ class TestSedgeStitchClauses(unittest.TestCase):
             "Foundation:Ch 21, turn.\n"
             "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
             "Hdc in the next chain, dc in the same chain. *skip 2 chains, (sc, hdc, dc) in next chain "
-            "(sedge made); rep from * to the last chain, sc in last chain. Ch 1, turn. (21 sts)\n"
+            "(sedge made); rep from * to the last chain, 5 more times, sc in last chain. Ch 1, turn. (21 sts)\n"
             "Finishing\n"
             "Border: Fasten off. (40 sts)\n"
         )
@@ -625,28 +658,23 @@ class TestSedgeStitchClauses(unittest.TestCase):
         row1_issues = [i for i in issues if i.location == "Row 1"]
         self.assertEqual(row1_issues, [])
 
-    def test_sedge_second_row_reports_real_gap_not_unrecognized_clause(self):
-        # IMPORTANT: this documents a genuine finding, not a false
-        # positive. Every row after the first uses "Hdc in first st, dc in
-        # same st" (opener consumes 1 real previous-row stitch, produces 2)
-        # with NO equivalent to Row 1's leading "skip the first 1 chain"
-        # clause (which is what makes Row 1's own consumed/produced totals
-        # match exactly -- see test_sedge_foundation_row_verifies_end_to_
-        # end above). Without that offsetting skip, every row after the
-        # first structurally produces exactly ONE MORE stitch than it
-        # consumes from the previous row, regardless of repeat count --
-        # this is a real, currently-unresolved 1-stitch construction gap
-        # in generate-pattern's buildSedgeStitchRows (loopdreams repo,
-        # commit "Fix Sedge Stitch construction", Aug 2026), confirmed by
-        # hand for both the pre-fix doubled same-st reading (produces 22
-        # instead of 21) and the corrected non-doubled reading tested here
-        # (19 remaining sts don't divide evenly by the 3-st repeat unit) --
-        # neither reading resolves cleanly, because the row's own clauses
-        # are one stitch short of being self-consistent, not because of
-        # how the "same st" ambiguity is resolved. The important thing
-        # this test guards is WHAT KIND of issue comes back: a genuine
-        # stitch_count error, never an "unrecognized clause" warning (that
-        # would mean the parser fixes above have regressed).
+    def test_sedge_second_row_now_verifies_cleanly_opener_gap_fixed(self):
+        # This test used to document a genuine, then-unresolved 1-stitch
+        # construction gap: every row after the first used "Hdc in first
+        # st, dc in SAME st" (consumes 1 real previous-row stitch, produces
+        # 2), with no equivalent to Row 1's offsetting leading "skip the
+        # first 1 chain" clause, so it structurally produced one more
+        # stitch than it consumed. Fixed upstream (loopdreams repo, "Fix
+        # Sedge Stitch row 2+ opener: two stitches, not one shared spot",
+        # Aug 23) -- the opener now reads "dc in NEXT st" (2 real previous-
+        # row stitches consumed, 2 produced), which balances on its own
+        # without needing Row 1's foundation-chain skip to compensate: 2
+        # (opener) + 6x3 (clusters) + 1 (closer) = 21, matching both the
+        # previous row's count and this row's own declared total. Row 2
+        # also now states its repeat count explicitly ("5 more times",
+        # LoopDreams' timesWord() helper) -- confirms that phrasing doesn't
+        # regress this row back to unverifiable (see TestBareMoreTimesFragment
+        # above; this is the exact real shape that fix targets).
         raw = (
             "Test Sedge Swatch\n"
             "MATERIALS\n"
@@ -660,19 +688,16 @@ class TestSedgeStitchClauses(unittest.TestCase):
             "Foundation:Ch 21, turn.\n"
             "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
             "Hdc in the next chain, dc in the same chain. *skip 2 chains, (sc, hdc, dc) in next chain "
-            "(sedge made); rep from * to the last chain, sc in last chain. Ch 1, turn. (21 sts)\n"
-            "Row 2: Hdc in first st, dc in same st. *skip 2 sts, (sc, hdc, dc) in next st (sedge made); "
-            "rep from * to the last st, sc in last st. Ch 1, turn. (21 sts)\n"
+            "(sedge made); rep from * to the last chain, 5 more times, sc in last chain. Ch 1, turn. (21 sts)\n"
+            "Row 2: Hdc in first st, dc in next st. *skip 2 sts, (sc, hdc, dc) in next st (sedge made); "
+            "rep from * to the last st, 5 more times, sc in last st. Ch 1, turn. (21 sts)\n"
             "Finishing\n"
             "Border: Fasten off. (40 sts)\n"
         )
         pattern = parse(raw)
         issues = stitch_count.check(pattern)
         row2_issues = [i for i in issues if i.location == "Row 2"]
-        self.assertEqual(len(row2_issues), 1)
-        self.assertEqual(row2_issues[0].severity, "error")
-        self.assertNotIn("unrecognized clause", row2_issues[0].message)
-        self.assertIn("doesn't divide evenly", row2_issues[0].message)
+        self.assertEqual(row2_issues, [])
 
     def test_shell_centre_dc_still_unverifiable_not_swept_into_paren_cluster(self):
         # Scoping guard for the _NOUN widening and the same-spot
@@ -693,12 +718,26 @@ class TestSedgeStitchClauses(unittest.TestCase):
         self.assertIsNotNone(c.unverifiable_reason)
 
     def test_shell_row_still_reports_review_not_pass_or_fail(self):
-        # End-to-end guard, real text (loopdreams builders.ts
-        # buildShellStitchRows): the half-shell/centre-dc row must still
-        # come back as an unverifiable warning (REVIEW), exactly as before
-        # this whole fix -- not a new false PASS (which would mean the
-        # centre-dc clause got silently swallowed by some other pattern)
-        # and not a new false FAIL either.
+        # End-to-end guard, real CURRENT text (loopdreams builders.ts
+        # buildShellStitchRows, refreshed Aug 23 -- see PR history below):
+        # the half-shell/centre-dc row must still come back as an
+        # unverifiable warning (REVIEW), exactly as before this whole fix --
+        # not a new false PASS (which would mean the centre-dc clause got
+        # silently swallowed by some other pattern) and not a new false
+        # FAIL either. Also confirms the "N more times" fix doesn't turn
+        # this into TWO issues (the real centre-dc one plus a spurious
+        # unrecognized-clause one) -- exactly one, same as always.
+        #
+        # Refreshed from the original version of this test to match three
+        # loopdreams fixes since it was written, none of which change
+        # whether centre-dc is verifiable: no more restated leading "Ch 1,"/
+        # "Ch 3," (Row 2/3 used to restate the previous row's own trailing
+        # turning chain -- fixed, "Fix Shell Stitch restating the previous
+        # row's own turning chain"); "rep from * across"/"to last shell"
+        # now state an explicit count via timesWord() ("Add explicit repeat
+        # counts..."); the half-shell row's two edges are now a symmetric
+        # 3 dc/3 dc, not 2/4 ("Fix Shell Stitch's half-shell row: symmetric
+        # 3 dc at both edges, not 2/4" -- real tester, Aug 23).
         raw = (
             "Test Shell Swatch\n"
             "MATERIALS\n"
@@ -709,14 +748,14 @@ class TestSedgeStitchClauses(unittest.TestCase):
             "ABBREVIATIONS\n"
             "ch = chain, sc = single crochet, dc = double crochet, rep = repeat\n"
             "PATTERN STEPS\n"
-            "Foundation:Ch 8, turn.\n"
+            "Foundation:Ch 20, turn.\n"
             "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
-            "Sc in the next chain and in each ch across. Ch 1, turn. (7 sts)\n"
-            "Row 2: Ch 1, sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, "
-            "sc in next st; rep from * across. Ch 3, turn. (7 sts)\n"
-            "Row 3: Ch 3, 2 dc in first sc (half shell made), *sc in centre dc of next shell, "
-            "5 dc in next sc; rep from * to last shell, sc in centre dc of last shell, "
-            "4 dc in last sc (half shell made). Fasten off, weave in ends. (7 sts)\n"
+            "Sc in the next chain and in each ch across. Ch 1, turn. (19 sts)\n"
+            "Row 2: Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, "
+            "sc in next st; rep from * 2 more times. Ch 3, turn. (19 sts)\n"
+            "Row 3: 3 dc in first sc (half shell made), *sc in centre dc of next shell, "
+            "5 dc in next sc; rep from * to last shell, 1 more time, sc in centre dc of last shell, "
+            "3 dc in last sc (half shell made). Fasten off, weave in ends. (19 sts)\n"
             "Finishing\n"
             "Border: Fasten off. (40 sts)\n"
         )
