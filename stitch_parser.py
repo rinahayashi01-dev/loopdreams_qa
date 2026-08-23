@@ -68,6 +68,17 @@ _RE_FASTEN_OFF = re.compile(r"^fasten off\.?$", re.I)
 _RE_JOIN = re.compile(r"^join\b", re.I)
 _RE_SETUP = re.compile(r"^with (rs|ws) facing\b", re.I)
 _RE_REP_FROM = re.compile(r"^rep(?:eat)? from \*\s*(.*)$", re.I)
+# A bare "N more time(s)" fragment trailing a comma after "rep from * <tail>,"
+# (e.g. "rep from * to last shell, 1 more time, sc in..." -- LoopDreams'
+# timesWord() helper, Aug 23) splits into its own clause at the comma,
+# separate from the "rep from *" clause it modifies. Recognized here as its
+# own no-op (classified as "repeat_close", same as _RE_REP_FROM itself --
+# see checks/stitch_count.py's _zone_sum, which already skips that type)
+# rather than falling through to "unknown": it carries no consumes/produces
+# of its own, and the repeat count is solved algebraically from the row's
+# declared stitch count either way (see this file's own module docstring),
+# so the stated number is informational only, never load-bearing for the math.
+_RE_MORE_TIMES = re.compile(r"^(\d+)\s+more\s+times?$", re.I)
 _RE_SKIP = re.compile(r"^sk(?:ip)?\s+(\d+)", re.I)
 _RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+{_POS}\s+{_NOUN}$", re.I)
 # A row's OWN opening clause reading exactly "skip first st" (not "skip
@@ -821,6 +832,11 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if m:
         return StitchClause(raw=raw_part, clause_type="repeat_close", explicit_count=None,
                              unverifiable_reason=f"repeat-close modifier: '{m.group(1).strip()}'")
+
+    m = _RE_MORE_TIMES.match(p)
+    if m:
+        return StitchClause(raw=raw_part, clause_type="repeat_close", explicit_count=int(m.group(1)),
+                             unverifiable_reason=f"repeat-close modifier: '{m.group(0)}'")
 
     m = patterns.foundation_into_chain.match(p)
     if m:

@@ -2618,3 +2618,58 @@ regression using the real paired skip+next-chain text). Full suite passes
 3 Amigurumi Egg cases moved REVIEW → PASS (35 → 38 passing). Only 4
 REVIEWs remain, all unrelated pre-existing findings (Coaster shell's
 centre-dc width, Shawl's moss-ratio/Row-1 foundation).
+
+## Bare "N more time(s)" fragment (Aug 23, 2026) — loopdreams_qa#36
+
+loopdreams shipped `timesWord()` (generate-pattern/builders.ts) so every
+compound stitch's `rep from *` clause states its count explicitly instead
+of leaving crafters to count for themselves — "rep from * 2 more times",
+or, for stitches whose closer already names a positional landmark, "rep
+from * to last shell, 1 more time, sc in centre dc of last shell...". Ran
+`scripts/batch-test.ts` against production right after that fix's own PR
+merged (standing practice — see the tool's own README/this file's intro)
+and found 2 REVIEWs that weren't there before: Square Coaster sedge and
+shell both downgraded from PASS.
+
+Root cause was in this tool, not the generator. `_RE_REP_FROM` matches a
+whole "rep from * <tail>" clause in one piece — fine for the plain "rep
+from * 2 more times" shape, which never splits. But "rep from * to last
+shell, 1 more time, ..." has a comma between the positional landmark and
+the count: `pattern_parser`'s clause splitter breaks it in two, and the
+second half ("1 more time") has no "rep from *" left in it for
+`_RE_REP_FROM` (or anything else) to match. It fell through to `unknown`,
+and a single unrecognized clause fails stitch-count verification for the
+whole row it's in — the same failure mode as the Jul 29 stuffing-note
+entry above, different clause shape.
+
+Added `_RE_MORE_TIMES` (`^(\d+)\s+more\s+times?$`), classified identically
+to `_RE_REP_FROM`'s own closer (`clause_type="repeat_close"`) so
+`checks/stitch_count.py`'s `_zone_sum` skips it as the same kind of no-op
+that closer already is. This is correct, not just convenient: per this
+tool's whole design (see this file's stitch-count section and
+`stitch_count.py`'s own module docstring), the repeat count is always
+*solved* algebraically from each row's declared stitch total, never read
+off the stated text — so the stated number was never load-bearing for the
+math, only for whether the clause gets recognized at all.
+
+While in the area, refreshed two adjacent tests whose fixtures had gone
+stale (both predated other loopdreams fixes from the same day, unrelated
+to this bug): `test_sedge_second_row_*` documented a real 1-stitch
+construction gap in the row 2+ opener ("dc in SAME st") that loopdreams'
+"Fix Sedge Stitch row 2+ opener" already closed (now "dc in NEXT st",
+confirmed by hand and by this suite to balance on its own without row 1's
+foundation-chain skip to compensate) — renamed to `..._now_verifies_
+cleanly_opener_gap_fixed` and asserts 0 issues instead of a specific
+error. `test_shell_row_still_reports_review_not_pass_or_fail` was still
+using pre-fix text (a restated leading turning chain, no stated repeat
+count, asymmetric 2dc/4dc half-shell edges) from three loopdreams PRs ago
+-- refreshed to current real generator output; its own assertion (exactly
+1 warning, the centre-dc finding) didn't change, it's just proven against
+text that actually matches production now.
+
+2 new tests (`TestBareMoreTimesFragment`) plus the 3 refreshed above. Full
+suite passes (234 tests, 5 skips). Re-ran `scripts/batch-test.ts` against
+production: sedge moved REVIEW → PASS; shell stayed REVIEW but lost the
+spurious "unrecognized clause: '1 more time'" reason, down to only its
+pre-existing centre-dc finding (41 → 42 passing, 2 → 1 review). Shawl's
+moss-ratio/Row-1 foundation REVIEW remains, unrelated and untouched.
