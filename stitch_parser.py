@@ -42,7 +42,20 @@ from . import abbreviations as ab
 _BASE_STITCH_WORDS = frozenset(ab.ALL_KNOWN_TOKENS | ab.COMPOUND_STITCH_WORDS | {"shell stitch"})
 
 _POS = r"(?:the\s+)?(?:very\s+)?(first|next|last)"
-_NOUN = r"(?:st|sc|hdc|dc|tr|ch)s?"
+# "chain"/"chains" added alongside the existing abbreviated "ch"/"chs" --
+# real bug found (Sedge Stitch, loopdreams commit "Fix Sedge Stitch
+# construction", Aug 2026): LoopDreams' generator universally spells this
+# word out in prose ("Hdc in the next chain", "sc in last chain" --
+# generate-pattern's builders.ts skipChainsClause() convention, used
+# across every compound-stitch builder, not just Sedge), never abbreviates
+# it to "ch" outside of the "Ch N" foundation-count clause itself (see
+# _RE_CHAIN) or the dedicated "Nth ch from hook" ordinal shapes. "chain"
+# listed before "ch" so the longer word is preferred when both could
+# start a match, matching this file's existing longest-first convention
+# (see _BASE_STITCH_WORDS's own comment) -- though re's alternation
+# backtracking would find the correct overall match either order, since
+# every use of _NOUN is anchored with a trailing $.
+_NOUN = r"(?:chain|st|sc|hdc|dc|tr|ch)s?"
 
 # Regexes that do NOT depend on the stitch-word alternation -- compiled once.
 # \s* (was \s+) tolerates OCR dropping the space before the number (real
@@ -422,12 +435,15 @@ class _Patterns:
         self.top_of_chain = re.compile(rf"^({stitch_alt})\s+in\s+top\s+of\s+(?:the\s+)?ch(?:-\d+)?$", re.I)
         # Generic single-instance positional clause: "<stitch> in (first|next|last) st"
         self.simple_positional = re.compile(rf"^({stitch_alt})\s+in\s+{_POS}\s+{_NOUN}$", re.I)
-        # "<stitch> in (the) same st" -- an increase paired with a counted
-        # turning chain (real sample, coaster Jul 8 batch: "Ch 3 (counts as
-        # first dc), dc in same st" -- the ch-3 already counts as the
-        # round's first dc; this adds a SECOND dc at that same position,
-        # rather than consuming a new previous-row stitch).
-        self.same_st = re.compile(rf"^({stitch_alt})\s+in\s+(?:the\s+)?same\s+st$", re.I)
+        # "<stitch> in (the) same st/chain" -- text that means "this stitch
+        # shares whatever spot the immediately preceding clause named,"
+        # widened from a hardcoded literal "st" to the full _NOUN set (real
+        # sample, Sedge Stitch: "Hdc in the next chain, dc in the same
+        # chain" -- see tokenize_round's post-processing for why this
+        # match is classified provisionally, not with a final consumes/
+        # produces value, despite looking identical in shape to simple_
+        # positional above).
+        self.same_st = re.compile(rf"^({stitch_alt})\s+in\s+(?:the\s+)?same\s+{_NOUN}$", re.I)
         # "<stitch> in (first|next|last) ch-1 sp(ace)" -- linen/moss-stitch
         # style, working into a chain-1 SPACE left by the previous row
         # rather than into an actual previous-row stitch. New phrasing found
@@ -662,6 +678,63 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
     if (len(clauses) > 1 and clauses[0].raw.strip().lower() == "magic ring"
             and clauses[1].clause_type == "counted_chain"):
         clauses[1] = replace(clauses[1], consumes=1)
+
+    # "X in (the) same st/chain" immediately following a clause that itself
+    # claimed a real, single previous-row/foundation-chain slot (produced
+    # by simple_positional, top_of_chain, stitch_in_ch1_space, or
+    # around_post -- all tagged clause_type="positional_single") is case
+    # (b) from patterns.same_st's own comment: two DIFFERENT stitches
+    # sharing the one spot the preceding clause already paid for, not a
+    # turning-chain increase. Reclassify to that non-doubled reading here;
+    # everything else (no preceding clause, or preceded by a chain/
+    # counted_chain/anything not itself a single real stitch pickup) keeps
+    # the original, historically-verified turning-chain-increase doubling,
+    # just relabelled to the normal "positional_single" type so downstream
+    # consumers (checks/stitch_count.py) never need to know the provisional
+    # "same_as_previous" type existed.
+    for i, clause in enumerate(clauses):
+        if clause.clause_type != "same_as_previous":
+            continue
+        if i > 0 and clauses[i - 1].clause_type == "positional_single":
+            canon, is_compound, c, prod = _stitch_lookup(clause.stitch, custom_compound)
+            clauses[i] = replace(
+                clause, clause_type="positional_single", consumes=0, produces=prod,
+                unverifiable_reason=None if prod is not None else
+                f"'{canon}' has no fixed consumes/produces ratio",
+            )
+        else:
+            clauses[i] = replace(clause, clause_type="positional_single")
+
+    # A "Skip the first N chain(s) from the hook (...)" clause that ISN'T
+    # immediately followed by the matching "<stitch> in the next chain and
+    # in each ch across" shape doesn't get folded into a single
+    # foundation_into_chain clause by the pairing step below -- real
+    # construction found on a real sample (Sedge Stitch, loopdreams commit
+    # "Fix Sedge Stitch construction", Aug 2026): "Skip the first 1 chain
+    # from the hook (...). Hdc in the next chain, dc in the same chain.
+    # ..." opens with a real 2-stitch cluster, not the whole-row "...and
+    # each ch across" shape, so no merge happens and this clause stays
+    # standalone. It's left at consumes=0 in patterns.skip_first_chains_
+    # from_hook's own match arm ONLY because the paired case's dedicated
+    # _check_foundation_into_chain check (checks/stitch_count.py) never
+    # reads this clause's consumes at all -- it reads the MERGED clause's
+    # own explicit_count instead. When nothing merges it, the generic
+    # zone-sum-based checks (_check_repeat_group, _check_flat_sequence) DO
+    # tally every clause's consumes across the whole row, and silently
+    # leaving this at 0 would under-count the foundation chain by exactly
+    # the skipped amount -- reproducing the same false stitch-count-
+    # mismatch this whole fix is for. Bump it to the real skipped count
+    # here, but ONLY when unpaired, so the paired case's own tested value
+    # (0 -- see test_stitch_parser.py's TestSkipFirstChainsFoundationClause)
+    # is untouched. Checked against the ORIGINAL, pre-pairing clause_type
+    # of the following clause -- this loop must run before the pairing
+    # loop below mutates it.
+    for i, clause in enumerate(clauses):
+        if clause.clause_type != "skip_first_chains_from_hook":
+            continue
+        paired = (i + 1 < len(clauses) and clauses[i + 1].clause_type == "foundation_stitch_in_next_chain")
+        if not paired:
+            clauses[i] = replace(clause, consumes=clause.explicit_count)
 
     # Pair up the split foundation-start shape (see patterns.skip_first_
     # chains_from_hook's own comment): "Skip the first N chain(s) from the
@@ -1084,8 +1157,12 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     m = patterns.same_st.match(p)
     if m:
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
-        # Hand-verified against the real sample (coaster, Jul 8 batch,
-        # rounds 1-3): the preceding turning chain here is a BARE, un-
+        # "X in same st/chain" is genuinely ambiguous out of context -- it
+        # has TWO different real meanings depending on what immediately
+        # precedes it, and the text alone can't tell them apart:
+        #
+        # (a) Hand-verified against the real sample (coaster, Jul 8 batch,
+        # rounds 1-3): the preceding turning chain there is a BARE, un-
         # counted "Ch 3" (produces=0 on its own) -- the "counts as first
         # dc" convention stated once in the Foundation line carries
         # forward implicitly, rather than being restated on every round.
@@ -1095,8 +1172,26 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         # (the implicit chain-stitch plus this explicit one). Confirmed by
         # testing all three increase rounds' declared counts (12->24,
         # 24->36, 36->48) against this exact model -- all resolve exactly.
+        #
+        # (b) Real sample (Sedge Stitch, loopdreams commit "Fix Sedge
+        # Stitch construction", Aug 2026): "Hdc in the next chain, dc in
+        # the same chain" -- a genuinely different idiom where TWO
+        # DIFFERENT stitches share one real target (no turning-chain
+        # increase involved at all): the immediately preceding clause
+        # ("Hdc in the next chain") already claimed and paid for that one
+        # slot, so this clause adds no further consumption and produces
+        # only its own plain stitch -- consumes=0, produces=prod (not
+        # doubled).
+        #
+        # Provisionally tagged "same_as_previous" (not "positional_single"
+        # directly) with case (a)'s values, the historically-verified
+        # default -- tokenize_round's post-processing below looks at what
+        # actually precedes this clause and reclassifies to case (b) only
+        # when that's a real single-stitch positional clause, leaving case
+        # (a) (preceded by a bare/counted turning chain, or nothing at all)
+        # untouched.
         produces = (prod * 2) if prod is not None else None
-        return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="same_as_previous",
                              consumes=1, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")

@@ -461,5 +461,272 @@ class TestMittensClauseShapes(unittest.TestCase):
         self.assertIn("fasten_off", types)
 
 
+class TestSedgeStitchClauses(unittest.TestCase):
+    # Real construction (Sedge Stitch, loopdreams commit "Fix Sedge Stitch
+    # construction", Aug 2026 -- a real tester's hands-on attempt caught the
+    # old construction as wrong against a real published tutorial): every
+    # row opens with a 2-st (hdc, dc) cluster sharing ONE chain/stitch,
+    # repeats "skip 2, (sc, hdc, dc) in next" 3-st clusters, and closes with
+    # a single sc in the last chain/stitch. None of these clause shapes had
+    # ever been taught to this tool before -- same category as bl sc/fl sc/
+    # hhdc/wc st in abbreviations.py, caught missing on a real sample.
+
+    def test_simple_positional_accepts_spelled_out_chain(self):
+        # _NOUN previously only matched the abbreviated "ch"/"chs", not the
+        # spelled-out word LoopDreams' generator actually uses in prose
+        # (generate-pattern's builders.ts skipChainsClause() convention,
+        # used across every compound-stitch builder) -- "Hdc in the next
+        # chain" fell through as an unrecognized clause.
+        clauses = tokenize_round("Hdc in the next chain")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "positional_single")
+        self.assertEqual(c.stitch, "hdc")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 1)
+
+    def test_simple_positional_last_chain(self):
+        clauses = tokenize_round("sc in last chain")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "positional_single")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 1)
+
+    def test_heterogeneous_paren_cluster_chain_wording(self):
+        # "(sc, hdc, dc) in next chain" -- a parenthesized list of THREE
+        # DIFFERENT stitch abbreviations all worked into one spot. Already
+        # matched by _RE_PAREN_CLUSTER's existing shape once _NOUN accepts
+        # "chain" -- no new clause-matching code needed for this shape
+        # itself, only the noun widening. The trailing "(sedge made)"
+        # descriptive annotation is stripped by tokenize_round's existing
+        # fallback before this matches, same as "(shell made)" elsewhere.
+        clauses = tokenize_round("(sc, hdc, dc) in next chain (sedge made)")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "cluster_same_spot")
+        self.assertEqual(c.stitch, "(sc, hdc, dc)")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 3)
+        self.assertIsNone(c.unverifiable_reason)
+
+    def test_heterogeneous_paren_cluster_st_wording(self):
+        # Same shape, later-row "st" wording -- already worked before this
+        # fix (_NOUN always included "st"), kept here as a same-shape
+        # sibling of the chain-wording test above, and as coverage for the
+        # exact clause text every row after the first actually uses.
+        clauses = tokenize_round("(sc, hdc, dc) in next st (sedge made)")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "cluster_same_spot")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 3)
+
+    def test_same_spot_after_real_stitch_pickup_not_doubled(self):
+        # "Hdc in the next chain, dc in the same chain" -- TWO DIFFERENT
+        # stitches sharing the ONE slot the first clause already claimed,
+        # not the turning-chain-increase idiom same_st was originally
+        # verified against (see TestCoasterSameStClause in
+        # test_shawl_coaster_dishcloth.py). The second clause must add NO
+        # further consumption and produce only its own plain stitch.
+        clauses = tokenize_round("Hdc in the next chain, dc in the same chain")
+        self.assertEqual(len(clauses), 2)
+        opener, same = clauses
+        self.assertEqual(opener.consumes, 1)
+        self.assertEqual(opener.produces, 1)
+        self.assertEqual(same.clause_type, "positional_single")
+        self.assertEqual(same.consumes, 0)
+        self.assertEqual(same.produces, 1)
+
+    def test_same_spot_after_real_stitch_pickup_st_wording(self):
+        # Same disambiguation, later-row "st" wording -- "dc in same st"
+        # must NOT keep its turning-chain-increase doubling here, since it
+        # follows a real single-stitch pickup ("Hdc in first st"), not a
+        # bare/counted turning chain.
+        clauses = tokenize_round("Hdc in first st, dc in same st")
+        self.assertEqual(len(clauses), 2)
+        opener, same = clauses
+        self.assertEqual(opener.consumes, 1)
+        self.assertEqual(opener.produces, 1)
+        self.assertEqual(same.consumes, 0)
+        self.assertEqual(same.produces, 1)
+
+    def test_same_st_after_counted_chain_still_doubles(self):
+        # Regression guard: the ORIGINAL coaster idiom ("Ch 3 (counts as
+        # first dc), dc in same st" -- a turning-chain increase) must keep
+        # its existing, hand-verified doubled produces. The preceding
+        # clause here is "counted_chain", not "positional_single", so the
+        # new same-spot reinterpretation must not fire.
+        clauses = tokenize_round("Ch 3 (counts as first dc), dc in same st")
+        self.assertEqual(len(clauses), 2)
+        same = clauses[1]
+        self.assertEqual(same.clause_type, "positional_single")
+        self.assertEqual(same.consumes, 1)
+        self.assertEqual(same.produces, 2)
+
+    def test_same_st_in_isolation_still_doubles(self):
+        # Regression guard, same real sample as test_shawl_coaster_
+        # dishcloth.py's TestCoasterSameStClause: with no preceding clause
+        # at all (index 0), the original doubled default must be preserved.
+        clauses = tokenize_round("dc in same st")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].consumes, 1)
+        self.assertEqual(clauses[0].produces, 2)
+
+    def test_skip_first_chain_consumes_when_unpaired(self):
+        # "Skip the first 1 chain from the hook (...)" is followed here by
+        # "Hdc in the next chain" -- NOT the "<stitch> in the next chain
+        # and in each ch across" shape it normally pairs with (see
+        # patterns.skip_first_chains_from_hook's own comment) -- so no
+        # merge into a single foundation_into_chain clause happens, and
+        # this clause stays standalone. Left at consumes=0 only when PAIRED
+        # (see TestSkipFirstChainsFoundationClause -- the dedicated
+        # foundation check never reads it there); unpaired, it must
+        # contribute its real skipped-chain count so the row's generic
+        # zone-sum math doesn't silently under-count the foundation chain.
+        clauses = tokenize_round(
+            "Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Hdc in the next chain, dc in the same chain"
+        )
+        skip_clause = clauses[0]
+        self.assertEqual(skip_clause.clause_type, "skip_first_chains_from_hook")
+        self.assertEqual(skip_clause.consumes, 1)
+        self.assertEqual(skip_clause.produces, 0)
+
+    def test_sedge_foundation_row_verifies_end_to_end(self):
+        # Confirms the fix doesn't just tokenize correctly in isolation --
+        # the full stitch-count check resolves Sedge Stitch's corrected
+        # Row 1 cleanly: skip 1 (consumes 1) + 2-st opener (consumes 1,
+        # produces 2) + 6x[skip 2 (consumes 2) + 3-st cluster (consumes 1,
+        # produces 3)] + 1-st closer (consumes 1, produces 1) = 21 chains
+        # consumed, 21 sts produced -- exactly matching a 21-chain
+        # foundation and a declared count of 21, with zero unrecognized
+        # clauses. Real sample verified via loopdreams_qa/from_pattern_json
+        # against generate-pattern's actual dry_run output shape.
+        raw = (
+            "Test Sedge Swatch\n"
+            "MATERIALS\n"
+            "Gauge: 16 sc x 16 rows = 4 in [10 cm]\n"
+            "Terminology: US\n"
+            "Yarn: Test yarn\n"
+            "Hook: 5.0 mm\n"
+            "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, hdc = half double crochet, dc = double crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 21, turn.\n"
+            "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Hdc in the next chain, dc in the same chain. *skip 2 chains, (sc, hdc, dc) in next chain "
+            "(sedge made); rep from * to the last chain, sc in last chain. Ch 1, turn. (21 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        issues = stitch_count.check(pattern)
+        row1_issues = [i for i in issues if i.location == "Row 1"]
+        self.assertEqual(row1_issues, [])
+
+    def test_sedge_second_row_reports_real_gap_not_unrecognized_clause(self):
+        # IMPORTANT: this documents a genuine finding, not a false
+        # positive. Every row after the first uses "Hdc in first st, dc in
+        # same st" (opener consumes 1 real previous-row stitch, produces 2)
+        # with NO equivalent to Row 1's leading "skip the first 1 chain"
+        # clause (which is what makes Row 1's own consumed/produced totals
+        # match exactly -- see test_sedge_foundation_row_verifies_end_to_
+        # end above). Without that offsetting skip, every row after the
+        # first structurally produces exactly ONE MORE stitch than it
+        # consumes from the previous row, regardless of repeat count --
+        # this is a real, currently-unresolved 1-stitch construction gap
+        # in generate-pattern's buildSedgeStitchRows (loopdreams repo,
+        # commit "Fix Sedge Stitch construction", Aug 2026), confirmed by
+        # hand for both the pre-fix doubled same-st reading (produces 22
+        # instead of 21) and the corrected non-doubled reading tested here
+        # (19 remaining sts don't divide evenly by the 3-st repeat unit) --
+        # neither reading resolves cleanly, because the row's own clauses
+        # are one stitch short of being self-consistent, not because of
+        # how the "same st" ambiguity is resolved. The important thing
+        # this test guards is WHAT KIND of issue comes back: a genuine
+        # stitch_count error, never an "unrecognized clause" warning (that
+        # would mean the parser fixes above have regressed).
+        raw = (
+            "Test Sedge Swatch\n"
+            "MATERIALS\n"
+            "Gauge: 16 sc x 16 rows = 4 in [10 cm]\n"
+            "Terminology: US\n"
+            "Yarn: Test yarn\n"
+            "Hook: 5.0 mm\n"
+            "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, hdc = half double crochet, dc = double crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 21, turn.\n"
+            "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Hdc in the next chain, dc in the same chain. *skip 2 chains, (sc, hdc, dc) in next chain "
+            "(sedge made); rep from * to the last chain, sc in last chain. Ch 1, turn. (21 sts)\n"
+            "Row 2: Hdc in first st, dc in same st. *skip 2 sts, (sc, hdc, dc) in next st (sedge made); "
+            "rep from * to the last st, sc in last st. Ch 1, turn. (21 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        issues = stitch_count.check(pattern)
+        row2_issues = [i for i in issues if i.location == "Row 2"]
+        self.assertEqual(len(row2_issues), 1)
+        self.assertEqual(row2_issues[0].severity, "error")
+        self.assertNotIn("unrecognized clause", row2_issues[0].message)
+        self.assertIn("doesn't divide evenly", row2_issues[0].message)
+
+    def test_shell_centre_dc_still_unverifiable_not_swept_into_paren_cluster(self):
+        # Scoping guard for the _NOUN widening and the same-spot
+        # reinterpretation above: Shell Stitch's "sc in the centre dc of
+        # next shell" (real text, loopdreams builders.ts
+        # buildShellStitchRows) must keep coming back unverifiable
+        # (REVIEW-tier), not newly PASS or FAIL. It names a position INSIDE
+        # a multi-stitch group by a landmark word ("centre dc"), not a
+        # parenthesized list of stitches or a plain "next/last st" --
+        # patterns.centre_dc is a wholly separate regex from both
+        # _RE_PAREN_CLUSTER and simple_positional, so it must be unaffected
+        # by widening _NOUN to accept "chain" for those.
+        clauses = tokenize_round("sc in the centre dc of next shell")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "positional_single")
+        self.assertIsNone(c.consumes)
+        self.assertIsNotNone(c.unverifiable_reason)
+
+    def test_shell_row_still_reports_review_not_pass_or_fail(self):
+        # End-to-end guard, real text (loopdreams builders.ts
+        # buildShellStitchRows): the half-shell/centre-dc row must still
+        # come back as an unverifiable warning (REVIEW), exactly as before
+        # this whole fix -- not a new false PASS (which would mean the
+        # centre-dc clause got silently swallowed by some other pattern)
+        # and not a new false FAIL either.
+        raw = (
+            "Test Shell Swatch\n"
+            "MATERIALS\n"
+            "Gauge: 16 sc x 16 rows = 4 in [10 cm]\n"
+            "Terminology: US\n"
+            "Yarn: Test yarn\n"
+            "Hook: 5.0 mm\n"
+            "ABBREVIATIONS\n"
+            "ch = chain, sc = single crochet, dc = double crochet, rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 8, turn.\n"
+            "Row 1: Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Sc in the next chain and in each ch across. Ch 1, turn. (7 sts)\n"
+            "Row 2: Ch 1, sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, "
+            "sc in next st; rep from * across. Ch 3, turn. (7 sts)\n"
+            "Row 3: Ch 3, 2 dc in first sc (half shell made), *sc in centre dc of next shell, "
+            "5 dc in next sc; rep from * to last shell, sc in centre dc of last shell, "
+            "4 dc in last sc (half shell made). Fasten off, weave in ends. (7 sts)\n"
+            "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+        pattern = parse(raw)
+        issues = stitch_count.check(pattern)
+        row3_issues = [i for i in issues if i.location == "Row 3"]
+        self.assertEqual(len(row3_issues), 1)
+        self.assertEqual(row3_issues[0].severity, "warning")
+        self.assertIn("centre dc", row3_issues[0].message)
+
+
 if __name__ == "__main__":
     unittest.main()
