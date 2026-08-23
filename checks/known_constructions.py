@@ -23,6 +23,18 @@ the canonical construction -- verified against
 https://blog.bellacococrochet.com/waffle-stitch/ (UK terms; translated
 UK tr -> US dc, UK FPtr -> US FPdc) -- skips only 2 chains ("3rd ch from
 hook"), and requires a foundation chain that's a multiple of 3, plus 2.
+
+Second entry: Sedge Stitch. Added the same day LoopDreams' own Sedge
+construction got caught (twice) as wrong by a real tester's hands-on
+attempt against Daisy Farm Crafts' "Crochet Sedge Stitch"
+(https://www.youtube.com/watch?v=aQmLHCVQ5F8) -- this entry exists so a
+future regression of the same kind gets caught automatically instead of
+needing another real crocheter to find it by hand. Sedge's Row 1 phrases
+its skip as "Skip the first N chain(s) from the hook" (clause type
+skip_first_chains_from_hook, explicit_count IS the skip count) rather
+than waffle's ordinal "Nth ch from hook" (clause type
+foundation_into_chain, explicit_count is the ordinal position, one more
+than the skip count) -- check() below handles both shapes.
 """
 import re
 
@@ -35,6 +47,12 @@ KNOWN_CONSTRUCTIONS = {
         "row1_skip": 2,     # "3rd ch from hook"
         "multiple_of": 3,   # foundation chain must be (multiple_of * n) + plus
         "plus": 2,
+    },
+    "sedge stitch": {
+        "source": "Daisy Farm Crafts, https://www.youtube.com/watch?v=aQmLHCVQ5F8",
+        "row1_skip": 1,     # "Skip the first 1 chain from the hook"
+        "multiple_of": 3,   # foundation chain count == stitch count exactly (see LoopDreams' own builders.ts comment)
+        "plus": 0,
     },
 }
 
@@ -63,25 +81,43 @@ def check(pattern) -> list:
     issues = []
 
     row1 = next((r for r in pattern.rows if r.row_start == 1), None)
+    row1_clauses = row1.clauses if row1 else []
+
+    # Two different phrasings for "how many chains does Row 1 skip before its
+    # first real stitch", each from a different clause type -- see this
+    # module's own docstring (Sedge Stitch entry) for why both exist.
     foundation_clause = next(
-        (c for c in row1.clauses if c.clause_type == "foundation_into_chain"),
-        None,
-    ) if row1 else None
+        (c for c in row1_clauses if c.clause_type == "foundation_into_chain"), None,
+    )
+    skip_clause = next(
+        (c for c in row1_clauses if c.clause_type == "skip_first_chains_from_hook"), None,
+    )
+
+    actual_skip = None
+    skip_phrase = None
     if foundation_clause is not None and foundation_clause.explicit_count is not None:
+        # Ordinal style ("3rd ch from hook") -- explicit_count is the ordinal
+        # position, one more than the actual skip count.
         actual_skip = foundation_clause.explicit_count - 1
-        if actual_skip != ref["row1_skip"]:
-            issues.append(Issue(
-                category="completeness", severity="warning", location="Row 1",
-                message=(
-                    f"Row 1 skips {actual_skip} chain(s) before the first stitch "
-                    f"('{_ordinal(foundation_clause.explicit_count)} ch from hook'), but the verified "
-                    f"construction for '{name.title()}' ({ref['source']}) skips {ref['row1_skip']} "
-                    f"chain(s) ('{_ordinal(ref['row1_skip'] + 1)} ch from hook'). The row's own stitch-count "
-                    f"math may still be internally consistent with a compensating foundation-chain length "
-                    f"elsewhere, but this deviates from the named stitch's canonical construction -- worth "
-                    f"confirming against source before shipping."
-                ),
-            ))
+        skip_phrase = f"'{_ordinal(foundation_clause.explicit_count)} ch from hook'"
+    elif skip_clause is not None and skip_clause.explicit_count is not None:
+        # Explicit-count style ("Skip the first N chain(s) from the hook") --
+        # explicit_count already IS the skip count, no ordinal offset.
+        actual_skip = skip_clause.explicit_count
+        skip_phrase = f"'skip the first {actual_skip} chain(s) from the hook'"
+
+    if actual_skip is not None and actual_skip != ref["row1_skip"]:
+        issues.append(Issue(
+            category="completeness", severity="warning", location="Row 1",
+            message=(
+                f"Row 1 skips {actual_skip} chain(s) before the first stitch ({skip_phrase}), "
+                f"but the verified construction for '{name.title()}' ({ref['source']}) skips "
+                f"{ref['row1_skip']} chain(s). The row's own stitch-count math may still be "
+                f"internally consistent with a compensating foundation-chain length elsewhere, "
+                f"but this deviates from the named stitch's canonical construction -- worth "
+                f"confirming against source before shipping."
+            ),
+        ))
 
     if pattern.foundation_chain is not None:
         remainder = (pattern.foundation_chain - ref["plus"]) % ref["multiple_of"]
