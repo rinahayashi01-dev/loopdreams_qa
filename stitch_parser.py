@@ -122,17 +122,6 @@ _RE_HELD_ASIDE = re.compile(r"^place\s+the\s+next\s+(\d+)\s+sts\s+on\s+a\s+holde
 # round-completion clause in the SAME row -- see checks/stitch_count.py's
 # dedicated gusset-transition row handler for how these combine.
 _RE_BRIDGE_CHAIN = re.compile(r"^ch\s+(\d+)\s+to\s+bridge\s+the\s+gap$", re.I)
-# "sl st to top of ch 3 to join" -- ends a JOINED round (flat circle/motif
-# construction, real sample: coaster Jul 8 batch -- distinct from the
-# continuous-spiral mittens construction, which never joins at all). A
-# no-op for stitch-count purposes: it closes the round, doesn't add or
-# remove stitches. The sc-variant coaster (same batch) has no counted
-# turning chain to join back to -- its rounds open on a bare stitch
-# instead, so the round closes with "sl st to first sc to join" instead;
-# same no-op, different anchor phrase.
-_RE_SL_ST_JOIN = re.compile(
-    r"^sl\s*st\s+to\s+(?:top\s+of\s+ch\s+\d+|first\s+[a-z]+)\s+to\s+join$", re.I
-)
 # "sl st in next 2 sts of the sc row" (current phrasing, loopdreams PR #333,
 # Jul 28 batch) / "...of the foundation chain"/"...of the final row" (older
 # phrasing, scarf-mossribbed, Jul 15 batch, kept for backward compat with
@@ -274,6 +263,7 @@ class _Patterns:
         "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
         "skip_first_chains_from_hook", "foundation_stitch_in_next_chain",
         "foundation_next_chain_and_next_chs",
+        "sl_st_join", "trailing_count_restatement",
     )
 
     def __init__(self, stitch_alt: str):
@@ -557,6 +547,53 @@ class _Patterns:
         self.each_of_next_chs = re.compile(
             rf"^({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(first|last|next)\s+(\d+)\s*chs?$", re.I
         )
+        # "sl st to top of ch 3 to join" -- ends a JOINED round (flat circle/motif
+        # construction, real sample: coaster Jul 8 batch -- distinct from the
+        # continuous-spiral mittens construction, which never joins at all). A
+        # no-op for stitch-count purposes: it closes the round, doesn't add or
+        # remove stitches. The sc-variant coaster (same batch) has no counted
+        # turning chain to join back to -- its rounds open on a bare stitch
+        # instead, so the round closes with "sl st to first sc to join" instead;
+        # same no-op, different anchor phrase.
+        #
+        # The "first <stitch>" anchor used to be a bare module-level [a-z]+
+        # instead of the real stitch_alt alternation -- real bug found
+        # (loopdreams' "Batch-test regression matrix" CI job, run 33269385156,
+        # Aug 2026, the first run after loopdreams_qa's deep cross-check was
+        # actually wired into that job -- see loopdreams PR #437/#438): Coaster
+        # wc st rounds close with "sl st to first wc st to join", and a
+        # single-word [a-z]+ can't span the space in a two-word abbreviation --
+        # it matched only as far as "wc", leaving "st to join" unconsumed and
+        # the whole clause falling through to "unknown". Built from stitch_alt
+        # (the same alternation every other per-pattern clause in this class
+        # already matches against) instead, so it works for any known stitch
+        # word regardless of how many words it's spelled with -- not just this
+        # one two-word case, but also hhdc/bl sc/fl sc/bo and any future
+        # custom-compound token, none of which this anchor could have matched
+        # either.
+        self.sl_st_join = re.compile(
+            rf"^sl\s*st\s+to\s+(?:top\s+of\s+ch\s+\d+|first\s+(?:{stitch_alt}))\s+to\s+join$", re.I
+        )
+        # A round's declared stitch count restated as its own bare parenthetical
+        # clause -- "(8 wc st)", "(24 dc)" -- split off by tokenize_round's
+        # top-level comma/period split as a standalone clause, distinct from
+        # _RE_PAREN_CLUSTER's "(sc, hdc, dc) in next st" shape (a list of
+        # DIFFERENT stitches sharing one spot, always followed by "in ...").
+        # No-op for stitch-count purposes: it's pure restatement, never new
+        # information -- the row's authoritative declared_count is already
+        # parsed separately (pattern_parser.py's row_re, or from_pattern_
+        # json.py's _with_trailing_count for the JSON-adapter path this
+        # actually surfaced on). For single-word abbreviations this
+        # restatement is normally stripped as noise before it ever reaches
+        # tokenize_round (see pattern_parser.py row_re's own comment on
+        # duplicated "(N <abbr>) (N sts)" annotations) -- but that stripping
+        # regex only knows a hardcoded sc/hdc/dc/tr/dtr/htr/ttr list, so a
+        # multi-word abbreviation like "wc st" (same real bug as sl_st_join
+        # above, same CI run) sails through unstripped and needs its own
+        # no-op here instead.
+        self.trailing_count_restatement = re.compile(
+            rf"^\(\s*~?\s*\d+\s*(?:{stitch_alt})\s*\)$", re.I
+        )
 
 
 @functools.lru_cache(maxsize=64)
@@ -829,8 +866,11 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_MAGIC_RING.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
-    if _RE_SL_ST_JOIN.match(p):
+    if patterns.sl_st_join.match(p):
         return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
+
+    if patterns.trailing_count_restatement.match(p):
+        return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_SL_ST_EDGE_ATTACH.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
