@@ -2673,3 +2673,82 @@ production: sedge moved REVIEW → PASS; shell stayed REVIEW but lost the
 spurious "unrecognized clause: '1 more time'" reason, down to only its
 pre-existing centre-dc finding (41 → 42 passing, 2 → 1 review). Shawl's
 moss-ratio/Row-1 foundation REVIEW remains, unrelated and untouched.
+
+## Shell Stitch half-shell row's turning-chain-credit opener (Aug 29, 2026) — loopdreams_qa#37
+
+loopdreams' PR #436 fixed a real half-shell edge-width bug the same way
+the Aug 23 fix above (loopdreams_qa#36) did for a different edge: the
+half-shell row's opening clause was `"3 dc in first sc (half shell
+made)"`, restating the previous row's own physical turning chain as 3
+MORE dc on top of it -- reading as 4 total legs at that edge against the
+closing edge's real, chain-less 3 (the exact width mismatch the Aug 23
+fix chased, just re-introduced on the opposite edge by that fix's own
+"symmetric 3dc/3dc" wording). PR #436's fix: explicitly credit the chain
+instead of restating it -- `"2 dc in first sc (turning ch-3 counts as
+first dc; half shell made)"` (2 explicit dc + 1 borrowed from the chain =
+3, matching the closing edge). The credit can't be its own separate
+leading `"Ch 3 (counts as first dc),"` clause (the shape `counts_as_chain`
+already handles) -- that breaks TURNING_CHAIN_ERROR's row-opener
+recognition in `validate-pattern/rules.ts`, which needs the row to open
+directly on a stitch count/abbreviation -- so PR #436 folds it into a
+TRAILING parenthetical on the opening stitch clause instead, a shape this
+parser had never seen.
+
+`_strip_trailing_annotation` correctly refuses to strip it (it contains
+"counts as", real math, by design -- see that function's own docstring),
+so the clause fell through every pattern to `unknown`, adding a spurious
+extra "unrecognized clause" reason on top of the row's normal, pre-
+existing, by-design centre-dc-width REVIEW (see the Jul 24 entry above
+and `test_shell_centre_dc_still_unverifiable_not_swept_into_paren_
+cluster`). Non-blocking (`validate-pattern`'s own structural rules
+already pass this construction cleanly, confirmed via loopdreams'
+`validation-crosscheck.test.ts`) but worth fixing so this tool's deep
+cross-check stays meaningful for Shell Stitch instead of drowning the one
+real, permanent finding in a spurious one.
+
+Also confirmed, before writing any new logic: the row's other two
+"unrecognized"-adjacent symptoms reported alongside it ("sc in centre dc
+of next/last shell") are NOT the same root cause. They already match
+`patterns.centre_dc` (added long before PR #436) and are deliberately left
+unverifiable (`consumes=None`) because the centre stitch's position
+depends on the referenced shell's width, which isn't reliably inferable
+from text alone -- confirmed still correct and untouched by hand
+(`tokenize_round` in isolation) and by the existing
+`test_shell_centre_dc_still_unverifiable_not_swept_into_paren_cluster`
+test, which still passes unmodified.
+
+Added `patterns.turning_chain_credit`, matched right after
+`cluster_same_spot` (same "N stitch in first/next/last noun" shape) and
+classified identically (`clause_type="cluster_same_spot"`, `consumes=1`)
+with one addition: a flat +1 on `produces` for the credited turning-chain
+stitch -- same flat credit `counts_as_chain` itself always gives,
+regardless of which stitch is named.
+
+2 new clause-level tests, plus `test_shell_row_still_reports_review_not_
+pass_or_fail` refreshed to PR #436's current wording (assertion unchanged
+-- still exactly 1 warning, the pre-existing centre-dc finding). Full
+suite passes (236 tests, 5 skips). Re-ran `scripts/batch-test.ts` against
+production: the real "Coaster (square) — shell, intermediate" case lost
+the spurious "unrecognized clause" reason, down to only its pre-existing
+centre-dc finding, same as sedge's Aug 23 outcome (46/47 passing, 1
+review -- the shell case; 0 fail). Shawl's own historical moss-ratio/Row-1
+foundation REVIEW no longer appears in this run at all, resolved by
+unrelated work sometime since Aug 23.
+
+Built and pushed from an isolated `git worktree` rather than the shared
+sibling checkout: mid-task, another concurrent session was found to be
+using that same checkout for an unrelated fix (`recognize-wc-st-join-and-
+count-annotation` -- a `sl st to first wc st to join`/multi-word-
+abbreviation join-clause gap, plus a matching `trailing_count_
+restatement` no-op), and its uncommitted changes had already landed
+interleaved with this fix's own edits on disk by the time that was
+noticed. Untangled by hand (the two touched disjoint regions of
+`stitch_parser.py`, so nothing was destructively overwritten either way),
+restored the shared checkout to exactly that session's own in-progress
+state, and moved this fix to a `git worktree add` copy to finish and push
+without further risk of the two interleaving. The batch-test run above
+happened to run while both fixes were live on disk simultaneously and
+shows both working correctly together (the "Coaster — wc st,
+intermediate" case PASSes in the same run) -- not a design decision, just
+how the timing fell; each fix's own commit is independent and self-
+contained regardless.
