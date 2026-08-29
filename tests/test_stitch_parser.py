@@ -717,27 +717,74 @@ class TestSedgeStitchClauses(unittest.TestCase):
         self.assertIsNone(c.consumes)
         self.assertIsNotNone(c.unverifiable_reason)
 
+    def test_shell_half_shell_opener_turning_chain_credit_recognized(self):
+        # Real text, loopdreams builders.ts buildHalfShellRowText, PR #436
+        # (Aug 29 2026): "2 dc in first sc (turning ch-3 counts as first
+        # dc; half shell made)" -- the generator moved the half-shell row's
+        # standard "ch-3 counts as first dc" turning-chain credit from a
+        # separate leading counted_chain clause (the shape counts_as_chain
+        # already handles) into a TRAILING parenthetical on the row's
+        # opening stitch clause instead, because a separate leading clause
+        # here breaks TURNING_CHAIN_ERROR's row-opener recognition
+        # (validate-pattern/rules.ts expects a row to open directly on a
+        # stitch count/abbreviation). _strip_trailing_annotation refuses to
+        # strip this parenthetical (it contains "counts as", real math, by
+        # design), so the clause fell all the way through to "unknown"
+        # until this shape was taught directly. Same consumes as
+        # cluster_same_spot's plain "2 dc in first sc" (one previous-row
+        # anchor); produces is the 2 explicit dc plus 1 bonus stitch
+        # credited from the turning chain -- 3, not 2.
+        clauses = tokenize_round("2 dc in first sc (turning ch-3 counts as first dc; half shell made)")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "cluster_same_spot")
+        self.assertEqual(c.stitch, "dc")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 3)
+        self.assertIsNone(c.unverifiable_reason)
+
+    def test_shell_half_shell_opener_turning_chain_credit_last_anchor(self):
+        # Same shape, "last" instead of "first" -- real closing-edge anchor
+        # word elsewhere in this codebase's _POS grammar (not actually
+        # emitted by buildHalfShellRowText today, which only ever opens a
+        # row this way, but the underlying anchor noun/position grammar is
+        # shared with every other positional clause shape in this module,
+        # so it must not be accidentally scoped to "first" alone).
+        clauses = tokenize_round("2 dc in last sc (turning ch-3 counts as first dc; half shell made)")
+        self.assertEqual(len(clauses), 1)
+        c = clauses[0]
+        self.assertEqual(c.clause_type, "cluster_same_spot")
+        self.assertEqual(c.consumes, 1)
+        self.assertEqual(c.produces, 3)
+        self.assertIsNone(c.unverifiable_reason)
+
     def test_shell_row_still_reports_review_not_pass_or_fail(self):
         # End-to-end guard, real CURRENT text (loopdreams builders.ts
-        # buildShellStitchRows, refreshed Aug 23 -- see PR history below):
-        # the half-shell/centre-dc row must still come back as an
+        # buildHalfShellRowText, refreshed Aug 29 2026 -- see PR history
+        # below): the half-shell/centre-dc row must still come back as an
         # unverifiable warning (REVIEW), exactly as before this whole fix --
         # not a new false PASS (which would mean the centre-dc clause got
         # silently swallowed by some other pattern) and not a new false
-        # FAIL either. Also confirms the "N more times" fix doesn't turn
-        # this into TWO issues (the real centre-dc one plus a spurious
+        # FAIL either. Also confirms the turning-chain-credit fix doesn't
+        # turn this into TWO issues (the real centre-dc one plus a spurious
         # unrecognized-clause one) -- exactly one, same as always.
         #
-        # Refreshed from the original version of this test to match three
-        # loopdreams fixes since it was written, none of which change
-        # whether centre-dc is verifiable: no more restated leading "Ch 1,"/
-        # "Ch 3," (Row 2/3 used to restate the previous row's own trailing
-        # turning chain -- fixed, "Fix Shell Stitch restating the previous
-        # row's own turning chain"); "rep from * across"/"to last shell"
-        # now state an explicit count via timesWord() ("Add explicit repeat
-        # counts..."); the half-shell row's two edges are now a symmetric
-        # 3 dc/3 dc, not 2/4 ("Fix Shell Stitch's half-shell row: symmetric
-        # 3 dc at both edges, not 2/4" -- real tester, Aug 23).
+        # Refreshed from the Aug 23 version of this test for PR #436 (Aug 29
+        # 2026), which changed the row's OPENING edge only: "3 dc in first
+        # sc (half shell made)" (that version's fix for a real tester-found
+        # 2dc/4dc edge asymmetry) is now "2 dc in first sc (turning ch-3
+        # counts as first dc; half shell made)" -- fixing a DIFFERENT real
+        # bug (TURNING_CHAIN_ERROR) the 3dc wording introduced: restating
+        # the previous row's own physical turning chain as 3 MORE dc reads
+        # as 4 total legs at that edge against the closing edge's real,
+        # chain-less 3 -- the same width mismatch the Aug 23 fix chased, just
+        # moved to the opposite edge. Explicitly crediting the chain (2
+        # explicit dc + 1 borrowed from the chain = 3, matching the closing
+        # edge's 3) fixes the width without re-losing TURNING_CHAIN_ERROR
+        # recognition, which is why the credit is a trailing parenthetical
+        # on the opening stitch clause rather than a separate leading
+        # counted_chain clause. The closing edge ("3 dc in last sc (half
+        # shell made)") and the repeat structure are unchanged from Aug 23.
         raw = (
             "Test Shell Swatch\n"
             "MATERIALS\n"
@@ -753,7 +800,8 @@ class TestSedgeStitchClauses(unittest.TestCase):
             "Sc in the next chain and in each ch across. Ch 1, turn. (19 sts)\n"
             "Row 2: Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, "
             "sc in next st; rep from * 2 more times. Ch 3, turn. (19 sts)\n"
-            "Row 3: 3 dc in first sc (half shell made), *sc in centre dc of next shell, "
+            "Row 3: 2 dc in first sc (turning ch-3 counts as first dc; half shell made), "
+            "*sc in centre dc of next shell, "
             "5 dc in next sc; rep from * to last shell, 1 more time, sc in centre dc of last shell, "
             "3 dc in last sc (half shell made). Fasten off, weave in ends. (19 sts)\n"
             "Finishing\n"

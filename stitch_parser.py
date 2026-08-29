@@ -266,6 +266,7 @@ class _Patterns:
     __slots__ = (
         "counts_as_chain", "foundation_into_chain", "each_st_across", "each_st_around",
         "corner", "literal_next", "each_of_position", "side_edge", "cluster_same_spot",
+        "turning_chain_credit",
         "centre_dc", "around_post", "top_of_chain", "simple_positional",
         "stitch_in_ch1_space", "foundation_ordinal_single",
         "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
@@ -433,6 +434,29 @@ class _Patterns:
         # "<N> <stitch> in (first|next|last) st" -- N copies all worked into ONE shared spot.
         self.cluster_same_spot = re.compile(
             rf"^(\d+)\s+({stitch_alt})\s+(?:all\s+)?in\s+{_POS}\s+{_NOUN}$", re.I
+        )
+        # "N <stitch> in (first|next|last) <noun> (turning ch-M counts as
+        # first <stitch>[; free text])" -- the SAME turning-chain-counts-as-
+        # first-stitch credit as counts_as_chain above, but folded as a
+        # TRAILING parenthetical onto the opening stitch clause itself
+        # instead of stated as its own separate leading clause. Real
+        # phrasing (Shell Stitch half-shell row, loopdreams builders.ts
+        # buildHalfShellRowText, post-PR-436, Aug 2026 batch): "2 dc in
+        # first sc (turning ch-3 counts as first dc; half shell made)" --
+        # the generator can't use a separate leading "Ch 3 (counts as first
+        # dc)," clause here (breaks TURNING_CHAIN_ERROR's row-opener
+        # recognition in validate-pattern/rules.ts, which needs the row to
+        # open directly on a stitch count/abbreviation), so it states the
+        # same credit inline instead. Same shape as cluster_same_spot right
+        # above (one previous-row anchor, consumes=1) plus a flat +1 bonus
+        # produced stitch for the credited chain -- the credited stitch
+        # word itself isn't captured/used in the math, same as
+        # counts_as_chain's own produces=1 regardless of which stitch is
+        # named.
+        self.turning_chain_credit = re.compile(
+            rf"^(\d+)\s+({stitch_alt})\s+in\s+{_POS}\s+{_NOUN}\s*"
+            rf"\(turning\s+ch[\s-]?\d+\s+counts\s+as\s+(?:the\s+)?first\s+(?:{stitch_alt})\s*(?:;[^)]*)?\)$",
+            re.I,
         )
         # "sc in the centre dc of the next shell" -- single stitch into a named landmark position.
         self.centre_dc = re.compile(
@@ -1090,6 +1114,24 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         n = int(m.group(1))
         canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
         produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="cluster_same_spot",
+                             explicit_count=n, consumes=1, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "N <stitch> in (first|next|last) <noun> (turning ch-M counts as first
+    # <stitch>; ...)" -- same shape as cluster_same_spot immediately above,
+    # plus a flat +1 bonus stitch credited from the previous row's own
+    # trailing turning chain (see patterns.turning_chain_credit's own
+    # comment for why this can't just be a separate leading counted_chain
+    # clause here). Reuses clause_type="cluster_same_spot" -- structurally,
+    # and for every downstream consumer's purposes, it IS that shape, just
+    # with one bonus produced stitch.
+    m = patterns.turning_chain_credit.match(p)
+    if m:
+        n = int(m.group(1))
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        produces = (prod * n) + 1 if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="cluster_same_spot",
                              explicit_count=n, consumes=1, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
