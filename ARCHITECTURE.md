@@ -2752,3 +2752,79 @@ shows both working correctly together (the "Coaster — wc st,
 intermediate" case PASSes in the same run) -- not a design decision, just
 how the timing fell; each fix's own commit is independent and self-
 contained regardless.
+
+## wc st's two-word join clause and count restatement (Aug 29, 2026) — loopdreams_qa#38
+
+loopdreams' "Batch-test regression matrix" CI job (run 33269385156) --
+the first run after loopdreams PR #437/#438 actually wired loopdreams_qa's
+deep cross-check into that job -- surfaced a pre-existing gap invisible
+until then: `"Coaster — wc st, intermediate [REVIEW]: Row 1: ...
+unrecognized clause: 'sl st to first wc st to join'; unrecognized clause:
+'(8 wc st)'."` Confirmed the exact real generated text before writing any
+fix (per this project's own standing discipline) against loopdreams'
+`generate-pattern/builders.ts` (`buildCoasterRows`) rather than assuming
+it matched sc/hdc/dc's phrasing: wc st takes the `turningChain <= 1`
+branch (increment=8, no counted chain, same as sc), producing `"Magic
+ring. 8 wc st in ring, sl st to first wc st to join. (8 wc st)"`
+verbatim -- matching the CI error exactly, both clauses.
+
+Two related but distinct root causes, both ultimately from the same
+source: `wc st` is this tool's first-ever TWO-WORD stitch abbreviation
+(`abbreviations.STITCH_MATH["wc st"]`, added Jul 24 -- see that entry
+above), and neither the join-clause anchor nor the count-restatement
+noise-stripper had ever been exercised by a multi-word token before.
+
+1. `_RE_SL_ST_JOIN`'s `"first <stitch>"` anchor was a bare `[a-z]+` --
+   fine for every single-word abbreviation this shape had seen (sc/hdc/dc
+   even hhdc), but `[a-z]+` can't span the space in `"wc st"`: it matched
+   only as far as `"wc"`, leaving `"st to join"` unconsumed and the whole
+   clause falling through to `unknown`.
+2. The trailing `"(8 wc st)"` restatement is normally invisible to this
+   tool entirely -- for single-word abbreviations, `pattern_parser.py`'s
+   `row_re` strips it as noise (its own comment: coaster/mitten samples
+   restate the count twice, `"(24 dc) (24 sts)"`) via a regex hardcoded
+   to `sc|hdc|dc|tr|dtr|htr|ttr`. `"wc st"` isn't in that list (nor could
+   it be, cleanly, without the same word-boundary problem as #1), so it
+   sails through unstripped into `tokenize_round`, which had no clause
+   shape at all for a bare `"(N <stitch>)"` restatement -- single-word
+   abbreviations had simply never needed one.
+
+Fixed both in `stitch_parser.py` itself (not `pattern_parser.py`'s
+stripping regex), and both generically rather than special-cased to `"wc
+st"`: moved `_RE_SL_ST_JOIN` off its own hardcoded module-level pattern
+and into `_Patterns` as `sl_st_join`, built from the same `stitch_alt`
+alternation every other per-pattern clause shape already matches against
+(the real, dynamically-built list of every known stitch word, custom
+compound tokens included) -- so the anchor now matches any known stitch
+word regardless of how many words it's spelled with. Added a sibling
+`trailing_count_restatement` pattern (`^\(\s*~?\s*\d+\s*(?:{stitch_alt})\s*\)$`,
+classified as a no-op `note`, same as `_RE_MAGIC_RING`/`_RE_STUFF_NOTE`)
+for the bare-parenthetical case. Since both now key off the real known-
+word list instead of a narrow hardcoded one, this transitively closes the
+same latent gap for `hhdc`/`bl sc`/`fl sc`/`bo` too -- none of the four
+had ever been exercised through either code path before, so none had a
+confirmed real-sample failure yet, but all four would have hit the exact
+same `[a-z]+`/hardcoded-list mismatch the moment a real sample used one
+in this position.
+
+3 new tests (`TestCoasterJoinClause`/`TestCoasterTrailingCountRestatement`
+in `test_shawl_coaster_dishcloth.py`): the two-word join clause in
+isolation, the bare count-restatement clause in isolation (plus a control
+case confirming the existing single-word dc restatement still works
+identically), and a full row -- built from the *exact* text
+`from_pattern_json.py`'s `_with_trailing_count` actually produces for a
+wc st round (the un-stripped `"(8 wc st)"` plus its own appended `"(8
+sts)"`) -- verified against `stitch_count.check` end to end. Full suite
+passes (240 tests, 5 skips). Also ran `from_pattern_json.py`'s real
+adapter entry point directly against a realistic 3-round wc st coaster
+payload (mirroring `buildCoasterRows`' actual output shape): `PASS`, 0
+errors, 0 warnings.
+
+Built on the same shared sibling checkout the Shell Stitch fix above
+(loopdreams_qa#37) was concurrently using -- see that entry's own closing
+paragraph for the collision and how it was untangled. Once flagged, moved
+this fix to its own dedicated branch immediately (no commits lost, the
+Shell Stitch commit stayed fully intact/recoverable throughout via its
+own SHA) and left `main` and the Shell Stitch branch untouched; rebased
+cleanly onto `main` once loopdreams_qa#37 merged, no conflicts (the two
+fixes touch disjoint regions of `stitch_parser.py`).

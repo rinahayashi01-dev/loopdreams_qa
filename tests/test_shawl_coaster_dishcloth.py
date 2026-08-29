@@ -91,6 +91,53 @@ class TestCoasterJoinClause(unittest.TestCase):
         self.assertEqual(len(clauses), 1)
         self.assertEqual(clauses[0].clause_type, "join")
 
+    def test_sl_st_to_first_two_word_abbreviation_join_is_noop(self):
+        # wc st (Waistcoat Stitch) variant, real sample: loopdreams' "Batch-
+        # test regression matrix" CI job, run 33269385156, Aug 2026 -- the
+        # first run after loopdreams_qa's deep cross-check was actually
+        # wired into that job (see loopdreams PR #437/#438). Same shape as
+        # the single-word sc case above, but the anchor stitch itself is
+        # two words -- confirms the fix doesn't just special-case "wc st"
+        # but genuinely spans multi-word abbreviations.
+        clauses = tokenize_round("sl st to first wc st to join")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "join")
+
+
+class TestCoasterTrailingCountRestatement(unittest.TestCase):
+    # A round's declared count restated as its own bare parenthetical, real
+    # sample (same CI run as above): loopdreams' buildCoasterRows emits
+    # "...sl st to first wc st to join. (8 wc st)" for a wc st coaster's
+    # round 1 -- tokenize_round's top-level split then sees "(8 wc st)" as
+    # its own clause. For single-word abbreviations (dc/sc/...) this
+    # restatement never reaches tokenize_round at all -- pattern_parser.py's
+    # row_re strips it as noise first -- but "wc st" isn't in that stripping
+    # regex's hardcoded single-word list, so it sails through unstripped and
+    # needs its own no-op recognizer here (see _Patterns.trailing_count_
+    # restatement's own comment).
+    def test_bare_count_in_stitch_word_is_noop(self):
+        clauses = tokenize_round("(8 wc st)")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "note")
+
+    def test_bare_count_in_single_word_stitch_is_noop(self):
+        clauses = tokenize_round("(24 dc)")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "note")
+
+    def test_wc_st_coaster_round_verifies_against_declared_count(self):
+        # Mirrors the real text from_pattern_json.py's _with_trailing_count
+        # actually produces for a wc st coaster row 1 (the trailing "(8 wc
+        # st)" doesn't match _TRAILING_COUNT_RE's "sts?" requirement, so a
+        # second, correctly-shaped "(8 sts)" gets appended alongside it).
+        pattern = _pattern(
+            "Row 1: Magic ring. 8 wc st in ring, sl st to first wc st to join. (8 wc st). (8 sts)\n",
+            abbr_line="ch = chain, wc st = waistcoat stitch, sl st = slip stitch, rep = repeat",
+        )
+        issues = stitch_count.check(pattern)
+        row1_issues = [i for i in issues if i.location == "Row 1"]
+        self.assertEqual(row1_issues, [])
+
 
 class TestCoasterEachStAroundMultiplier(unittest.TestCase):
     # Real sample (coaster, Jul 8 batch): "2 dc in each remaining st
