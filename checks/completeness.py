@@ -82,12 +82,29 @@ def _check_finishing_present(pattern) -> list:
     # continuous-round construction never turns at all, foundation included.
     # Skip the error only when the piece's own last body row already closes
     # it inline (a drawstring-cinch "closure" clause, or a plain fasten-off).
+    #
+    # The construction gate (magic-ring / never-turns) was dropped 2026-08-30.
+    # It encoded an assumption that stopped being true: that a flat panel
+    # ALWAYS carries its closing narration in a separate Finishing/assembly
+    # section. The LoopDreams generator used to guarantee that by splitting
+    # "Fasten off, weave in ends." onto its own zero-count Assembly row --
+    # specifically to satisfy this check -- but that split was removed
+    # (loopdreams PR #449) because it surfaced in the project Tracker as a
+    # phantom extra checkbox for something you actually do as part of the
+    # last row. 16 of 48 regression-matrix patterns (every coaster,
+    # dishcloth, blanket and scarf) went straight from clean to FAIL.
+    #
+    # A last row that closes inline with a fasten-off DOES tell the maker how
+    # to finish, which is the only thing this check is really asking. Whether
+    # the piece turns is irrelevant to that question -- it was only ever a
+    # proxy for "is there other assembly work I should be insisting on?".
+    # Genuinely multi-piece constructions (tote, sweater, cardigan) are
+    # unaffected either way: they emit real "Assembly:"/"Handles(" rows that
+    # _FINISHING_ROW_RE matches, so they pass via the section check above and
+    # never reach this branch.
     body_rows = [r for r in pattern.rows if r.row_start > 0]
     last_row = max(body_rows, key=lambda r: r.row_end) if body_rows else None
-    never_turns = bool(body_rows) and not any(
-        c.clause_type == "turn" for r in body_rows for c in r.clauses
-    )
-    if (pattern.foundation_is_magic_ring or never_turns) and last_row is not None:
+    if last_row is not None:
         if any(c.clause_type in ("closure", "fasten_off") for c in last_row.clauses):
             return []
 

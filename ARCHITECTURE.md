@@ -2828,3 +2828,49 @@ Shell Stitch commit stayed fully intact/recoverable throughout via its
 own SHA) and left `main` and the Shell Stitch branch untouched; rebased
 cleanly onto `main` once loopdreams_qa#37 merged, no conflicts (the two
 fixes touch disjoint regions of `stitch_parser.py`).
+
+## Inline fasten-off now satisfies the Finishing check (Aug 30, 2026) — loopdreams_qa#39
+
+`_check_finishing_present` gated its "the last row closes this inline"
+exception behind a construction test — `foundation_is_magic_ring or
+never_turns` — so it only ever applied to continuous-round pieces. Flat
+panels turn, so they were always required to carry a *separate*
+Finishing/assembly section.
+
+That was a reasonable rule while it held, and it held only because the
+LoopDreams generator guaranteed it: `splitClosingRow` moved
+`"Fasten off, weave in ends."` onto its own zero-count `Assembly` row,
+added specifically to satisfy this check (see loopdreams_qa#31, which
+built this exception in the first place).
+
+**That guarantee was removed upstream on Aug 30 (loopdreams PR #449.)**
+The split row surfaced in the project Tracker as a phantom extra
+checkbox — a separate thing to tick off for something a maker does as
+part of working the last row — and was reported as such against a
+finished bobble coaster. The generator now folds the narration back onto
+the real last row.
+
+Consequence, caught on the very next post-merge batch run: **16 of 48
+regression-matrix patterns went from clean to FAIL** (32 pass / 0 review
+/ 16 fail, against 47/1/0 the run before) — every coaster, dishcloth,
+blanket and scarf, all reporting `No Finishing/assembly section found.`
+Every one a false alarm: each pattern does say how to finish, on its
+last row. Note the CI job itself still reported success — `batch-test.ts`
+only exits non-zero on Medium/High severity from `validate-pattern`'s own
+rules, so this degraded the deep-QA signal silently rather than breaking
+the build.
+
+Fix: drop the construction gate. A fasten-off on the real last row tells
+the maker how to finish, which is the only question this check actually
+asks; whether the piece turns was never more than a proxy for "is there
+other assembly work I should insist on?". Genuinely multi-piece
+constructions are unaffected — tote/sweater/cardigan emit real
+`Assembly:` / `Handles(` rows that `_FINISHING_ROW_RE` matches, so they
+pass via the section check and never reach this branch.
+
+`TestFlatPanelStillRequiresFinishing` asserted exactly the old premise
+and is inverted accordingly (renamed `TestFlatPanelClosingInline`), with
+a second case added so the check still earns its keep: a panel that
+simply *stops*, with no fasten-off and no Finishing section, is still
+flagged. 241 tests pass. Verified against real deployed-generator output
+for bobble/shell/sc square coasters (`PASS`, 0 errors, 0 warnings).
