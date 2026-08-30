@@ -62,21 +62,43 @@ class TestOvalFoundationNeverTurnsException(unittest.TestCase):
         self.assertNotEqual(_no_finishing_issues(pattern), [])
 
 
-class TestFlatPanelStillRequiresFinishing(unittest.TestCase):
-    # Regression guard for the fix above: a flat panel (Dishcloth-shaped --
-    # every row but the last turns) with no Finishing section must still be
-    # flagged, even though its own last row now also ends in a real
-    # "Fasten off, weave in ends." closure clause (see generate-pattern's
-    # buildGenericFlatRows fix, Jul 17). Broadening the exception to "last
-    # row has a closure clause" alone would have wrongly exempted this too --
-    # the "never turns anywhere in the body" check is what keeps this
-    # correctly flagged.
-    def test_flat_panel_with_plain_fasten_off_last_row_is_still_flagged(self):
+class TestFlatPanelClosingInline(unittest.TestCase):
+    # This class previously asserted the OPPOSITE: that a flat panel closing
+    # with a plain fasten-off must still be flagged, because the generator
+    # guaranteed a separate Finishing/assembly section for every flat panel
+    # (it split "Fasten off, weave in ends." onto its own zero-count Assembly
+    # row precisely to satisfy this check).
+    #
+    # That guarantee was removed on 2026-08-30 (loopdreams PR #449): the split
+    # row surfaced in the project Tracker as a phantom extra checkbox for
+    # something a maker does as part of working the last row. 16 of the 48
+    # regression-matrix patterns went from clean to FAIL on the very next run
+    # -- every coaster, dishcloth, blanket and scarf -- all of them false
+    # alarms, since each one does state how to finish, right there on its
+    # last row.
+    #
+    # So the expectation is now inverted, deliberately. A fasten-off on the
+    # real last row satisfies completeness regardless of whether the piece
+    # turns; multi-piece constructions keep their own "Assembly:"/"Handles("
+    # rows and pass via the section check instead, so nothing that genuinely
+    # needs seaming instructions is let through by this.
+    def test_flat_panel_closing_with_fasten_off_is_accepted(self):
         pattern = _pattern(
             "Foundation: Ch 48, turn. (47 sts)\n"
             "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (47 sts)\n"
             "Row 2: Sc in each st across, ch 1, turn. (47 sts)\n"
             "Row 3: Sc in each st across. Fasten off, weave in ends. (47 sts)\n"
+        )
+        self.assertEqual(_no_finishing_issues(pattern), [])
+
+    def test_flat_panel_with_no_closing_narration_at_all_is_still_flagged(self):
+        # The check still earns its keep: a panel that simply stops, with no
+        # fasten-off and no Finishing section, is genuinely incomplete.
+        pattern = _pattern(
+            "Foundation: Ch 48, turn. (47 sts)\n"
+            "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (47 sts)\n"
+            "Row 2: Sc in each st across, ch 1, turn. (47 sts)\n"
+            "Row 3: Sc in each st across. (47 sts)\n"
         )
         self.assertNotEqual(_no_finishing_issues(pattern), [])
 
