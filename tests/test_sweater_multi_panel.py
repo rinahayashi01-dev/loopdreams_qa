@@ -184,6 +184,35 @@ class TestEachStToLastClause(unittest.TestCase):
         self.assertEqual(clauses[0].consumes, 1)
         self.assertEqual(clauses[0].produces, 1)
 
+    def test_trailing_annotation_does_not_downgrade_to_marker(self):
+        # A trailing descriptive parenthetical must not push this clause into
+        # each_st_to_marker's broad ".+$" catch-all -- the exact swallowing
+        # the each_st_to_last pattern exists to prevent, just reached via an
+        # annotation rather than via match ordering. Real case: loopdreams'
+        # inline stitch how-tos (2026-08-31), which append
+        # "(wc st: insert the hook ...)" to the first row that works a
+        # post-worked stitch. Before this, every such row came back
+        # "Cannot verify stitch-count math".
+        clauses = tokenize_round(
+            'wc st in each st to last st (wc st: insert the hook through the '
+            'middle of the "v" of the st below, splitting it, rather than '
+            'under its top two loops)'
+        )
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "each_st_across")
+        self.assertIsNone(clauses[0].unverifiable_reason)
+        self.assertEqual(clauses[0].consumes, 1)
+        self.assertEqual(clauses[0].produces, 1)
+
+    def test_unparsed_trailing_text_still_falls_through(self):
+        # The tolerance above is deliberately limited to a parenthetical --
+        # arbitrary trailing prose must still be treated as a marker-based
+        # partial completion rather than silently accepted as a full row.
+        clauses = tokenize_round("dc in each st to last st then work something odd")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "each_st_to_marker")
+        self.assertIsNotNone(clauses[0].unverifiable_reason)
+
     def test_full_increase_row_verifies_correctly(self):
         # in_count=8: 1 (first st, ->2) + 6 (middle, ->6) + 1 (last st, ->2)
         # = 8 consumed, 2+6+2=10 produced.

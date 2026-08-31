@@ -2874,3 +2874,50 @@ a second case added so the check still earns its keep: a panel that
 simply *stops*, with no fasten-off and no Finishing section, is still
 flagged. 241 tests pass. Verified against real deployed-generator output
 for bobble/shell/sc square coasters (`PASS`, 0 errors, 0 warnings).
+
+## Trailing annotation downgraded "in each st to last st" (Aug 31, 2026) — loopdreams_qa#40
+
+loopdreams began appending an inline how-to to the first row that works a
+stitch whose abbreviation hides a construction (its PR #462) — e.g.
+
+    Sc in first st, wc st in each st to last st (wc st: insert the hook
+    through the middle of the "v" of the st below, splitting it, rather
+    than under its top two loops), sc in last st, ch 1, turn.
+
+Every such row came back `Cannot verify stitch-count math`. The same row
+without the parenthetical verified fine.
+
+Cause is narrower than it first looked, and is NOT about parentheticals in
+general. `_split_top_level` handled the embedded commas correctly, and
+`_strip_trailing_annotation` stripped the note correctly when called. The
+problem was match ORDER. `each_st_to_last` was hard-anchored:
+
+    ^(stitch)\s+in\s+each\s+st\s+to\s+last\s+st$
+
+so the annotation made it miss, and `each_st_to_marker`'s broad `.+$`
+catch-all — checked immediately after — swallowed the clause as an
+unverifiable partial round completion. That is precisely the swallowing
+`each_st_to_last` was added to prevent (see its own comment, and
+`TestEachStToLastClause`); it was just reached via an annotation rather
+than via ordering. `_classify`'s strip-and-retry fallback could not rescue
+it either, since that only runs once every pattern has failed to match and
+`each_st_to_marker` matches first.
+
+Fix: `each_st_to_last` now tolerates one optional trailing parenthetical.
+Deliberately `(?:\([^)]*\))?$` rather than `each_st_across`'s looser
+`(.*)$` — only a parenthetical is accepted, so genuinely unparsed trailing
+prose ("...to last st then work something odd") still falls through to the
+marker pattern and stays unverifiable rather than being silently accepted
+as a full row. Both directions are asserted.
+
+Worth noting for future wording changes on the loopdreams side: this class
+of bug is invisible from the generator's end — the pattern text is
+correct, reads correctly, and only the QA signal degrades. loopdreams
+worked around it first by relocating the note to the row's final stitch
+clause, chosen by probing all four candidate placements against the real
+checker. That workaround is still in place and still passes; this fix
+removes the constraint that forced it rather than requiring it be undone.
+
+243 tests pass. Verified end-to-end against real deployed-generator output
+for tr/hhdc/bl sc/fl sc/wc st (flat and circle)/waffle: `PASS`, 0 errors,
+0 warnings.
