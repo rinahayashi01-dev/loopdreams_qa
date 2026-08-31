@@ -415,8 +415,22 @@ class _Patterns:
         # the trailing "2 DC in last st" clause's own consumes/produces
         # already get folded into "post", correctly reserving that last
         # stitch out of what this clause consumes.
+        # The optional trailing parenthetical is load-bearing, not cosmetic.
+        # Without it a descriptive annotation -- "(wc st: insert the hook
+        # through the middle of the 'v' ...)", the same shape "(shell made)"
+        # takes elsewhere -- makes this pattern miss, and the clause then falls
+        # through to each_st_to_marker's broad ".+$" catch-all below and is
+        # reported unverifiable. That is exactly the swallowing this pattern
+        # was added to prevent (see the comment above each_st_to_marker), just
+        # reached via an annotation rather than via ordering. _classify's own
+        # strip-and-retry fallback cannot save it either, since that only runs
+        # after every pattern has failed and each_st_to_marker matches first.
+        # Real case: loopdreams' inline stitch how-tos, 2026-08-31.
+        # Deliberately "(...)" rather than each_st_across's looser "(.*)$" --
+        # only a parenthetical is tolerated, so genuinely unparsed trailing
+        # text still falls through instead of being silently accepted.
         self.each_st_to_last = re.compile(
-            rf"^({stitch_alt})\s+in\s+each\s+st\s+to\s+last\s+st$", re.I
+            rf"^({stitch_alt})\s+in\s+each\s+st\s+to\s+last\s+st\s*(?:\([^)]*\))?$", re.I
         )
         self.side_edge = re.compile(
             rf"^working\s+(\d+)\s+({stitch_alt})\s+per\s+row-?end\s+along\s+(?:each\s+)?side\s+edge$", re.I
