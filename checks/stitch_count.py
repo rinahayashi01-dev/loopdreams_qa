@@ -696,7 +696,12 @@ def _check_foundation_into_chain(row, clause, foundation_chain, in_label):
                      f"to check against.",
         )]
     skip = clause.explicit_count - 1  # "2nd ch from hook" -> skip 1, "4th" -> skip 3
-    expected = foundation_chain - skip
+    # When the skipped chains are themselves the row's first stitch, the row
+    # ends up one stitch wider than it has chains to work into -- and the
+    # foundation is written one chain shorter to match. Both halves come from
+    # the same convention, so the arithmetic only balances if this is added
+    # here (see StitchClause.chain_counts_as_stitch).
+    expected = foundation_chain - skip + (1 if clause.chain_counts_as_stitch else 0)
     if row.declared_count is not None and expected != row.declared_count:
         return [Issue(
             category="stitch_count", severity="error", location=row.label,

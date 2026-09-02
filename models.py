@@ -15,6 +15,13 @@ class StitchClause:
     consumes: Optional[int] = None
     produces: Optional[int] = None
     is_compound: bool = False
+    # foundation_into_chain only: the chains skipped at the start of the row
+    # are themselves that row's first stitch, so the row produces one more
+    # stitch than it has chains to work into. See stitch_parser's
+    # skip_first_chains_counting and checks/stitch_count's own foundation
+    # check. False is the older convention, where the skipped chains are
+    # purely a height-up and produce nothing.
+    chain_counts_as_stitch: bool = False
     unverifiable_reason: Optional[str] = None
     sub_clauses: list = field(default_factory=list)   # for clause_type == "bracket_group"
 

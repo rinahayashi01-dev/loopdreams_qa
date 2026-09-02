@@ -261,7 +261,8 @@ class _Patterns:
         "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
         "each_st_to_marker", "each_st_to_last", "same_st",
         "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
-        "skip_first_chains_from_hook", "foundation_stitch_in_next_chain",
+        "skip_first_chains_from_hook", "skip_first_chains_counting",
+        "foundation_stitch_in_next_chain",
         "foundation_next_chain_and_next_chs",
         "sl_st_join", "trailing_count_restatement",
     )
@@ -313,6 +314,19 @@ class _Patterns:
         self.skip_first_chains_from_hook = re.compile(
             rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
             rf"\((?:it|they)\s+(?:doesn't|don't)\s+count\s+as\s+a\s+stitch\)$", re.I
+        )
+        # The same shape under the opposite convention, which loopdreams
+        # adopted for every turning chain of 2 or more (hdc/hhdc/dc/tr) --
+        # "Skip the first 2 chains from the hook (they count as this row's
+        # first stitch)". Deliberately a SEPARATE pattern rather than an
+        # optional branch of the one above: the two differ by exactly one
+        # stitch in the row's total, and a single regex swallowing both
+        # parentheticals would silently pick one answer for the other's rows.
+        # The foundation is one chain shorter to match, so the arithmetic only
+        # balances if this is told apart from its opposite.
+        self.skip_first_chains_counting = re.compile(
+            rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
+            rf"\((?:it\s+counts|they\s+count)\s+as\s+this\s+row's\s+first\s+stitch\)$", re.I
         )
         # The second half of the pair above: no ordinal at all (the ordinal
         # position is implied entirely by however many chains the preceding
@@ -470,8 +484,12 @@ class _Patterns:
         self.around_post = re.compile(
             rf"^({stitch_alt})\s+around\s+(?:the\s+)?(?:posts?\s+of\s+)?{_POS}\s*(\d+)?\s*{_NOUN}$", re.I
         )
-        # "dc in top of ch" / "dc in top of ch-2"
-        self.top_of_chain = re.compile(rf"^({stitch_alt})\s+in\s+top\s+of\s+(?:the\s+)?ch(?:-\d+)?$", re.I)
+        # "dc in top of ch" / "dc in top of ch-2", and the shaped-row form
+        # "2 dc in top of ch" -- an increase worked into the turning chain,
+        # which is how a row whose chain counts as a stitch makes its far-edge
+        # increase (real sample: triangle shawl, every row).
+        self.top_of_chain = re.compile(
+            rf"^(?:(\d+)\s+)?({stitch_alt})\s+in\s+top\s+of\s+(?:the\s+)?ch(?:-\d+)?$", re.I)
         # Generic single-instance positional clause: "<stitch> in (first|next|last) st"
         self.simple_positional = re.compile(rf"^({stitch_alt})\s+in\s+{_POS}\s+{_NOUN}$", re.I)
         # "<stitch> in (the) same st/chain" -- text that means "this stitch
@@ -692,6 +710,9 @@ def _strip_trailing_annotation(s: str) -> str:
     return s
 
 
+_RE_INTO_TOP_OF_CH = re.compile(r"\bin\s+top\s+of\s+(?:the\s+)?ch\b", re.I)
+
+
 def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> list:
     """Split a round/row's instruction text into StitchClause objects.
 
@@ -741,6 +762,36 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
     if (clauses and clauses[0].clause_type == "skip" and clauses[0].consumes == 1
             and clauses[0].produces == 0 and _RE_SKIP_FIRST_ST.match(clauses[0].raw.strip())):
         clauses[0] = replace(clauses[0], produces=1)
+
+    # The same credit, for the same physical chain, on a row that does NOT
+    # open with a bare "skip first st". A SHAPED row under the same convention
+    # works its first stitch rather than skipping it -- that worked stitch is
+    # the near-edge increase, with the turning chain still standing in for the
+    # row's first stitch (real sample: triangle shawl, every row -- "Dc in
+    # first st, dc in each of next N sts, 2 dc in top of ch"). Nothing in that
+    # text mentions the chain, exactly as with the skip phrasing above, so
+    # without this the row reads one stitch short on every row of the piece.
+    #
+    # Detected by the FAR edge instead: a row that works into the top of the
+    # previous row's turning chain is necessarily a row whose own chain counts.
+    # Credited as a synthetic counted_chain, which is precisely what the older,
+    # explicit "Ch N (counts as dc)" phrasing produced -- see the comment above.
+    #
+    # Guarded against double-crediting: one chain, one credit, whichever of its
+    # two tells is present. A waffle row has BOTH (it opens with "skip first
+    # st" AND closes into the chain) and must still be credited once, which is
+    # why this is an elif.
+    # ...and never on top of an explicit one. The older phrasing states the
+    # chain outright ("Ch 2 (counts as dc), skip first st, ... dc in top of
+    # ch"), which already parses to a counted_chain carrying this exact credit;
+    # crediting again would make that row read one stitch too wide.
+    elif (clauses
+            and not any(c.clause_type == "counted_chain" for c in clauses)
+            and any(c.clause_type == "positional_single"
+                    and _RE_INTO_TOP_OF_CH.search(c.raw) for c in clauses)):
+        clauses.insert(0, StitchClause(
+            raw="(turning chain counts as this row's first stitch)",
+            clause_type="counted_chain", consumes=0, produces=1))
 
     # A row opening with "Magic ring" immediately followed by a counted
     # chain ("Ch N (counts as first X)") is the joined-round magic-ring
@@ -841,6 +892,7 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
             clauses[i + 1] = replace(
                 clauses[i + 1], clause_type="foundation_into_chain",
                 explicit_count=skipped + 1, consumes=None, produces=None, unverifiable_reason=None,
+                chain_counts_as_stitch=clauses[i].chain_counts_as_stitch,
             )
 
     return clauses
@@ -931,6 +983,16 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if m:
         return StitchClause(raw=raw_part, clause_type="skip_first_chains_from_hook",
                              explicit_count=int(m.group(1)), consumes=0, produces=0)
+
+    # Same clause, opposite convention -- the skipped chains ARE the row's
+    # first stitch, so this one produces 1 where the above produces 0. Folded
+    # into foundation_into_chain by the same post-processing step, carrying
+    # chain_counts_as_stitch so the count check can add it back.
+    m = patterns.skip_first_chains_counting.match(p)
+    if m:
+        return StitchClause(raw=raw_part, clause_type="skip_first_chains_from_hook",
+                             explicit_count=int(m.group(1)), consumes=0, produces=1,
+                             chain_counts_as_stitch=True)
 
     # See patterns.foundation_stitch_in_next_chain's own comment: the second
     # half of the same split shape, left unresolved (consumes/produces=None)
@@ -1242,12 +1304,18 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     m = patterns.top_of_chain.match(p)
     if m:
-        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
         # "in top of (the) ch" names exactly ONE target chain-top, regardless
-        # of which stitch is worked there.
+        # of which stitch is worked there -- and regardless of how many
+        # stitches are worked INTO it, which is what the optional leading
+        # multiple changes. "2 dc in top of ch" still consumes one chain-top;
+        # it just produces two stitches there (a far-edge increase).
+        n = int(m.group(1)) if m.group(1) else 1
         consumes = c if c is not None else 1
         return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
-                             consumes=consumes, produces=prod, is_compound=is_compound,
+                             explicit_count=n if n > 1 else None,
+                             consumes=consumes, produces=(prod * n) if prod is not None else None,
+                             is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")
 
