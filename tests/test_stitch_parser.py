@@ -817,3 +817,86 @@ class TestSedgeStitchClauses(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestTurningChainCountsAsStitch(unittest.TestCase):
+    """loopdreams switched every turning chain of 2 or more (hdc/hhdc/dc/tr) to
+    the counts-as-a-stitch convention: the chain IS the row's first stitch, the
+    stitch at its base is skipped, and the row's last stitch goes into the top
+    of the previous row's chain. The foundation is written one chain shorter to
+    match, because the chain is now one of the stitches rather than an extra.
+
+    Every assertion here is one stitch away from its opposite, which is the
+    whole difficulty: get any of it wrong and a pattern silently gains or loses
+    a stitch on every row.
+    """
+
+    def test_counting_skip_chains_clause_adds_the_chain_as_a_stitch(self):
+        # "Skip the first 2 chains ... (they count as this row's first stitch)"
+        # against the older "(they don't count as a stitch)" -- one chain of a
+        # difference in the row's total, so the two are told apart rather than
+        # matched by one loose regex.
+        clauses = tokenize_round(
+            "Skip the first 2 chains from the hook (they count as this row's first stitch). "
+            "Hhdc in the next chain and in each ch across. Ch 2, turn."
+        )
+        folded = [c for c in clauses if c.clause_type == "foundation_into_chain"]
+        self.assertEqual(len(folded), 1)
+        self.assertTrue(folded[0].chain_counts_as_stitch)
+
+    def test_non_counting_skip_chains_clause_is_unchanged(self):
+        clauses = tokenize_round(
+            "Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "Sc in the next chain and in each ch across. Ch 1, turn."
+        )
+        folded = [c for c in clauses if c.clause_type == "foundation_into_chain"]
+        self.assertEqual(len(folded), 1)
+        self.assertFalse(folded[0].chain_counts_as_stitch)
+
+    def test_foundation_row_is_one_wider_than_the_chains_it_works_into(self):
+        # Ch 33 skipping 2 leaves 31 chains to work into, and the skipped pair
+        # is the 32nd stitch. The older convention would make this 31.
+        text = (
+            "Pattern\nMATERIALS\nGauge: 13 sts x 11 rows = 4 in\nTerminology: US\n"
+            "PATTERN STEPS\nFoundation: Ch 33.\n"
+            "Row 1: Skip the first 2 chains from the hook (they count as this row's first "
+            "stitch). Hhdc in the next chain and in each ch across. Ch 2, turn. (32 sts)\n"
+        )
+        errors = [i for i in stitch_count.check(parse(text)) if i.severity == "error"]
+        self.assertEqual(errors, [], f"unexpected: {[i.message for i in errors]}")
+
+    def test_multiple_worked_into_the_turning_chain(self):
+        # "2 dc in top of ch" -- a shaped row's far-edge increase. One chain-top
+        # consumed, two stitches produced.
+        (clause,) = [c for c in tokenize_round("2 dc in top of ch") if c.stitch == "dc"]
+        self.assertEqual(clause.consumes, 1)
+        self.assertEqual(clause.produces, 2)
+
+    def test_shaped_row_still_gets_the_turning_chain_credit(self):
+        # A shaped row WORKS its first stitch (that is the near-edge increase)
+        # instead of skipping it, so the "skip first st" opener that normally
+        # carries the credit is absent. The chain is still standing in for the
+        # row's first stitch, detected here by the far edge instead.
+        clauses = tokenize_round("Dc in first st, dc in each of next 9 sts, 2 dc in top of ch. Ch 3, turn.")
+        credits = [c for c in clauses if c.clause_type == "counted_chain"]
+        self.assertEqual(len(credits), 1, "shaped row lost its turning-chain credit")
+        self.assertEqual(sum(c.produces for c in clauses if c.produces), 1 + 1 + 9 + 2)
+
+    def test_the_chain_is_never_credited_twice(self):
+        # A waffle row has BOTH tells -- it opens with "skip first st" AND
+        # closes into the chain -- and must still be credited exactly once.
+        clauses = tokenize_round(
+            "Skip first st, *fpdc around next st, dc in next 2 sts; rep from * to last 2 sts, "
+            "6 more times, fpdc around next st, dc in top of ch. Ch 2, turn."
+        )
+        self.assertEqual([c.clause_type for c in clauses if c.clause_type == "counted_chain"], [],
+                         "credited a synthetic chain on top of the skip-opener credit")
+        self.assertEqual(clauses[0].produces, 1)
+
+    def test_explicit_leading_chain_is_never_credited_twice_either(self):
+        # The older phrasing states the chain outright; that counted_chain
+        # already carries the credit, so no synthetic one is added.
+        clauses = tokenize_round(
+            "Ch 3 (counts as dc), dc in each of next 9 sts, 2 dc in top of ch. Ch 3, turn."
+        )
+        self.assertEqual(len([c for c in clauses if c.clause_type == "counted_chain"]), 1)

@@ -2921,3 +2921,69 @@ removes the constraint that forced it rather than requiring it be undone.
 243 tests pass. Verified end-to-end against real deployed-generator output
 for tr/hhdc/bl sc/fl sc/wc st (flat and circle)/waffle: `PASS`, 0 errors,
 0 warnings.
+
+## The turning chain now counts as a stitch (Sep 2, 2026) — loopdreams_qa#41
+
+loopdreams switched every turning chain of 2 or more (hdc/hhdc/dc/tr) to the
+counts-as-a-stitch convention. The chain IS the row's first stitch: the stitch
+at its base is skipped, the row's last stitch goes into the top of the previous
+row's chain, and the foundation is written one chain shorter because the chain
+is now one of the stitches rather than an extra on top of them. A ch 1
+(sc/bl sc/fl sc/wc st) is unchanged — too short to stand in for anything.
+
+Checked against real generator output before touching anything, which is worth
+recording because the result was not what the change looked like it would be.
+Nothing produced a wrong answer: the checker declined to verify instead.
+Three gaps, and a fourth thing that turned out to be already handled.
+
+**Already handled, and the reason most of this was a small change.** A row
+opening with a bare "skip first st" has been credited +1 since Jul 26 (see
+"skip first st as a row opener"), precisely because the previous row's turning
+chain stands in for the stitch being skipped. That is this same convention,
+and it means every plain converted row — `Skip first st, hhdc in each st
+across, hhdc in top of ch` — already verified correctly, and waffle was never
+relying on anything accidental. An earlier reading of this as a modelling bug
+(a skip "producing" a stitch) was wrong; the credit is deliberate and the
+comment above it says so.
+
+**Gap 1 — the foundation clause.** `skip_first_chains_from_hook` matched only
+the parenthetical "(they don't count as a stitch)", so the new "(they count as
+this row's first stitch)" fell through as an unrecognized clause and took the
+whole foundation row with it. Added as a SEPARATE pattern rather than an
+optional branch: the two forms differ by exactly one stitch in the row's total,
+and one regex swallowing both parentheticals would silently pick one answer for
+the other's rows. `StitchClause.chain_counts_as_stitch` carries it through the
+fold into `foundation_into_chain`, and `_check_foundation_into_chain` adds it:
+`expected = foundation_chain - skip + 1`.
+
+**Gap 2 — `2 dc in top of ch`.** `top_of_chain` allowed no leading multiple, so
+every row of every shawl came back unverifiable. One chain-top is still
+consumed; the multiple only changes how many stitches are produced there.
+
+**Gap 3 — shaped rows lost the turning-chain credit.** This is the one worth
+understanding. A shaped row WORKS its first stitch rather than skipping it —
+that worked stitch is the near-edge increase — so the "skip first st" opener
+that normally carries the credit is simply absent, while the chain is still
+standing in for the row's first stitch. Detected by the FAR edge instead: a row
+working into the top of the previous row's chain is necessarily a row whose own
+chain counts. Credited as a synthetic `counted_chain`, which is exactly what the
+older explicit "Ch N (counts as dc)" phrasing already produced.
+
+Guarded twice against double-crediting, one chain getting one credit: not when
+the row already opens with the skip (waffle has BOTH tells), and not when an
+explicit counted_chain is already present (the older phrasing). The second
+guard was not hypothetical — it broke
+`test_leading_counted_chain_still_balances_the_old_way` before it was added.
+
+**Verified** against real deployed-shape generator output: 45 patterns spanning
+8 stitches × 5 constructions (generic flat, triangle shawl, scarf, drop-shoulder
+sweater, cardigan) plus the five compound stitches. All 40 tall-stitch
+combinations report 0 errors and 0 warnings. The only two findings across the
+whole sweep are shell's and bobble's known, pre-existing, by-design ones on
+constructions this change does not touch. Detection was re-confirmed rather than
+assumed: perturbing a row's declared count by ±1 still errors on every
+construction — including the shawl, whose count is stated inline in the row text
+and so needs the text perturbed, not just the payload field (perturbing the
+field alone reads as a false "missed", which it did at first).
+
+Full suite passes (250 tests, 5 skipped).
