@@ -73,6 +73,13 @@ class Pattern:
     # foundation_is_magic_ring above exactly). Value is (chain_count,
     # is_magic_ring).
     component_foundations: dict = field(default_factory=dict)
+    # The design a colourwork pattern was generated FROM, and its palette.
+    # Every other check reads pattern text alone; colourwork_orientation needs
+    # the intent to compare the instructions against, so the JSON adapter
+    # attaches it when the caller supplies one. None for an ordinary pattern.
+    design_grid: Optional[list] = None
+    design_palette: Optional[list] = None
+    design_rows: Optional[list] = None      # verbatim {stitch_count, instructions}
 
 
 @dataclass

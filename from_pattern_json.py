@@ -328,6 +328,16 @@ def main():
     payload = json.load(sys.stdin)
     raw_text = build_raw_text(payload)
     pattern = parse(raw_text)
+    # Colourwork only: the design the pattern was generated from, so
+    # colourwork_orientation can compare instructions against intent. Absent
+    # for a plain pattern, and that check then does nothing.
+    pattern.design_grid = payload.get("design_grid")
+    pattern.design_palette = payload.get("palette")
+    # The instructions VERBATIM. The parser deliberately strips a row's leading
+    # "With Colour N," (it is not a stitch clause), which is exactly the token
+    # colourwork_orientation needs, so that check reads the original text rather
+    # than depending on parser internals that were never meant to preserve it.
+    pattern.design_rows = payload.get("rows") or []
     report = run_for_pattern(pattern, quiet=True)
     print(json.dumps(report))
 
