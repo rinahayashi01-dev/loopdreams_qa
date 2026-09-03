@@ -3,7 +3,7 @@ import sys
 
 from .extraction import extract_text
 from .pattern_parser import parse
-from .checks import stitch_count, terminology, completeness, known_constructions
+from .checks import stitch_count, terminology, completeness, known_constructions, colourwork_orientation
 from .report import build_report, to_text, to_json
 
 
@@ -26,6 +26,7 @@ def run_for_pattern(pattern, json_output: bool = False, quiet: bool = False) -> 
     issues.extend(terminology.check(pattern))
     issues.extend(completeness.check(pattern))
     issues.extend(known_constructions.check(pattern))
+    issues.extend(colourwork_orientation.check(pattern))
 
     report = build_report(pattern, issues)
     if not quiet:

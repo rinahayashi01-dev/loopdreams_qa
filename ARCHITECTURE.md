@@ -2987,3 +2987,70 @@ and so needs the text perturbed, not just the payload field (perturbing the
 field alone reads as a false "missed", which it did at first).
 
 Full suite passes (250 tests, 5 skipped).
+
+## Comparing the fabric against the design (Sep 3, 2026) — loopdreams_qa#42
+
+Every other check in this package reads pattern TEXT alone. This one is the
+exception: given the design grid a colourwork pattern was generated FROM, it
+reconstructs the fabric the instructions actually produce and compares the two.
+
+That comparison had no home before, and its absence is exactly how two bugs
+shipped in as many days, both with every existing signal green:
+
+- **loopdreams #474.** The grid was fed to all seven flat colourwork builders in
+  STORED order. `grid[0]` is the top of the image, but the first row crocheted is
+  the BOTTOM of the piece; and flat rows are turned, so consecutive rows travel
+  in opposite directions relative to the fabric. An "F" came out upside down AND
+  combed apart, its stem alternating edges row by row.
+- **loopdreams #477.** The Tote Bag branch returned before the colourwork
+  dispatch, so a photo tote generated as a plain one-colour bag. Silent in the
+  strongest sense: valid rows, correct stitch counts, no colour anywhere.
+
+Both were found by hand-simulating the fabric on paper. This does that
+simulation on every batch run.
+
+**What it does.** `to_working_order` applies the two transforms the generator
+must: bottom-up, and every other row reversed. `_row_colours` reads a row's
+per-stitch colours from the verbatim instruction text, tracking `With Colour N`,
+`changing to Colour N in the last st`, counted runs, `in each st across` spans
+and single stitches — including the turning chain, which under loopdreams'
+counts-as-a-stitch convention is the row's first stitch and wears the colour
+carried in from the previous row. The result is compared to the design resampled
+with the same nearest-neighbour arithmetic the generator uses.
+
+**Diagnosis, not just a mismatch.** When the fabric does not match the design it
+is tested against the known wrong layouts -- stored order, upside down, mirrored,
+and for a folded panel "stretched across both faces" or "the first face not
+rotated" -- so the report names the actual mistake rather than pointing at a
+stitch. A tote is one panel folded in half and carries the design twice, the
+first face rotated 180°, detected from the "Fold it in half" assembly row rather
+than a template name this tool never sees.
+
+**Scope, deliberately narrow.** It verifies the plain colourwork row grammar
+(one grid cell per stitch) and says "cannot verify" for anything else, the same
+posture stitch_count already takes. A compound colourwork row states its texture
+as well as its colour; moss and waffle come back unverifiable, and both are
+already REVIEW for unrelated reasons, so nothing changes for them.
+
+Two things worth carrying forward. First, the row's opening `With Colour N,` is
+stripped by pattern_parser before any check sees it -- it is not a stitch clause
+-- so this check reads `pattern.design_rows`, the verbatim instructions the JSON
+adapter now attaches, rather than depending on parser internals never meant to
+preserve colour. Second, "Fasten off" must NOT be treated as a non-body row: the
+last body row fastens off, and dropping it shortens the panel and silently
+misaligns every expected row against the resampled design. That cost an hour.
+
+A dropped design is an ERROR, not a "cannot verify": a grid with two colours and
+instructions with none is not ambiguity in the text, it is #477.
+
+**Verified** against real generator output, not reconstructions: the five plain
+colourwork batch cases (sc/hdc/dc/tr and the tote) all come back clean, so no
+currently-passing case is destabilised; moss and waffle decline to verify and
+keep their existing REVIEW status. #474 was reproduced by feeding the fixed
+builder a preimage that makes it emit exactly what the buggy one did -- the check
+errors on it. #477 was reproduced by generating a tote with a grid through the
+plain builder -- the check errors on that too. The unit tests use verbatim
+generator output as their fixture rather than a hand-written imitation, which
+would only prove the check agrees with my idea of the generator.
+
+Full suite passes (257 tests, 5 skipped).
