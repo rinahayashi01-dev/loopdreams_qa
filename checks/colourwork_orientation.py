@@ -231,6 +231,16 @@ def check(pattern) -> list:
         if count != width:
             continue          # a finishing row of a different width
         if carried is None:
+            # A chain-only foundation row makes no stitches, so it is not part
+            # of the fabric and must NOT hold a slot — `actual` is compared
+            # against the design resampled to len(actual) rows, and an extra
+            # leading slot shifts every row against it. Checked before the
+            # colour test below because a foundation row may or may not name a
+            # colour ("Foundation: With Colour 2, Ch 48." does, a bare
+            # "Foundation: Ch 26, turn." does not) and that must not change
+            # whether it occupies a row.
+            if _RE_CHAIN_ONLY.match(text.strip()):
+                continue
             m = _RE_WITH.search(text)
             if not m:
                 # Nothing has established a colour yet — either the pattern has
@@ -269,6 +279,11 @@ def check(pattern) -> list:
         actual.append(colours)
         carried = ending
 
+    # "Dropped" means the instructions name no colour ANYWHERE. If rows named
+    # colours this could not parse, that is a gap in this check, not a missing
+    # design, and saying otherwise would be a false accusation of the generator.
+    if unread and sum(1 for r in actual if r is not None) < 2:
+        return _coverage(actual, unread)
     if sum(1 for r in actual if r is not None) < 2:
         # An ERROR, not a "cannot verify". The design has more than one colour
         # and the instructions have none: that is not ambiguity in the text, it
