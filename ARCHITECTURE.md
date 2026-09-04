@@ -3054,3 +3054,26 @@ generator output as their fixture rather than a hand-written imitation, which
 would only prove the check agrees with my idea of the generator.
 
 Full suite passes (257 tests, 5 skipped).
+
+## Partial-coverage wording (Sep 4, 2026) — loopdreams_qa#44
+
+Follow-up to #43. When the orientation check could read none of a pattern's
+colourwork rows it still reported "The design checks out on the 0 of 45 rows
+this can read" — true, and actively misleading: it presented having verified
+nothing as though it were agreement. Moss and linen both hit it, being almost
+entirely repeat-bracket colour rows.
+
+The two cases are now worded separately. With nothing read it says outright that
+the design could not be checked at all, and that nothing contradicts it and
+nothing confirms it. With some rows read it claims only those, and states the
+unread count alongside rather than subtracting it from a total — rows that
+establish no colour are neither read nor unreadable, so the two do not sum to
+the pattern's row count and implying they do would be its own small lie.
+
+**Verified** against all ten colourwork cases in the live Batch_Test_Case
+matrix, regenerated from the deployed function: seven verify their design
+completely (dishcloth sc/hdc, blanket dc/tr/waffle, tote dc/waffle), bobble
+reports 48 rows read of 128, and moss and linen now say plainly that they could
+read none. No orientation errors, so the gate stays green.
+
+Full suite passes (260 tests, 5 skip).

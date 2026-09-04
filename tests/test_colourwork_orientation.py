@@ -77,3 +77,28 @@ class TestOrientation(unittest.TestCase):
         issues = co.check(_pattern(FAITHFUL_ROWS, grid=mirrored))
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].severity, "error")
+
+
+class TestCoverageWording(unittest.TestCase):
+    """A partial check must not read as a pass. Saying "the design checks out on
+    the 0 of 45 rows this can read" is true and misleading at once — it reports
+    having verified nothing as though it were agreement."""
+
+    def _issue(self, read_rows, unread_count):
+        actual = [["Colour 1"] for _ in range(read_rows)] + [None] * unread_count
+        unread = [(i + 1, "a reason") for i in range(unread_count)]
+        return co._coverage(actual, unread)[0]
+
+    def test_nothing_read_does_not_claim_the_design_checks_out(self):
+        msg = self._issue(0, 12).message
+        self.assertIn("Could not check this design", msg)
+        self.assertNotIn("checks out", msg)
+        self.assertIn("nothing here confirms it either", msg)
+
+    def test_some_read_claims_only_what_was_compared(self):
+        msg = self._issue(48, 48).message
+        self.assertIn("checks out on the 48 row(s) this could read", msg)
+        self.assertIn("48 colourwork row(s) could not be read", msg)
+
+    def test_nothing_unread_is_silent(self):
+        self.assertEqual(co._coverage([["Colour 1"]] * 5, []), [])
