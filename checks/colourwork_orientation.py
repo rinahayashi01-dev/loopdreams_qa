@@ -82,9 +82,11 @@ _TOKENS = re.compile(
     r"(?P<with>With\s+(?:Colour\s+\w+|White))"
     r"|(?P<change>changing to\s+(?:Colour\s+\w+|White)\s+in the last st)"
     r"|(?P<run_chain_span>(?P<n_span>\d+)\s+[A-Za-z][\w ]*?\s+in the next chain and in next \d+\s+(?:chs?|chains?)(?: across)?)"
-    r"|(?P<run_n>(?P<n_run>\d+)\s+[A-Za-z][\w ]*?\s+in (?:the )?next\s+\d+\s+(?:sts?|chs?|chains?))"
+    # "around" as well as "in": a post stitch is worked AROUND the stitch below
+    # ("2 fpdc around next 2 sts"), which is how every waffle colour run reads.
+    r"|(?P<run_n>(?P<n_run>\d+)\s+[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?next\s+\d+\s+(?:sts?|chs?|chains?))"
     r"|(?P<each>\bin each (?:st|ch) across\b)"
-    r"|(?P<one>[A-Za-z][\w ]*?\s+in (?:the )?(?:next (?:chain|st)|top of (?:the )?ch)\b)",
+    r"|(?P<one>[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?(?:next (?:chain|st)|top of (?:the )?ch)\b)",
     re.I,
 )
 _RE_COLOUR_NAME = re.compile(r"(Colour\s+\w+|White)", re.I)
@@ -102,6 +104,17 @@ def _row_colours(text, width, carried):
     it is how a solid row is written.
     """
     body = re.sub(r"\.\s*(?:Ch \d+, turn|Turn|Fasten off[^.]*)\.?\s*$", "", text.strip(), flags=re.I)
+
+    # A row that names no colour and changes to none is worked entirely in the
+    # colour already on the hook — whatever its construction. That is as true of
+    # a waffle, bobble or shell row as of a plain one, so it needs no run
+    # parsing at all, and it is how most of a real photo design's rows read.
+    #
+    # Deliberately ahead of the run tokenizer: those regexes only know the plain
+    # grammar and would reject a perfectly unambiguous solid compound row for
+    # containing stitches they cannot count.
+    if not _RE_WITH.search(body) and not _RE_CHANGE.search(body):
+        return [carried] * width, carried
 
     # A turning chain of 2+ IS the row's first stitch, made at the END of the
     # previous row -- so it wears the colour carried in, and the row's own text
@@ -205,7 +218,7 @@ def check(pattern) -> list:
 
     folded = any(_RE_FOLDED.search(r.get("instructions") or "") for r in source)
 
-    actual, width, carried = [], None, None
+    actual, width, carried, unread = [], None, None, []
     for row in source:
         text = row.get("instructions") or ""
         count = row.get("stitch_count")
@@ -218,25 +231,60 @@ def check(pattern) -> list:
         if count != width:
             continue          # a finishing row of a different width
         if carried is None:
+            # A chain-only foundation row makes no stitches, so it is not part
+            # of the fabric and must NOT hold a slot — `actual` is compared
+            # against the design resampled to len(actual) rows, and an extra
+            # leading slot shifts every row against it. Checked before the
+            # colour test below because a foundation row may or may not name a
+            # colour ("Foundation: With Colour 2, Ch 48." does, a bare
+            # "Foundation: Ch 26, turn." does not) and that must not change
+            # whether it occupies a row.
+            if _RE_CHAIN_ONLY.match(text.strip()):
+                continue
             m = _RE_WITH.search(text)
             if not m:
-                continue      # nothing has established a colour yet
+                # Nothing has established a colour yet — either the pattern has
+                # not started one, or an unreadable row broke the chain. Either
+                # way this row's colours are unknown, so it holds its slot as a
+                # hole rather than being dropped.
+                #
+                # Dropping it is not harmless: `actual` is compared against the
+                # design resampled to len(actual) rows, so a row missing from
+                # the FRONT shortens the grid and shifts every later row against
+                # the design. A waffle pattern shows this immediately — its
+                # foundation and setup rows name no colour, so both used to
+                # vanish and the whole fabric read as misaligned against a
+                # perfectly correct pattern.
+                actual.append(None)
+                continue
             carried = m.group(1).title()
             if _RE_CHAIN_ONLY.match(text.strip()):
                 continue      # "With Colour 1, Ch 20, turn." -- foundation, no stitches
         colours, ending = _row_colours(text, width, carried)
         if colours is None:
-            label = f"row {row.get('row_number')}"
-            return [Issue(
-                category="colourwork_orientation", severity="warning", location=str(label),
-                message=(f"Cannot verify the design against {label}: {ending}. This check only reads the "
-                         f"plain colourwork row grammar (one grid cell per stitch); a compound colourwork row "
-                         f"states its texture as well as its colour and is left alone."),
-            )]
+            # Unreadable rows are HOLES, not a reason to abandon the pattern.
+            # A compound colourwork row states its texture as well as its
+            # colour and can be beyond this grammar, but the rows around it
+            # are still worth checking — and an orientation fault shows up in
+            # any of them, so partial cover still catches it.
+            #
+            # The row keeps its slot so every later row stays aligned with the
+            # design; only the colours are unknown. Since the ending colour is
+            # unknown too, `carried` is cleared: a wrong carried colour would
+            # be worse than a second hole.
+            actual.append(None)
+            unread.append((row.get("row_number"), ending))
+            carried = None
+            continue
         actual.append(colours)
         carried = ending
 
-    if len(actual) < 2:
+    # "Dropped" means the instructions name no colour ANYWHERE. If rows named
+    # colours this could not parse, that is a gap in this check, not a missing
+    # design, and saying otherwise would be a false accusation of the generator.
+    if unread and sum(1 for r in actual if r is not None) < 2:
+        return _coverage(actual, unread)
+    if sum(1 for r in actual if r is not None) < 2:
         # An ERROR, not a "cannot verify". The design has more than one colour
         # and the instructions have none: that is not ambiguity in the text, it
         # is a design that was requested and silently dropped -- exactly what
@@ -248,7 +296,7 @@ def check(pattern) -> list:
                      "colour — the design was dropped somewhere between the request and the rows. The pattern "
                      "is a valid single-colour one, which is why nothing else here objects to it."),
         )]
-    return _compare(pattern, design, actual, width, folded)
+    return _compare(pattern, design, actual, width, folded, unread)
 
 
 def _labelled(design, palette):
@@ -261,27 +309,38 @@ def _labelled(design, palette):
 
 def _first_difference(expected, actual):
     for r, (e, a) in enumerate(zip(expected, actual)):
+        if a is None:
+            continue          # unreadable row — no claim either way
         for c, (ec, ac) in enumerate(zip(e, a)):
             if ec != ac:
                 return r, c, ec, ac
     return None
 
 
-def _compare(pattern, design, actual, width, folded) -> list:
+def _agrees(expected, actual):
+    """Whether a candidate layout is consistent with every row that COULD be
+    read. Unreadable rows abstain rather than vote — they can neither confirm
+    a layout nor rule one out."""
+    if len(expected) != len(actual):
+        return False
+    return all(a is None or e == a for e, a in zip(expected, actual))
+
+
+def _compare(pattern, design, actual, width, folded, unread=()) -> list:
     palette = getattr(pattern, "design_palette", None) or []
     labelled = _labelled(design, palette)
     rows = len(actual)
 
     candidates = _candidate_expectations(labelled, width, rows, folded)
     correct_name, correct = candidates[0]
-    if correct == actual:
-        return []
+    if _agrees(correct, actual):
+        return _coverage(actual, unread)
 
     # Not the design. Before reporting a bare mismatch, see whether the fabric
     # matches one of the KNOWN wrong layouts -- naming the specific mistake is
     # the difference between "something is off" and a diagnosis.
     for name, cand in candidates[1:]:
-        if cand == actual:
+        if _agrees(cand, actual):
             return [Issue(
                 category="colourwork_orientation", severity="error", location="Pattern",
                 message=(f"The instructions do not make the chosen design: they make {name}. The design grid is "
@@ -302,4 +361,25 @@ def _compare(pattern, design, actual, width, folded) -> list:
         category="colourwork_orientation", severity="error", location=f"Row {r + 1}",
         message=(f"The instructions do not make the chosen design. The first difference is stitch {c + 1} of "
                  f"crocheted row {r + 1}: the design calls for {ec} there, the instructions work {ac}."),
+    )]
+
+
+def _coverage(actual, unread):
+    """Reported when the design checks out on every row that could be read, but
+    some could not. Deliberately still an issue rather than silence: "matches"
+    and "matches as far as it could be read" are different claims, and the
+    second one should not be mistaken for the first."""
+    if not unread:
+        return []
+    read = sum(1 for r in actual if r is not None)
+    total = len(actual)
+    reasons = sorted({reason for _, reason in unread})
+    rows = ", ".join(f"row {n}" for n, _ in unread[:6])
+    if len(unread) > 6:
+        rows += f", and {len(unread) - 6} more"
+    return [Issue(
+        category="colourwork_orientation", severity="warning", location="Pattern",
+        message=(f"The design checks out on the {read} of {total} rows this can read, but {len(unread)} could "
+                 f"not be read and are unverified ({rows}). A compound colourwork row states its texture as "
+                 f"well as its colour, which is outside this check's grammar. Reasons: {'; '.join(reasons)}."),
     )]
