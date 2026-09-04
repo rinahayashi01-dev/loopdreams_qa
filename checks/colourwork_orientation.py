@@ -365,21 +365,41 @@ def _compare(pattern, design, actual, width, folded, unread=()) -> list:
 
 
 def _coverage(actual, unread):
-    """Reported when the design checks out on every row that could be read, but
-    some could not. Deliberately still an issue rather than silence: "matches"
-    and "matches as far as it could be read" are different claims, and the
-    second one should not be mistaken for the first."""
+    """Reported when nothing CONTRADICTS the design but some rows could not be
+    read. Deliberately still an issue rather than silence: "matches" and
+    "matches as far as it could be read" are different claims, and the second
+    must not be mistaken for the first.
+
+    The two cases are worded separately on purpose. Saying "the design checks
+    out on the 0 of 45 rows this can read" is technically true and actively
+    misleading -- it reports having verified nothing as though it were
+    agreement. When nothing could be read, this says so plainly and does not
+    mention the design checking out at all.
+    """
     if not unread:
         return []
     read = sum(1 for r in actual if r is not None)
-    total = len(actual)
     reasons = sorted({reason for _, reason in unread})
     rows = ", ".join(f"row {n}" for n, _ in unread[:6])
     if len(unread) > 6:
         rows += f", and {len(unread) - 6} more"
+    detail = (f"A compound colourwork row states its texture as well as its colour, which is outside this "
+              f"check's grammar. Reasons: {'; '.join(reasons)}.")
+
+    if read == 0:
+        return [Issue(
+            category="colourwork_orientation", severity="warning", location="Pattern",
+            message=(f"Could not check this design against the instructions at all: none of the "
+                     f"{len(unread)} colourwork rows could be read ({rows}). Nothing here contradicts the "
+                     f"design — nothing here confirms it either. {detail}"),
+        )]
+
+    # Only the rows actually compared are claimed. The unread count is stated
+    # alongside rather than subtracted from a total: rows that establish no
+    # colour are neither read nor unreadable, so the two do not sum to the
+    # pattern's row count and implying they do would be its own small lie.
     return [Issue(
         category="colourwork_orientation", severity="warning", location="Pattern",
-        message=(f"The design checks out on the {read} of {total} rows this can read, but {len(unread)} could "
-                 f"not be read and are unverified ({rows}). A compound colourwork row states its texture as "
-                 f"well as its colour, which is outside this check's grammar. Reasons: {'; '.join(reasons)}."),
+        message=(f"The design checks out on the {read} row(s) this could read, but {len(unread)} colourwork "
+                 f"row(s) could not be read and are unverified ({rows}). {detail}"),
     )]
