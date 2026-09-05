@@ -3171,3 +3171,76 @@ patterns that had it, naming 5 rows and 27. So the guard fires on the real
 defect and is silent on the fix.
 
 Full suite passes (281 tests, 5 skip).
+
+## Rounds worked into spaces (Sep 5, 2026) — loopdreams_qa#47
+
+The first two motif templates ever put through this tool — LoopDreams' Granny
+Square and Granny Square Blanket, neither of which had ever had a
+`Batch_Test_Case` row — came back as almost nothing but noise: 16 warnings on
+the blanket and 7 on the square, nearly all "unrecognized clause", and with them
+completeness's "numbered as a pattern row but none of its text matches any
+recognizable stitch instruction" fired on real, ordinary stitch rows.
+
+One missing word explains most of it. `_NOUN` listed the stitch nouns and
+`chain`, but not `sp`/`space` — and a motif round is worked into the SPACES the
+previous round left, not into its stitches. "3 dc in the same sp", "in next
+corner sp", "in the sp between any 2 dc" is the entire grammar of the
+construction, and none of it could match. With `sp`/`space` added, plus a
+modifier slot so a space can be qualified by the corner or the chain that made
+it ("next ch-2 corner sp"), most clauses in both templates resolve.
+
+Four shapes on top of that, all of them things the generator already writes:
+
+- **A group worked into one shared spot** — `[3 dc, ch 2, 3 dc] in next corner
+  sp`, the four-corner increase every square motif is built from. Neither
+  existing shape could take it: `_RE_PAREN_CLUSTER` is parens-only with a
+  letters-only capture (no counts, no `ch 2`), and `_RE_BRACKET_GROUP` is the
+  `[...] N times` REPEAT and wants a multiplier a corner group never has.
+  Members are scored individually, chains at zero, and one unknown member makes
+  the whole group unverifiable rather than an undercount.
+- **A travel slip stitch** — `Sl st to corner sp`, which opens every round of
+  the square. It works over an existing stitch and the round's count never
+  includes it, so it is a no-op like the closing `sl st ... to join` already is.
+- **A colour-specific fasten off** — `Fasten off Colour 1`, a colour broken
+  part-way through a pattern that carries on in another. Deliberately typed
+  `note`, not `fasten_off`: completeness reads a `fasten_off` on the last body
+  row as proof the piece tells the maker how to finish, and a mid-pattern colour
+  break is not that.
+- **A multi-part count restatement** — `(24 dc, 4 ch-2 corner sps, 4 ch-1 sps)`.
+  Pure restatement, the same no-op the single-tally form already was, and as one
+  unmatched clause per round it was the commonest single piece of noise.
+
+**Where this deliberately stops short.** `N <stitch> in the same sp` is
+recognised but scored `consumes=None` — unverifiable — rather than 0. Measured,
+not assumed: scoring it 0 made both of the square's corner rounds parse fully
+and then fail with confident stitch-count MISMATCH errors against counts that
+are in fact correct (Round 2 "producing 78 sts total, but the pattern declares
+24"). The clause claims no new slot, but what precedes it is routinely a travel
+slip stitch or a bare turning chain, which claim none either, so the round
+under-consumes and the repeat resolver then divides by the wrong unit. A round
+worked into corner spaces needs a consumption model this tool does not have; per
+this file's standing rule it stays unverifiable rather than guessed. The gain is
+that the row now says WHICH clause and why, instead of reporting the text as
+unrecognized. `*...**` repeat notation (Basic Motif Rounds 5-6) is left
+unrecognized for the same reason — resolving it would mean guessing the partial
+final repeat.
+
+**And two real generator defects it surfaced, fixed as loopdreams#494.** The
+square had no fasten off anywhere in it, at any round count: every round closed
+"sl st to top of ch 3 to join." and the pattern then simply stopped. The blanket
+named a "Cluster" in Rounds 3 and 4 and defined it nowhere — not in the row
+text, not in the abbreviation key, not in a Stitch Guide. That same PR also
+found that the batch harness had been sending this tool a one-entry abbreviation
+key (the case's primary stitch alone) rather than the key the exported PDF
+actually ships, so any stitch a builder names beyond the primary one read as
+undefined here whether or not the product defines it.
+
+**Verified** against all 58 cases in the live `Batch_Test_Case` matrix,
+regenerated from the deployed function: byte-identical summaries before and
+after, no case's status or error/warning counts moved in either direction — this
+package is purely additive for everything already covered. On the two new
+templates the blanket goes 16 warnings to 4 and the square 7 to 4, with the
+residual warnings on both being the corner-space rounds above, reported honestly
+as unverifiable.
+
+Full suite passes (292 tests, 5 skip).

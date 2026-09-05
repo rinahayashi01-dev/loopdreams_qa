@@ -116,7 +116,13 @@ def _check_finishing_present(pattern) -> list:
 
 def _collect_stitch_tokens(clauses, tokens):
     for c in clauses:
-        if c.clause_type == "bracket_group":
+        # Any clause carrying sub_clauses holds its stitches there, not in its
+        # own `stitch` field -- a "[...] N times" repeat (bracket_group), and
+        # now also a group worked into one shared spot ("[3 dc, ch 2, 3 dc] in
+        # next corner sp", stitch_parser's _RE_GROUP_INTO_SPOT). Keyed on
+        # sub_clauses rather than on the clause type so a compound stitch named
+        # only inside such a group is still checked for a definition.
+        if c.sub_clauses:
             _collect_stitch_tokens(c.sub_clauses, tokens)
             continue
         if not c.stitch or c.clause_type in _NON_STITCH_CLAUSE_TYPES:

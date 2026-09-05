@@ -55,7 +55,25 @@ _POS = r"(?:the\s+)?(?:very\s+)?(first|next|last)"
 # (see _BASE_STITCH_WORDS's own comment) -- though re's alternation
 # backtracking would find the correct overall match either order, since
 # every use of _NOUN is anchored with a trailing $.
-_NOUN = r"(?:chain|st|sc|hdc|dc|tr|ch)s?"
+# "space"/"sp" added alongside the stitch nouns -- a round worked into the
+# SPACES a previous round left (a ch-1 space, a ch-2 corner space, the gap
+# between two dc) rather than into its stitches is the whole grammar of
+# motif-in-the-round construction, and none of it parsed: every clause in
+# LoopDreams' Granny Square and Basic Motif builders is written "in the same
+# sp", "in next corner sp", "in the sp between any 2 dc" (real samples,
+# generate-pattern builders.ts buildGrannySquareRows/buildBasicMotifRows,
+# Sep 2026 batch -- the first two templates ever put through this tool).
+# Without it EVERY round of both templates came back "unrecognized clause" on
+# every clause, which in turn tripped completeness.py's "numbered as a pattern
+# row but none of its text matches any recognizable stitch instruction"
+# warning on real, ordinary stitch rows.
+#
+# The optional modifier in _TARGET is what makes "next corner sp" and "next
+# ch-2 corner sp" reachable -- a space is routinely qualified by which corner
+# or which chain made it, unlike a plain stitch, which never is.
+_NOUN = r"(?:chain|space|sp|st|sc|hdc|dc|tr|ch)s?"
+_MODIFIER = r"(?:ch-?\d+\s+)?(?:corner\s+)?(?:ch-?\d+\s+)?"
+_TARGET = rf"{_POS}\s+{_MODIFIER}{_NOUN}"
 
 # Regexes that do NOT depend on the stitch-word alternation -- compiled once.
 # \s* (was \s+) tolerates OCR dropping the space before the number (real
@@ -238,7 +256,48 @@ _RE_BRACKET_GROUP = re.compile(r"^\[(.*)\]\s*(once|twice|[a-z]+\s+times?|\d+\s*t
 # needing the dynamic alternation -- each captured word is individually looked
 # up via _stitch_lookup at classify time.
 _RE_PAREN_CLUSTER = re.compile(
-    rf"^\(([a-z][a-z ,]*)\)\s+(?:all\s+)?in\s+{_POS}\s+{_NOUN}$", re.I
+    rf"^\(([a-z][a-z ,]*)\)\s+(?:all\s+)?in\s+{_TARGET}$", re.I
+)
+# "[3 dc, ch 2, 3 dc] in next corner sp", "[1 dc, ch 2, 2 dc] in the same sp"
+# -- the four-corner increase every square motif is built from: a group of
+# stitches AND chains, all worked into one shared space. _RE_PAREN_CLUSTER
+# above cannot cover it: it takes only "(...)" (the generator writes corners
+# with square brackets, matching published granny-square convention) and its
+# capture is letters-only, so a group carrying its own counts and a "ch 2" in
+# the middle -- which every corner group does -- never matched. _RE_BRACKET_
+# GROUP doesn't cover it either: that shape is "[...] N times", a REPEAT, and
+# requires a multiplier that a corner group never has.
+#
+# The contents are re-tokenized recursively (same as _RE_BRACKET_GROUP), so
+# each member is scored by the normal rules: chains produce 0, plain stitches
+# produce their own ratio, and a compound member with no fixed ratio leaves
+# the whole group correctly unverifiable rather than guessed.
+_RE_GROUP_INTO_SPOT = re.compile(
+    rf"^[\[(](.+?)[\])]\s+(?:all\s+)?in\s+(?:(?:the\s+)?same\s+{_MODIFIER}{_NOUN}|{_TARGET})$", re.I
+)
+_RE_GROUP_INTO_SAME_SPOT = re.compile(
+    rf"^[\[(].+?[\])]\s+(?:all\s+)?in\s+(?:the\s+)?same\s+{_MODIFIER}{_NOUN}$", re.I
+)
+# "Sl st to corner sp.", "Sl st in next ch-2 corner sp." -- a positioning move
+# that walks the hook to where the next round starts. It creates no fabric of
+# its own (the slip stitch is worked over an existing stitch/space, and the
+# round's own count never includes it), so it is a pure no-op here, the same
+# as the round-closing "sl st ... to join" already handled by sl_st_join.
+# Real sample: loopdreams builders.ts buildGrannySquareRows opens EVERY round
+# this way, and buildBasicMotifRows Rounds 5-6 do too.
+_RE_SL_ST_TRAVEL = re.compile(
+    rf"^sl\s*st\s+(?:to|in)\s+(?:{_TARGET}|(?:the\s+)?same\s+{_MODIFIER}{_NOUN}|corner\s+sp(?:ace)?)$", re.I
+)
+# "Fasten off Colour 1." -- breaking ONE colour part-way through a pattern
+# that carries on in another, as distinct from the pattern-closing bare
+# "Fasten off." already handled by _RE_FASTEN_OFF. Same no-op for stitch-count
+# purposes, but deliberately NOT typed "fasten_off": completeness.py's
+# _check_finishing_present treats a fasten_off clause on the last body row as
+# proof the piece tells the maker how to finish, and a mid-pattern colour
+# break is not that. Real sample: loopdreams builders.ts buildBasicMotifRows,
+# Rounds 2-4 (each round is worked in its own colour and breaks it).
+_RE_FASTEN_OFF_COLOUR = re.compile(
+    r"^(?:fasten\s+off|break)\s+(?:colour|color)\s+\S+\.?$", re.I
 )
 
 _MULTIPLIER_WORDS = {
@@ -264,7 +323,7 @@ class _Patterns:
         "skip_first_chains_from_hook", "skip_first_chains_counting",
         "foundation_stitch_in_next_chain",
         "foundation_next_chain_and_next_chs",
-        "sl_st_join", "trailing_count_restatement",
+        "sl_st_join", "trailing_count_restatement", "count_in_same_spot",
     )
 
     def __init__(self, stitch_alt: str):
@@ -356,13 +415,21 @@ class _Patterns:
         # dropped, while every other row in the same file has it normally.
         # \s* tolerates both without risking a false match elsewhere, since
         # the literal word "each" still must follow directly either way.
+        # The target noun was a hardcoded literal "st". A round worked back
+        # over a previous round of known stitches names that stitch instead --
+        # "2 dc in each remaining sc around" (real sample, Basic Motif Round 2,
+        # loopdreams builders.ts buildBasicMotifRows) -- which is ordinary
+        # crochet prose and no less precise than "st". Widened to the same
+        # stitch alternation every other clause here already matches against;
+        # the literal "st" stays in the alternation via _NOUN's own members, so
+        # every previously-matching phrasing still matches unchanged.
         self.each_st_across = re.compile(
             rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
-            rf"each\s+(?:remaining\s+)?st\s+across\b\s*(.*)$", re.I
+            rf"each\s+(?:remaining\s+)?(?:{stitch_alt}|sts?)\s+across\b\s*(.*)$", re.I
         )
         self.each_st_around = re.compile(
             rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
-            rf"each\s+(?:remaining\s+)?st\s+around\b\s*(.*)$", re.I
+            rf"each\s+(?:remaining\s+)?(?:{stitch_alt}|sts?)\s+around\b\s*(.*)$", re.I
         )
         self.corner = re.compile(rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+corner$", re.I)
         self.literal_next = re.compile(rf"^(\d*)\s*({stitch_alt})\s+in\s+next\s+(\d+)\s*(?:sts?)?$", re.I)
@@ -451,7 +518,7 @@ class _Patterns:
         )
         # "<N> <stitch> in (first|next|last) st" -- N copies all worked into ONE shared spot.
         self.cluster_same_spot = re.compile(
-            rf"^(\d+)\s+({stitch_alt})\s+(?:all\s+)?in\s+{_POS}\s+{_NOUN}$", re.I
+            rf"^(\d+)\s+({stitch_alt})\s+(?:all\s+)?in\s+{_TARGET}$", re.I
         )
         # "N <stitch> in (first|next|last) <noun> (turning ch-M counts as
         # first <stitch>[; free text])" -- the SAME turning-chain-counts-as-
@@ -491,7 +558,7 @@ class _Patterns:
         self.top_of_chain = re.compile(
             rf"^(?:(\d+)\s+)?({stitch_alt})\s+in\s+top\s+of\s+(?:the\s+)?ch(?:-\d+)?$", re.I)
         # Generic single-instance positional clause: "<stitch> in (first|next|last) st"
-        self.simple_positional = re.compile(rf"^({stitch_alt})\s+in\s+{_POS}\s+{_NOUN}$", re.I)
+        self.simple_positional = re.compile(rf"^({stitch_alt})\s+in\s+{_TARGET}$", re.I)
         # "<stitch> in (the) same st/chain" -- text that means "this stitch
         # shares whatever spot the immediately preceding clause named,"
         # widened from a hardcoded literal "st" to the full _NOUN set (real
@@ -500,7 +567,21 @@ class _Patterns:
         # match is classified provisionally, not with a final consumes/
         # produces value, despite looking identical in shape to simple_
         # positional above).
-        self.same_st = re.compile(rf"^({stitch_alt})\s+in\s+(?:the\s+)?same\s+{_NOUN}$", re.I)
+        self.same_st = re.compile(rf"^({stitch_alt})\s+in\s+(?:the\s+)?same\s+{_MODIFIER}{_NOUN}$", re.I)
+        # "<N> <stitch> in (the) same sp" -- N copies into the spot the
+        # preceding clause already named. Kept SEPARATE from same_st above
+        # rather than folded in as an optional count, because the explicit
+        # count removes the very ambiguity same_st's provisional
+        # "same_as_previous" machinery exists to resolve: with a count
+        # written out there is nothing to read as a turning-chain increase,
+        # so this is unconditionally "N stitches, no new previous-round slot
+        # consumed". Real phrasing: the opening corner of every round of
+        # loopdreams' Granny Square ("Ch 3 (counts as first dc), 2 dc in the
+        # same sp, ch 2, 3 dc in the same sp (corner made)") and Basic Motif
+        # Border Round 1 ("3 hdc in the same sp").
+        self.count_in_same_spot = re.compile(
+            rf"^(\d+)\s+({stitch_alt})\s+(?:all\s+)?in\s+(?:the\s+)?same\s+{_MODIFIER}{_NOUN}$", re.I
+        )
         # "<stitch> in (first|next|last) ch-1 sp(ace)" -- linen/moss-stitch
         # style, working into a chain-1 SPACE left by the previous row
         # rather than into an actual previous-row stitch. New phrasing found
@@ -623,8 +704,19 @@ class _Patterns:
         # multi-word abbreviation like "wc st" (same real bug as sl_st_join
         # above, same CI run) sails through unstripped and needs its own
         # no-op here instead.
+        # Widened from a single "(N <stitch>)" tally to a comma-separated LIST
+        # of them, with an optional trailing noun phrase per item: a round that
+        # leaves chain spaces behind restates all of what it made, not just its
+        # stitch total -- "(24 dc, 4 ch-2 corner sps, 4 ch-1 sps)", "(16
+        # Clusters, 16 ch-1 sps)" (real samples: loopdreams builders.ts
+        # buildGrannySquareRows and buildBasicMotifRows, every round). Still the
+        # same pure no-op restatement as the single-tally form -- the row's
+        # authoritative declared count is parsed separately -- but as one
+        # unmatched clause per round it was the single most common piece of
+        # "unrecognized clause" noise across both templates.
+        tally = rf"~?\s*\d+\s*(?:ch-?\d+\s+)?(?:corner\s+)?(?:{stitch_alt}|sps?|spaces?|sts?|clusters?)"
         self.trailing_count_restatement = re.compile(
-            rf"^\(\s*~?\s*\d+\s*(?:{stitch_alt})\s*\)$", re.I
+            rf"^\(\s*{tally}(?:\s*,\s*{tally})*\s*\)$", re.I
         )
 
 
@@ -898,6 +990,50 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
     return clauses
 
 
+def _score_group_members(inner: str, patterns: _Patterns, custom_compound: frozenset):
+    """Score the members of a group worked into ONE shared spot -- the
+    "[3 dc, ch 2, 3 dc]" of a corner increase.
+
+    Members are scored individually rather than through tokenize_round,
+    because inside a group they are written as bare "<N> <stitch>" fragments
+    with no positional phrase of their own (the group's single shared target
+    supplies it), and no whole-clause shape in this module matches that:
+    bare_stitch takes no leading count, and every counted shape requires an
+    "in ..." phrase. Returns (member clauses, total produced) with total None
+    if any member's own ratio is unknown -- an unknown member has to make the
+    whole group unverifiable rather than silently undercount it.
+    """
+    members, total = [], 0
+    for raw in inner.split(","):
+        frag = raw.strip()
+        if not frag:
+            continue
+        if _RE_CHAIN.match(frag):
+            # The ch-2 that opens the corner space: real, but not fabric this
+            # round counts -- 0 produced, same as a standalone chain clause.
+            members.append(StitchClause(raw=frag, clause_type="chain", consumes=0, produces=0))
+            continue
+        m = re.match(rf"^(\d*)\s*({'|'.join(re.escape(w) for w in sorted(_BASE_STITCH_WORDS | custom_compound, key=len, reverse=True))})$", frag, re.I)
+        if m:
+            n = int(m.group(1)) if m.group(1) else 1
+            canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+            members.append(StitchClause(raw=frag, stitch=canon, clause_type="literal_count",
+                                        explicit_count=n, consumes=0,
+                                        produces=None if prod is None else n * prod,
+                                        is_compound=is_compound))
+            if prod is None:
+                total = None
+            elif total is not None:
+                total += n * prod
+            continue
+        members.append(_classify(frag, patterns, custom_compound))
+        if members[-1].produces is None:
+            total = None
+        elif total is not None:
+            total += members[-1].produces
+    return members, total
+
+
 def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> StitchClause:
     raw_part = part
     p = part.strip()
@@ -917,6 +1053,9 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     if _RE_FASTEN_OFF.match(p):
         return StitchClause(raw=raw_part, clause_type="fasten_off", consumes=0, produces=0)
+
+    if _RE_FASTEN_OFF_COLOUR.match(p) or _RE_SL_ST_TRAVEL.match(p):
+        return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_JOIN.match(p) or _RE_SETUP.match(p):
         return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
@@ -1272,6 +1411,28 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                              unverifiable_reason=None if not unknown else
                              f"unrecognized stitch(es) in cluster: {', '.join(unknown)}")
 
+    # Checked AFTER _RE_PAREN_CLUSTER above: that shape is the narrower one
+    # (a letters-only list of plain abbreviations, "(sc, hdc, dc) in next
+    # chain") and names its members in the clause's own `stitch` field, which
+    # callers rely on. This is the general fallback for groups it can't take:
+    # square brackets, and members carrying their own counts or a chain.
+    m = _RE_GROUP_INTO_SPOT.match(p)
+    if m:
+        sub, total = _score_group_members(m.group(1), patterns, custom_compound)
+        # "in the same sp" shares the spot the preceding clause already paid
+        # for; "in next/first/last ..." claims one of its own.
+        consumes = 0 if _RE_GROUP_INTO_SAME_SPOT.match(p) else 1
+        # stitch is left None deliberately: the group is not an abbreviation,
+        # and completeness.py's abbreviation check reads this field. Its
+        # members reach that check through sub_clauses instead.
+        return StitchClause(
+            raw=raw_part, clause_type="cluster_same_spot", sub_clauses=sub,
+            explicit_count=len(sub), consumes=consumes, produces=total,
+            is_compound=total is None,
+            unverifiable_reason=None if total is not None else
+            "a stitch in this group worked into one spot has no fixed consumes/produces ratio",
+        )
+
     m = patterns.centre_dc.match(p)
     if m:
         canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
@@ -1333,6 +1494,35 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                              consumes=consumes, produces=prod, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")
+
+    m = patterns.count_in_same_spot.match(p)
+    if m:
+        n = int(m.group(1))
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        # produces is exact (N copies of a known stitch); consumes is left
+        # UNKNOWN on purpose. The clause itself claims no new previous-round
+        # slot -- it shares the one the preceding clause named -- but that
+        # preceding clause is routinely a "Sl st to corner sp." positioning
+        # move or a bare turning chain, neither of which claims a slot
+        # either, so scoring this 0 leaves the round under-consuming and the
+        # repeat resolver then divides the previous round's total by the
+        # wrong unit. Measured, not assumed: scoring it 0 turned both of
+        # LoopDreams' Granny Square corner rounds into confident stitch-count
+        # MISMATCH errors against counts that are in fact correct (Round 2
+        # "producing 78 sts total, but the pattern declares 24"). A round
+        # worked into corner spaces needs a consumption model this checker
+        # does not have, so per ARCHITECTURE.md it stays unverifiable rather
+        # than guessed -- the gain here is that the row now says which clause
+        # and why, instead of reporting the text as unrecognized.
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="cluster_same_spot",
+                             explicit_count=n, consumes=None,
+                             produces=None if prod is None else n * prod,
+                             is_compound=is_compound,
+                             unverifiable_reason=(
+                                 f"'{m.group(0)}' works into the spot the preceding clause named; how many "
+                                 f"previous-round stitches or spaces that spot accounts for isn't stated, so "
+                                 f"the round's consumption can't be resolved from the text alone"
+                             ))
 
     m = patterns.same_st.match(p)
     if m:
