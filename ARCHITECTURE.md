@@ -3077,3 +3077,59 @@ reports 48 rows read of 128, and moss and linen now say plainly that they could
 read none. No orientation errors, so the gate stays green.
 
 Full suite passes (260 tests, 5 skip).
+
+## Repeat brackets and colour resolution (Sep 5, 2026) — loopdreams_qa#45
+
+The gap #44 could only describe honestly. Three constructions read badly or not
+at all — moss and linen none, bobble 48 rows of 128 — and it was one cause with
+two faces, not three separate problems.
+
+**Repeat brackets.** "*ch 1, sc in next ch-1 sp, skip next st; rep from * 19
+more times" works its body 20 times, not once. Unexpanded, every such row came
+up short of its stitch count and was discarded as unreadable. Brackets are now
+written out in full before tokenizing. Two forms are deliberately refused rather
+than guessed at: a colour change inside a bracket (repeating it would invent a
+meaning the text does not have), and the plain builders' "rep from * to last 2
+sts, 22 more times", whose body is bounded by a stitch count rather than a plain
+multiplier. Both fall through to the length assertion and report as unverifiable.
+
+**Colour resolution.** A moss or linen row DECLARES 2n+1 stitches but places
+only n+1 real single crochets — the ch-1 spaces between them are holes, not
+stitches — and the generator resamples the design down to that literal count
+before writing the colours out (buildMossLinenStitchColourRowsInternal's
+`literalCount`). So a row's colour list is now at its own resolution and the
+expected row is resampled to meet it, by the same nearest-neighbour call the
+generator makes. Comparing 24 positions against the 47-wide design would have
+failed a correct pattern almost everywhere. This had to be settled before the
+"row names no colour" shortcut too, not just before the tokenizer: a SOLID moss
+row is 6 positions wide as well.
+
+Every derived count is still asserted against what the row must come to, so a
+grammar that drifts fails loudly as "cannot verify" rather than quietly
+comparing the wrong thing. That posture is the point, and it is what turned up
+the bug below.
+
+**A real check bug it exposed.** `_candidate_expectations` treated an odd body
+row count as "not a folded panel" and fell back to the unfolded layout. Linen
+works one row MORE than the panel (its row 3 converts the plain setup row into
+the pattern), so a linen tote's body is ALWAYS odd — meaning the moment linen
+became readable, a correct tote was compared against the design stretched over
+the whole panel and reported as wrong at row 11. The generator composes the two
+faces at their natural height and resamples the pair to the body's row count;
+this now does the same. Not introduced here, but unreachable until now.
+
+**Verified** against all ten colourwork cases in the live Batch_Test_Case
+matrix, regenerated from the deployed function: every row of all ten now reads,
+zero unreadable, and all ten verify their design with no orientation errors. The
+first run of this flagged tote-linen — investigated before reporting, and it was
+the folded-panel bug above, not the generator. Fixtures for the new grammars are
+verbatim generator output (moss at 11 sts, bobble at 7), and a companion test
+runs the same moss rows against a DIFFERENT design and requires an error:
+coverage that cannot fail anything would only have bought a green light.
+
+Still unread: the opening rows of every pattern, which abstain because no colour
+is established yet — between 1 and 27 rows each, the design's bottom edge. Those
+are holes, not "unreadable", so they are not reported. Separate cause, separate
+fix.
+
+Full suite passes (275 tests, 5 skip).

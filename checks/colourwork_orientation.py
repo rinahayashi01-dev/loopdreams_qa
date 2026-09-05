@@ -19,10 +19,25 @@ Both were caught by hand-simulating the fabric. This does that simulation
 automatically, on every batch run.
 
 Deliberately narrow, in the same spirit as stitch_count's own posture: it
-verifies the PLAIN colourwork row grammar (one grid cell per stitch) and says
-"cannot verify" for anything else, rather than guessing. A compound colourwork
-row (moss/waffle/bobble/sedge/shell) states its texture as well as its colour
-and is left alone.
+reads the row grammars it actually knows and says "cannot verify" for anything
+else, rather than guessing. Every count it derives is asserted against what the
+row must come to, so a grammar that drifts fails loudly as "cannot verify"
+instead of quietly comparing the wrong thing.
+
+Two things a compound row does that a plain one does not, both handled here:
+
+  A repeat bracket. "*ch 1, sc in next ch-1 sp, skip next st; rep from * 19 more
+  times" is 20 worked repeats of its body, not one. Left unexpanded, a row came
+  up short and was written off as unreadable -- which is why moss, linen and
+  half of bobble could not be read at all.
+
+  A colour resolution that is not the stitch count. A moss or linen row DECLARES
+  2n+1 stitches but places only n+1 real single crochets, the ch-1 spaces
+  between them being holes rather than stitches; the generator resamples the
+  design down to that literal count before writing the colours out
+  (buildMossLinenStitchColourRowsInternal's `literalCount`). So the expected row
+  has to be resampled the same way before it is compared, or a correct pattern
+  reads as wrong at 47 positions against 24.
 """
 import re
 
@@ -86,10 +101,70 @@ _TOKENS = re.compile(
     # ("2 fpdc around next 2 sts"), which is how every waffle colour run reads.
     r"|(?P<run_n>(?P<n_run>\d+)\s+[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?next\s+\d+\s+(?:sts?|chs?|chains?))"
     r"|(?P<each>\bin each (?:st|ch) across\b)"
-    r"|(?P<one>[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?(?:next (?:chain|st)|top of (?:the )?ch)\b)",
+    # "Sc in first st" opens every moss/linen row; "sc in next ch-1 sp" is the
+    # one real stitch inside their offset repeat. Neither appears in the plain
+    # grammar, and both are single stitches.
+    r"|(?P<one>[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?"
+    r"(?:next (?:chain|st)|next ch-1 sp|first st|top of (?:the )?ch)\b)",
     re.I,
 )
 _RE_COLOUR_NAME = re.compile(r"(Colour\s+\w+|White)", re.I)
+
+# "*ch 1, sc in next ch-1 sp, skip next st; rep from * 19 more times" -- the body
+# is worked 20 times in all, once as written plus 19 repeats. Bodies never
+# contain a nested "*", so a non-greedy run to the ";" is unambiguous.
+#
+# Deliberately does NOT match the plain builders' "rep from * to last 2 sts, 22
+# more times" form: that one's body is bounded by a stitch count rather than a
+# plain repeat, and guessing at it would be exactly the kind of silent wrong
+# answer this check exists to avoid. Rows written that way are left to fail the
+# length assertion and be reported as unreadable.
+_RE_REPEAT = re.compile(r"\*(?P<body>[^*]*?);\s*rep from \*\s*(?P<n>\d+)\s+more times?\b", re.I)
+
+# A moss/linen offset row: "ch 1, skip 1 st, sc in next st" (row 3) or
+# "ch 1, sc in next ch-1 sp, skip next st" (row 4 onward).
+_RE_OFFSET_ROW = re.compile(r"in next ch-1 sp|ch 1,\s*skip 1 st", re.I)
+
+
+def _expand_repeats(body):
+    """Write repeat brackets out in full, so the tokenizer sees every stitch the
+    row actually works. Returns None if a bracket cannot be expanded safely."""
+    def sub(m):
+        inner = m.group("body")
+        if "rep from" in inner.lower():
+            raise _Unexpandable("nested repeat bracket")
+        # A colour marker inside a bracket would be repeated along with the
+        # stitches, which is not what the text means and not a form the
+        # generator produces. Refuse rather than invent an interpretation.
+        if _RE_WITH.search(inner) or _RE_CHANGE.search(inner):
+            raise _Unexpandable("colour change inside a repeat bracket")
+        return ", ".join([inner.strip()] * (int(m.group("n")) + 1))
+
+    try:
+        expanded = _RE_REPEAT.sub(sub, body)
+    except _Unexpandable as exc:
+        return None, str(exc)
+    return expanded, None
+
+
+class _Unexpandable(Exception):
+    pass
+
+
+def _colour_positions(body, width):
+    """How many colour positions a row places, which is not always its declared
+    stitch count.
+
+    A moss or linen offset row declares 2n+1 but places n+1 real single
+    crochets; the ch-1 spaces between them are holes, and the generator writes
+    colours per real stitch. A turning chain of 2+ is itself the row's first
+    stitch and is made in the previous row, so the row's own text accounts for
+    one fewer."""
+    if _RE_OFFSET_ROW.search(body):
+        return (width + 1) // 2
+    if _RE_CHAIN_COUNTS.search(body):
+        return width - 1
+    return width
 # The foundation row says so outright; a later row shows it by skipping the
 # stitch under the chain and closing into the chain's top.
 _RE_CHAIN_COUNTS = re.compile(r"count(?:s)? as this row's first stitch|in top of (?:the )?ch\b", re.I)
@@ -98,29 +173,38 @@ _RE_CHAIN_COUNTS = re.compile(r"count(?:s)? as this row's first stitch|in top of
 def _row_colours(text, width, carried):
     """Per-stitch colours a row's text actually produces, in the order worked.
 
-    Returns (colours, ending_colour), or (None, reason) when the row is not the
-    plain colourwork grammar. `carried` is the colour already on the hook, which
-    a row naming no colour simply continues in -- that is not a gap in the text,
+    Returns (colours, ending_colour), or (None, reason) when the row is not a
+    grammar this can read. `carried` is the colour already on the hook, which a
+    row naming no colour simply continues in -- that is not a gap in the text,
     it is how a solid row is written.
+
+    The list is at the row's OWN colour resolution, which for a moss or linen
+    offset row is fewer positions than its stitch count. Callers compare it
+    against the design resampled to len(colours), exactly as the generator
+    resampled the design to write it.
     """
     body = re.sub(r"\.\s*(?:Ch \d+, turn|Turn|Fasten off[^.]*)\.?\s*$", "", text.strip(), flags=re.I)
+
+    # Resolution first: it decides how long a SOLID row is too, so it has to be
+    # settled before the shortcut below and not just before the tokenizer.
+    target = _colour_positions(body, width)
+    chain_counts = bool(_RE_CHAIN_COUNTS.search(body)) and not _RE_OFFSET_ROW.search(body)
 
     # A row that names no colour and changes to none is worked entirely in the
     # colour already on the hook — whatever its construction. That is as true of
     # a waffle, bobble or shell row as of a plain one, so it needs no run
     # parsing at all, and it is how most of a real photo design's rows read.
     #
-    # Deliberately ahead of the run tokenizer: those regexes only know the plain
-    # grammar and would reject a perfectly unambiguous solid compound row for
-    # containing stitches they cannot count.
+    # Deliberately ahead of the run tokenizer: those regexes only know a handful
+    # of grammars and would reject a perfectly unambiguous solid compound row
+    # for containing stitches they cannot count.
     if not _RE_WITH.search(body) and not _RE_CHANGE.search(body):
-        return [carried] * width, carried
+        return [carried] * (target + (1 if chain_counts else 0)), carried
 
-    # A turning chain of 2+ IS the row's first stitch, made at the END of the
-    # previous row -- so it wears the colour carried in, and the row's own text
-    # accounts for one stitch fewer (loopdreams #473/#475).
-    chain_counts = bool(_RE_CHAIN_COUNTS.search(body))
-    target = width - 1 if chain_counts else width
+    expanded, reason = _expand_repeats(body)
+    if expanded is None:
+        return None, reason
+    body = expanded
 
     # Two passes. An "in each st across" span means "whatever is left of the
     # row", and what is left depends on the stitches that come AFTER it too --
@@ -185,11 +269,25 @@ def _candidate_expectations(design, width, rows, folded):
     def flat(g):
         return to_working_order(_resize_nn(g, width, rows))
 
-    def panel(g):
+    def panel(g, rotate=True):
+        # One design per face, the first-worked face rotated so both read the
+        # same way up, then composed into a single panel image.
+        #
+        # The odd-row case is linen and is not a rounding wobble to be waved
+        # away: linen works one row MORE than the panel (its row 3 converts the
+        # plain setup row into the pattern), so a linen tote's body is always an
+        # odd number of rows. Falling back to the unfolded layout there compared
+        # a correct pattern against a design stretched over the whole panel and
+        # reported a real tote as wrong. The generator composes the two faces at
+        # their natural height and resamples the pair to the body's row count
+        # (buildToteBagColourRows), so this does the same.
         half = _resize_nn(g, width, rows // 2)
-        return to_working_order(half + _rot180(half))
+        image = half + (_rot180(half) if rotate else half)
+        if len(image) != rows:
+            image = _resize_nn(image, width, rows)
+        return to_working_order(image)
 
-    build = panel if folded and rows % 2 == 0 else flat
+    build = panel if folded else flat
     cands = [("the design", build(design))]
     if not folded:
         resized = _resize_nn(design, width, rows)
@@ -201,9 +299,8 @@ def _candidate_expectations(design, width, rows, folded):
                       to_working_order([list(reversed(r)) for r in resized])))
     else:
         cands.append(("the design stretched across both faces rather than repeated per face", flat(design)))
-        half = _resize_nn(design, width, rows // 2)
         cands.append(("the same design on both faces, but the first face not rotated (one face upside down)",
-                      to_working_order(half + half)))
+                      panel(design, rotate=False)))
     return cands
 
 
@@ -307,13 +404,24 @@ def _labelled(design, palette):
     return [[idx.get(c, "White") for c in row] for row in design]
 
 
+def _at_resolution(expected_row, n):
+    """The expected row as the generator would have written it for a row that
+    places `n` colour positions. Nearest-neighbour down to the literal count,
+    the same call buildMossLinenStitchColourRowsInternal makes -- comparing a
+    24-position moss row against the 47-wide design would fail a correct
+    pattern at almost every position."""
+    if len(expected_row) == n:
+        return expected_row
+    return _resize_nn([expected_row], n, 1)[0]
+
+
 def _first_difference(expected, actual):
     for r, (e, a) in enumerate(zip(expected, actual)):
         if a is None:
             continue          # unreadable row — no claim either way
-        for c, (ec, ac) in enumerate(zip(e, a)):
+        for c, (ec, ac) in enumerate(zip(_at_resolution(e, len(a)), a)):
             if ec != ac:
-                return r, c, ec, ac
+                return r, c, ec, ac, len(a)
     return None
 
 
@@ -323,7 +431,7 @@ def _agrees(expected, actual):
     a layout nor rule one out."""
     if len(expected) != len(actual):
         return False
-    return all(a is None or e == a for e, a in zip(expected, actual))
+    return all(a is None or _at_resolution(e, len(a)) == a for e, a in zip(expected, actual))
 
 
 def _compare(pattern, design, actual, width, folded, unread=()) -> list:
@@ -356,10 +464,14 @@ def _compare(pattern, design, actual, width, folded, unread=()) -> list:
             message=(f"The instructions do not make the chosen design: the fabric is {len(actual)} rows of "
                      f"{width}, the design resolves to {len(correct)} rows."),
         )]
-    r, c, ec, ac = diff
+    r, c, ec, ac, n = diff
+    # "stitch" is only accurate when the row places one colour per counted
+    # stitch. A moss or linen row places one per real single crochet, so the
+    # position is named as what it is rather than mislabelled.
+    where = f"stitch {c + 1}" if n == width else f"colour position {c + 1} of {n}"
     return [Issue(
         category="colourwork_orientation", severity="error", location=f"Row {r + 1}",
-        message=(f"The instructions do not make the chosen design. The first difference is stitch {c + 1} of "
+        message=(f"The instructions do not make the chosen design. The first difference is {where} of "
                  f"crocheted row {r + 1}: the design calls for {ec} there, the instructions work {ac}."),
     )]
 
