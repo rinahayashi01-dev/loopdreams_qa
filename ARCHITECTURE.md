@@ -574,9 +574,6 @@ codebase, not invent a new one.
   own "revisit if it comes up" convention rather than fixing speculatively
   against a case with no real test data.
 
-
-
-
 ## Seventh real-sample batch (Jul 1, 2026, fourth upload) — 6 patterns:
 ## tote bag (sc, hdc, dc, linen, bobble, waffle)
 Largest batch so far. New stitches: waffle (fpdc + dc 2-row repeat) and
@@ -2079,7 +2076,6 @@ Pattern Steps is a genuinely new, independently-numbered piece.
   moss-panel-plus-ribbing construction otherwise verifying cleanly
   (modulo the border caveat above).
 
-
 ## Batch-generation integration (Jul 16, 2026) — `from_pattern_json.py`
 
 The sibling `loopdreams` repo built `scripts/batch-test.ts`: a regression
@@ -3172,6 +3168,60 @@ defect and is silent on the fix.
 
 Full suite passes (281 tests, 5 skip).
 
+## Multi-panel patterns (Sep 5, 2026) — loopdreams_qa#47
+
+Garment colourwork shipped with no live regression coverage, because a case
+would have failed the gate outright. Three separate reasons, all fixed here.
+
+**The orientation check read a garment as one panel.** A sweater's Back and
+Front are two 40x48 rectangles, each carrying the whole design; concatenated
+they look like a single 96-row panel that matches nothing, so a correct pattern
+reported as wrong. `check()` now splits on `section` and runs the existing
+single-panel analysis per piece, prefixing findings with the panel name — "the
+Front is upside down" is worth much more than "something is off" when a garment
+has four pieces.
+
+A panel naming no colour is a **placement choice**, not a dropped design: the
+maker picks which pieces carry the picture (loopdreams#493), and faulting a
+plain panel would fail every "front only" garment. What is still an error is
+nothing carrying it at all.
+
+Sleeves are excluded by name rather than incidentally. They taper, so they never
+carry a design — but they DO state the colour they are worked in, so "does it
+mention a colour" is not enough to exclude them. That became true the same day
+(#487's reasoning applied to sleeves), and there is a test pinning it.
+
+**A cardigan's front is two half-width panels** meeting at the button band, so
+one design spans them. Panels are named as WORN and a viewer sees the wearer's
+right on their own left, so "Right Front" holds the design's LEFT half —
+mirroring the generator's own columnSlice. Backwards reports a correct cardigan
+as mirrored, and nothing else would notice, so it has its own test.
+
+**Two parsers rejected a repeated piece that names its colour.**
+`_MAKE_N_FOUNDATION_RE` and `_RE_ROW_AS_FOUNDATION` both required `Ch N` to
+follow the "(make N):" colon directly. "Sleeves (make 2): With Colour 2, Ch 18."
+then stopped being read as a component, and the misread cascaded into a false
+row-range gap where the panel rows were and a false stitch-count mismatch on the
+row after. Both now accept the colour clause in exactly the position
+`_FOUNDATION_CHAIN_RE` already accepted it.
+
+The generator half of that was loopdreams#494 — its first wording,
+"Sleeves (make 2), in Colour 2:", split the label entirely.
+
+**Verified** against the deployed function: sweater and cardigan × all three
+placements, run through the real from_pattern_json pipeline. **0 errors on all
+six** (REVIEW, from pre-existing colourwork warnings), and all six verify their
+design panel by panel. Before this chain they were 2 errors each.
+
+The check still catches what it should: the same rows against a different design
+error on every placement, naming the offending panel; a garment with its colours
+stripped out reports as a dropped design; and all ten existing colourwork cases
+still pass, so the panel split did not disturb the single-panel path.
+
+The three new parser tests were run against main's parser and two of them fail
+there, the colourless control passing — they target the fix rather than
+describing it.
+
 ## Rounds worked into spaces (Sep 5, 2026) — loopdreams_qa#48
 
 The first two motif templates ever put through this tool — LoopDreams' Granny
@@ -3235,12 +3285,16 @@ key (the case's primary stitch alone) rather than the key the exported PDF
 actually ships, so any stitch a builder names beyond the primary one read as
 undefined here whether or not the product defines it.
 
-**Verified** against all 58 cases in the live `Batch_Test_Case` matrix,
-regenerated from the deployed function: byte-identical summaries before and
-after, no case's status or error/warning counts moved in either direction — this
-package is purely additive for everything already covered. On the two new
-templates the blanket goes 16 warnings to 4 and the square 7 to 4, with the
-residual warnings on both being the corner-space rounds above, reported honestly
-as unverifiable.
+**Verified** against all 67 cases in the live `Batch_Test_Case` matrix,
+regenerated from the deployed function — re-run after merging #47, since that
+is the code that actually ships: no case's status moved in either direction and
+nothing FAILs. The only counts that move at all are the three Granny Square
+Blanket cases, 6 warnings to 4, which is this package doing its job. Everything
+already covered is byte-identical; this is purely additive.
 
-Full suite passes (292 tests, 5 skip).
+Measured before the generator fixes landed, the two new templates were 16
+warnings on the blanket and 7 on the square, both FAIL. They are now 4 and 4,
+REVIEW, and the residual warnings on both are the corner-space rounds above,
+reported honestly as unverifiable.
+
+Full suite passes (303 tests, 5 skip).

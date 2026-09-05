@@ -304,6 +304,61 @@ def _candidate_expectations(design, width, rows, folded):
     return cands
 
 
+# Sections that are pieces of fabric a design can live on. Everything else a
+# pattern is divided into — assembly narrative, a neckline round, button bands —
+# is not a panel and must not be checked as one.
+#
+# Sleeves are excluded deliberately rather than incidentally. They taper through
+# seven stitch counts, so the generator never puts a design on them and instead
+# names the colour they ARE worked in ("Sleeves (make 2), in Colour 2:"). That
+# phrasing happens not to match this module's colour regex today, which would
+# make sleeves drop out on their own — but resting on that would mean a harmless
+# wording change silently turning them into a panel that fails.
+_NON_PANEL_SECTIONS = {"sleeves", "assembly", "neckline", "finishing", "handles", "pocket"}
+
+
+def _panels(source):
+    """A pattern's fabric panels, in order, as (section name, rows).
+
+    A garment is several separate pieces — a sweater's Back and Front are two
+    40x48 rectangles, each carrying the whole design. Read as one strip they
+    look like a single 96-row panel and a perfectly correct pattern reports as
+    wrong, which is why garment colourwork had no live coverage until this.
+
+    Returns a single unnamed panel when the pattern is not sectioned, which is
+    every flat template and the tote.
+    """
+    named = [r for r in source if (r.get("section") or "").strip()]
+    if not named:
+        return [(None, source)]
+    order, groups = [], {}
+    for row in source:
+        sec = (row.get("section") or "").strip()
+        if sec.lower() in _NON_PANEL_SECTIONS:
+            continue
+        if not sec:
+            continue
+        if sec not in groups:
+            groups[sec] = []
+            order.append(sec)
+        groups[sec].append(row)
+    if not order:
+        return [(None, source)]
+    return [(sec, groups[sec]) for sec in order]
+
+
+# A cardigan's front is two half-width panels meeting at the button band, so one
+# design spans them. Garment panels are named as WORN and a viewer sees the
+# wearer's right on their own left, so "Right Front" holds the design's LEFT
+# half — the same reasoning, and the same halves, as the generator's own
+# columnSlice. Backwards here would report a correct cardigan as mirrored.
+def _panel_design(design, section):
+    if section not in ("Right Front", "Left Front"):
+        return design
+    half = max(1, len(design[0]) // 2)
+    return [row[:half] for row in design] if section == "Right Front" else [row[half:] for row in design]
+
+
 def check(pattern) -> list:
     design = getattr(pattern, "design_grid", None)
     if not design or not design[0] or len({c for row in design for c in row}) < 2:
@@ -313,6 +368,35 @@ def check(pattern) -> list:
     if not source:
         return []   # no verbatim instructions to read; nothing this can check
 
+    panels = _panels(source)
+    if len(panels) > 1:
+        # A panel naming no colour was deliberately left plain — the maker chose
+        # which pieces carry the picture (loopdreams#493). That is a placement
+        # decision, not a dropped design, and faulting it would fail every
+        # "front only" garment. What WOULD be wrong is nothing carrying it at
+        # all, which is reported below.
+        issues, carried = [], []
+        for section, rows in panels:
+            if not any(_RE_WITH.search(r.get("instructions") or "") for r in rows):
+                continue
+            carried.append(section)
+            for issue in _check_panel(pattern, _panel_design(design, section), rows):
+                # "Back — Row 12" reads; "Back — Pattern" does not. A
+                # panel-wide finding is located by the panel itself.
+                issue.location = section if issue.location == "Pattern" else f"{section} — {issue.location}"
+                issues.append(issue)
+        if not carried:
+            return [Issue(
+                category="colourwork_orientation", severity="error", location="Pattern",
+                message=("The pattern was generated from a colourwork design, but not one of its panels names a "
+                         "colour — the design was dropped somewhere between the request and the rows. The "
+                         "pattern is a valid single-colour one, which is why nothing else here objects to it."),
+            )]
+        return issues
+    return _check_panel(pattern, design, panels[0][1])
+
+
+def _check_panel(pattern, design, source) -> list:
     folded = any(_RE_FOLDED.search(r.get("instructions") or "") for r in source)
 
     actual, width, carried, unread, blind = [], None, None, [], []
