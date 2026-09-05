@@ -315,7 +315,7 @@ def check(pattern) -> list:
 
     folded = any(_RE_FOLDED.search(r.get("instructions") or "") for r in source)
 
-    actual, width, carried, unread = [], None, None, []
+    actual, width, carried, unread, blind = [], None, None, [], []
     for row in source:
         text = row.get("instructions") or ""
         count = row.get("stitch_count")
@@ -328,35 +328,38 @@ def check(pattern) -> list:
         if count != width:
             continue          # a finishing row of a different width
         if carried is None:
-            # A chain-only foundation row makes no stitches, so it is not part
-            # of the fabric and must NOT hold a slot — `actual` is compared
-            # against the design resampled to len(actual) rows, and an extra
-            # leading slot shifts every row against it. Checked before the
-            # colour test below because a foundation row may or may not name a
-            # colour ("Foundation: With Colour 2, Ch 48." does, a bare
-            # "Foundation: Ch 26, turn." does not) and that must not change
-            # whether it occupies a row.
+            # The colour is read BEFORE the row is judged to be a foundation
+            # chain, because a foundation names the colour its first worked row
+            # is made in ("Foundation: With Colour 2, Ch 48.") and that is
+            # frequently the only place the opening rows' colour is stated at
+            # all — they have no change to announce, so they announce nothing.
+            # Skipping the row before reading it left every pattern's first
+            # rows unverifiable: between 1 and 27 of them each, which is the
+            # design's bottom edge.
+            m = _RE_WITH.search(text)
+            if m:
+                carried = m.group(1).title()
+            # A chain-only foundation makes no stitches, so it is not part of
+            # the fabric and must NOT hold a slot — `actual` is compared against
+            # the design resampled to len(actual) rows, and an extra leading
+            # slot shifts every row against it.
             if _RE_CHAIN_ONLY.match(text.strip()):
                 continue
-            m = _RE_WITH.search(text)
-            if not m:
-                # Nothing has established a colour yet — either the pattern has
-                # not started one, or an unreadable row broke the chain. Either
-                # way this row's colours are unknown, so it holds its slot as a
-                # hole rather than being dropped.
+            if carried is None:
+                # Nothing has established a colour yet, so this row is being
+                # worked without the pattern ever having said in what — see the
+                # `blind` report below. Its colours are unknown, so it holds its
+                # slot as a hole rather than being dropped.
                 #
-                # Dropping it is not harmless: `actual` is compared against the
-                # design resampled to len(actual) rows, so a row missing from
-                # the FRONT shortens the grid and shifts every later row against
-                # the design. A waffle pattern shows this immediately — its
-                # foundation and setup rows name no colour, so both used to
+                # Dropping it is not harmless: a row missing from the FRONT
+                # shortens the grid and shifts every later row against the
+                # design. A waffle pattern showed this immediately — its
+                # foundation and setup rows named no colour, so both used to
                 # vanish and the whole fabric read as misaligned against a
                 # perfectly correct pattern.
                 actual.append(None)
+                blind.append(row.get("row_number"))
                 continue
-            carried = m.group(1).title()
-            if _RE_CHAIN_ONLY.match(text.strip()):
-                continue      # "With Colour 1, Ch 20, turn." -- foundation, no stitches
         colours, ending = _row_colours(text, width, carried)
         if colours is None:
             # Unreadable rows are HOLES, not a reason to abandon the pattern.
@@ -376,12 +379,15 @@ def check(pattern) -> list:
         actual.append(colours)
         carried = ending
 
-    # "Dropped" means the instructions name no colour ANYWHERE. If rows named
-    # colours this could not parse, that is a gap in this check, not a missing
-    # design, and saying otherwise would be a false accusation of the generator.
-    if unread and sum(1 for r in actual if r is not None) < 2:
-        return _coverage(actual, unread)
-    if sum(1 for r in actual if r is not None) < 2:
+    # "Dropped" means the instructions name no colour ANYWHERE, and is tested
+    # by whether one was ever established -- NOT by how many rows could be read.
+    # Those are different questions, and conflating them made this accuse a
+    # pattern of dropping its design when it had merely stated its colours late:
+    # a pattern whose opening rows are worked blind (loopdreams #487) has few
+    # readable rows precisely BECAUSE of that defect, and reporting it as a
+    # missing design would be a false accusation of the generator on top of a
+    # true one.
+    if carried is None and not any(r is not None for r in actual):
         # An ERROR, not a "cannot verify". The design has more than one colour
         # and the instructions have none: that is not ambiguity in the text, it
         # is a design that was requested and silently dropped -- exactly what
@@ -393,7 +399,46 @@ def check(pattern) -> list:
                      "colour — the design was dropped somewhere between the request and the rows. The pattern "
                      "is a valid single-colour one, which is why nothing else here objects to it."),
         )]
-    return _compare(pattern, design, actual, width, folded, unread)
+    if sum(1 for r in actual if r is not None) < 2:
+        # Too little to compare a layout against, but something was read or
+        # something was named: say what could not be checked, do not diagnose.
+        return _blind_rows(blind) + _coverage(actual, unread)
+    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread)
+
+
+def _blind_rows(blind):
+    """Rows worked before the pattern ever says what colour to use.
+
+    loopdreams #487: all six compound colourwork builders left the foundation
+    chain colourless, and a row names a colour only when it has a CHANGE to
+    announce. So a design whose bottom band is one colour -- most photographs,
+    and every design with a margin -- produced a pattern that never told the
+    maker which yarn to start with. A 60" waffle blanket went 28 rows, about a
+    foot of fabric, before naming a colour.
+
+    Nothing else in this package can see it. The pattern is internally
+    consistent the whole way down: valid rows, correct stitch counts, no
+    contradiction anywhere. Stitch-count and terminology checks pass it because
+    nothing in the text is wrong -- the problem is what is absent. It takes the
+    design grid to know the omission matters, which is why it lives here.
+
+    An error, not a warning: the maker has to pick a colour to work these rows
+    in, the pattern does not say which, and getting it wrong means frogging
+    everything up to the first row that does.
+    """
+    if not blind:
+        return []
+    rows = ", ".join(f"row {n}" for n in blind[:6])
+    if len(blind) > 6:
+        rows += f", and {len(blind) - 6} more"
+    return [Issue(
+        category="colourwork_orientation", severity="error", location=f"Row {blind[0]}",
+        message=(f"{len(blind)} row(s) are worked before the pattern names any colour ({rows}). The design "
+                 f"has more than one colour, so the maker has to choose one for these rows with nothing to "
+                 f"go on — and if they choose wrong there is no remedy but to frog back to the first row "
+                 f"that does name one. The foundation chain should state the colour its first worked row is "
+                 f"made in."),
+    )]
 
 
 def _labelled(design, palette):
