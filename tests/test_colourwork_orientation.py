@@ -266,3 +266,72 @@ class TestFoldedPanel(unittest.TestCase):
             # A folded panel repeats the design per face; the stretched-across
             # layout is only ever offered as a named WRONG answer.
             self.assertIn("stretched across both faces", cands[1][0])
+
+
+class TestFoundationColour(unittest.TestCase):
+    """The foundation chain names the colour its first worked row is made in,
+    and is very often the only place the opening rows' colour is stated -- they
+    have no change to announce, so they announce nothing."""
+
+    def _rows(self, foundation):
+        # A solid opening band, then a row that changes: the shape of almost
+        # every real photo design, and the one that hid loopdreams #487.
+        return [
+            {"row_number": 1, "stitch_count": 4, "instructions": foundation},
+            {"row_number": 2, "stitch_count": 4, "instructions": "Sc in each st across. Ch 1, turn."},
+            {"row_number": 3, "stitch_count": 4, "instructions": "Sc in each st across. Ch 1, turn."},
+            {"row_number": 4, "stitch_count": 4, "instructions": "With Colour 2, 1 sc in next 1 st, changing to Colour 1 in the last st; 3 sc in next 3 sts. Ch 1, turn."},
+        ]
+
+    def test_the_foundations_colour_is_carried_into_the_rows_that_name_none(self):
+        colours, _ = co._row_colours("Sc in each st across. Ch 1, turn.", 4, "Colour 1")
+        self.assertEqual(colours, ["Colour 1"] * 4)
+
+    def test_a_named_foundation_puts_the_opening_rows_in_reach(self):
+        # The strong form: with the foundation read, the very FIRST crocheted
+        # row can be judged. Before this it abstained -- the check could not
+        # have flagged anything there no matter how wrong it was, and the
+        # design's bottom edge is exactly where an orientation fault shows.
+        # These rows deliberately do not match the design, so a check that is
+        # really looking at row 1 must say so.
+        issues = co.check(_pattern(self._rows("With Colour 1, Ch 5, turn."), grid=SMALL_DESIGN))
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].location, "Row 1")
+        self.assertNotIn("worked before", errors[0].message)
+
+    def test_the_foundation_still_holds_no_slot(self):
+        # It makes no stitches. Reading its colour must not also give it a row,
+        # or every later row shifts by one against the design.
+        named = co.check(_pattern(self._rows("With Colour 1, Ch 5, turn."), grid=SMALL_DESIGN))
+        bare = co.check(_pattern(self._rows("Foundation: Ch 5, turn."), grid=SMALL_DESIGN))
+        # The bare one reports blind rows; neither reports a row-count mismatch.
+        for issues in (named, bare):
+            self.assertNotIn("rows, the design resolves to", " ".join(i.message for i in issues))
+
+    def test_rows_worked_before_any_colour_is_named_are_an_error(self):
+        # loopdreams #487 exactly: the foundation says nothing, and neither do
+        # the opening rows, because they have no change to announce.
+        issues = co.check(_pattern(self._rows("Foundation: Ch 5, turn."), grid=SMALL_DESIGN))
+        errors = [i for i in issues if i.severity == "error"]
+        self.assertEqual(len(errors), 1)
+        self.assertIn("worked before the pattern names any colour", errors[0].message)
+        self.assertIn("row 2, row 3", errors[0].message)
+        self.assertEqual(errors[0].location, "Row 2")
+
+    def test_a_pattern_that_names_a_colour_from_the_first_worked_row_is_clean(self):
+        # No foundation colour, but nothing is worked blind either -- the first
+        # worked row states its own. That is not the #487 defect.
+        rows = self._rows("Foundation: Ch 5, turn.")
+        rows[1]["instructions"] = "With Colour 1, sc in each st across. Ch 1, turn."
+        issues = co.check(_pattern(rows, grid=SMALL_DESIGN))
+        self.assertEqual([i.message for i in issues if "worked before" in i.message], [])
+
+    def test_a_wholly_colourless_pattern_is_still_the_dropped_design_error(self):
+        # Not reported as "worked blind" twice over: a pattern that names no
+        # colour ANYWHERE is #477, and says so.
+        rows = [{"row_number": n, "stitch_count": 4,
+                 "instructions": "Sc in each st across. Ch 1, turn."} for n in range(1, 6)]
+        issues = co.check(_pattern(rows, grid=SMALL_DESIGN))
+        self.assertEqual(len(issues), 1)
+        self.assertIn("never name a colour", issues[0].message)

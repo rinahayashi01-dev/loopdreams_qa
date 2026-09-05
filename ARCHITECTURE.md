@@ -3133,3 +3133,41 @@ are holes, not "unreadable", so they are not reported. Separate cause, separate
 fix.
 
 Full suite passes (275 tests, 5 skip).
+
+## Reading the foundation's colour (Sep 5, 2026) — loopdreams_qa#46
+
+Closes the blind spot #45 left: between 1 and 27 rows at the START of every
+pattern, which is the design's bottom edge and exactly where an orientation
+fault shows first. They abstained because no colour had been established yet.
+
+The cause was reading order. A foundation chain names the colour its first
+worked row is made in ("Foundation: With Colour 2, Ch 48."), but the row was
+judged to be a chain and skipped BEFORE its colour was read. The opening rows
+that follow name no colour of their own — they have no change to announce — so
+nothing carried. The colour is now read first and the row still holds no slot.
+
+**And a real generator defect it surfaced, fixed as loopdreams#487.** Two of the
+ten live cases had no foundation colour to read because the generator never put
+one there: all six compound colourwork builders left the chain colourless. The
+moss dishcloth named no colour until row 7; the 60" waffle blanket not until row
+29 — 28 rows, about a foot of fabric, worked on a coin flip with no remedy but
+to frog it. Nothing in this package could see it: the pattern was internally
+consistent the whole way down, and it takes the design grid to know the omission
+matters. `_blind_rows` now reports it as an ERROR, so it cannot come back.
+
+**One interaction bug of my own, caught by a test.** The "design was dropped"
+error (#477) was gated on how many rows could be READ. A pattern whose opening
+rows are worked blind has few readable rows precisely BECAUSE of that defect, so
+the check accused it of dropping its design when it had merely named its colours
+late. Those are different questions; it is now gated on whether a colour was
+ever established at all.
+
+**Verified** against all ten live colourwork cases regenerated from the deployed
+function, both sides of loopdreams#487: on today's output all ten pass with
+**999 of 999 rows compared** — no abstentions anywhere, up from 920 of 999
+before this and 0 for moss and linen two days ago. Run against yesterday's
+pre-#487 output the same code raises the blind-row error on exactly the two
+patterns that had it, naming 5 rows and 27. So the guard fires on the real
+defect and is silent on the fix.
+
+Full suite passes (281 tests, 5 skip).
