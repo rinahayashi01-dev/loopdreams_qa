@@ -35,6 +35,42 @@ FAITHFUL_ROWS = [
 SMALL_DESIGN = [[A if c == "A" else B for c in row] for row in ["BBBB", "BAAA", "BBAA", "BAAA"]]
 
 
+# Real output from the generator for the moss stitch (dishcloth, the 4x4 design
+# above at 11 sts x 10 rows), again copied verbatim. Moss is the awkward case:
+# the row DECLARES 11 stitches but places only 6 real single crochets, the ch-1
+# spaces between them being holes -- so the colours are written at 6 positions,
+# not 11, and every clause after the first is a repeat bracket.
+MOSS_ROWS = [
+    {"row_number": 1, "stitch_count": 11, "instructions": "Foundation: Ch 12, turn."},
+    {"row_number": 2, "stitch_count": 11, "instructions": "Skip the first 1 chain from the hook (it doesn't count as a stitch). With Colour 2, 3 Sc in the next chain and in next 2 chs across, changing to Colour 1 in the last st; 8 Sc in next 8 chs. Ch 1, turn."},
+    {"row_number": 3, "stitch_count": 11, "instructions": "With Colour 1, Sc in first st, *ch 1, skip 1 st, sc in next st; rep from * 3 more times, changing to Colour 2 in the last st; ch 1, skip 1 st, sc in next st. Ch 1, turn."},
+    {"row_number": 4, "stitch_count": 11, "instructions": "With Colour 2, Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 2 more times, changing to Colour 1 in the last st; *ch 1, sc in next ch-1 sp, skip next st; rep from * 1 more time. Ch 1, turn."},
+    {"row_number": 5, "stitch_count": 11, "instructions": "With Colour 1, Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 1 more time, changing to Colour 2 in the last st; *ch 1, sc in next ch-1 sp, skip next st; rep from * 2 more times. Ch 1, turn."},
+    {"row_number": 6, "stitch_count": 11, "instructions": "With Colour 2, Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 2 more times, changing to Colour 1 in the last st; *ch 1, sc in next ch-1 sp, skip next st; rep from * 1 more time. Ch 1, turn."},
+    {"row_number": 7, "stitch_count": 11, "instructions": "With Colour 1, Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 3 more times, changing to Colour 2 in the last st; ch 1, sc in next ch-1 sp, skip next st. Ch 1, turn."},
+    {"row_number": 8, "stitch_count": 11, "instructions": "With Colour 2, Sc in first st, ch 1, sc in next ch-1 sp, skip next st, changing to Colour 1 in the last st; *ch 1, sc in next ch-1 sp, skip next st; rep from * 3 more times. Ch 1, turn."},
+    {"row_number": 9, "stitch_count": 11, "instructions": "With Colour 2, Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 4 more times. Ch 1, turn."},
+    {"row_number": 10, "stitch_count": 11, "instructions": "Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 4 more times. Ch 1, turn."},
+    {"row_number": 11, "stitch_count": 11, "instructions": "Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 4 more times. Fasten off, weave in ends."},
+]
+
+_BOB = ("bobble in next st (yo, [insert hook, yo, pull up loop, yo, pull through 2 loops] 5 times "
+        "in same st, yo pull through all 6 loops)")
+# Same design, bobble stitch, 7 sts x 6 rows -- verbatim. The inline how-to in
+# every bobble is the trap: it is full of stitch-shaped words ("insert hook",
+# "pull through 2 loops") that must contribute nothing to the count.
+BOBBLE_ROWS = [
+    {"row_number": 1, "stitch_count": 7, "instructions": "Foundation: Ch 8, turn."},
+    {"row_number": 2, "stitch_count": 7, "instructions": "Skip the first 1 chain from the hook (it doesn't count as a stitch). With Colour 2, 2 Sc in the next chain and in next 1 ch across, changing to Colour 1 in the last st; 5 Sc in next 5 sts. Ch 3, turn."},
+    {"row_number": 3, "stitch_count": 7, "instructions": f"With Colour 1, dc in next st, changing to Colour 1 in the last st; {_BOB}, changing to Colour 1 in the last st; dc in next st, changing to Colour 2 in the last st; {_BOB}, changing to Colour 2 in the last st; dc in next st, changing to Colour 2 in the last st; {_BOB}, changing to Colour 2 in the last st; dc in next st. Ch 1, turn."},
+    {"row_number": 4, "stitch_count": 7, "instructions": "With Colour 2, 4 sc in next 4 sts, changing to Colour 1 in the last st; 3 sc in next 3 sts. Ch 3, turn."},
+    {"row_number": 5, "stitch_count": 7, "instructions": f"With Colour 1, dc in next st, changing to Colour 1 in the last st; {_BOB}, changing to Colour 1 in the last st; dc in next st, changing to Colour 1 in the last st; {_BOB}, changing to Colour 1 in the last st; dc in next st, changing to Colour 2 in the last st; {_BOB}, changing to Colour 2 in the last st; dc in next st. Ch 1, turn."},
+    {"row_number": 6, "stitch_count": 7, "instructions": "With Colour 2, 2 sc in next 2 sts, changing to Colour 1 in the last st; 5 sc in next 5 sts. Ch 3, turn."},
+    {"row_number": 7, "stitch_count": 7, "instructions": f"With Colour 2, dc in next st, changing to Colour 2 in the last st; {_BOB}, changing to Colour 2 in the last st; dc in next st, changing to Colour 2 in the last st; {_BOB}, changing to Colour 2 in the last st; dc in next st, changing to Colour 2 in the last st; {_BOB}, changing to Colour 2 in the last st; dc in next st. Ch 1, turn."},
+    {"row_number": 8, "stitch_count": 7, "instructions": "Sc in each st across. Fasten off, weave in ends."},
+]
+
+
 class TestOrientation(unittest.TestCase):
     def test_no_grid_is_not_this_check_s_business(self):
         p = Pattern()
@@ -102,3 +138,131 @@ class TestCoverageWording(unittest.TestCase):
 
     def test_nothing_unread_is_silent(self):
         self.assertEqual(co._coverage([["Colour 1"]] * 5, []), [])
+
+
+class TestRepeatBrackets(unittest.TestCase):
+    """A repeat bracket is the whole reason moss, linen and half of bobble read
+    as unverifiable for as long as they did: unexpanded, every such row came up
+    short and was written off."""
+
+    def test_a_bracket_is_worked_its_body_plus_its_repeats(self):
+        body, reason = co._expand_repeats("*sc in next st; rep from * 2 more times")
+        self.assertIsNone(reason)
+        self.assertEqual(body.count("sc in next st"), 3)   # once as written, twice more
+
+    def test_singular_more_time_is_two_repeats(self):
+        body, _ = co._expand_repeats("*sc in next st; rep from * 1 more time")
+        self.assertEqual(body.count("sc in next st"), 2)
+
+    def test_a_colour_change_inside_a_bracket_is_refused_not_guessed(self):
+        # Repeating a colour change along with the stitches would invent a
+        # meaning the text does not have. The generator never writes this;
+        # if it ever starts, the row must read as unverifiable, not as agreeing.
+        body, reason = co._expand_repeats(
+            "*sc in next st, changing to Colour 2 in the last st; rep from * 2 more times")
+        self.assertIsNone(body)
+        self.assertIn("colour change inside a repeat bracket", reason)
+
+    def test_the_plain_builders_bounded_form_is_left_alone(self):
+        # "rep from * to last 2 sts, 22 more times" bounds its repeat by a
+        # stitch count rather than a plain multiplier. Expanding it as though
+        # the multiplier were the whole story would be a silent wrong answer.
+        text = "*bobble in next st, sc in next st; rep from * to last 2 sts, 22 more times"
+        body, reason = co._expand_repeats(text)
+        self.assertIsNone(reason)
+        self.assertEqual(body, text)          # untouched
+
+    def test_a_bobble_row_opening_with_a_bracket_reads(self):
+        # The shape a real tote's bobble rows take: a bracket, then bobbles with
+        # their inline how-to. Unexpanded the bracket counted 1 where it works
+        # 2, the row came up short, and the whole row was discarded.
+        text = ("With Colour 2, *sc in next st; rep from * 1 more time, changing to Colour 1 in the "
+                "last st; " + _BOB + ". Ch 1, turn.")
+        colours, ending = co._row_colours(text, 3, "Colour 2")
+        self.assertEqual(colours, ["Colour 2", "Colour 2", "Colour 1"])
+        self.assertEqual(ending, "Colour 1")
+
+    def test_a_bobbles_inline_how_to_contributes_no_stitches(self):
+        # "insert hook", "pull up loop", "pull through 2 loops" are all
+        # stitch-shaped. Counting any of them would break every bobble row.
+        colours, _ = co._row_colours(f"With Colour 1, {_BOB}. Ch 1, turn.", 1, "Colour 2")
+        self.assertEqual(colours, ["Colour 1"])
+
+
+class TestColourResolution(unittest.TestCase):
+    """A moss or linen row places fewer colours than it declares stitches."""
+
+    def test_an_offset_row_places_one_colour_per_real_stitch(self):
+        # 11 declared stitches, 6 real single crochets (the ch-1 spaces between
+        # them are holes). Comparing 6 against 11 fails a correct pattern.
+        text = ("With Colour 1, Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * "
+                "3 more times, changing to Colour 2 in the last st; ch 1, sc in next ch-1 sp, "
+                "skip next st. Ch 1, turn.")
+        colours, ending = co._row_colours(text, 11, "Colour 1")
+        self.assertEqual(len(colours), 6)
+        self.assertEqual(colours, ["Colour 1"] * 5 + ["Colour 2"])
+        self.assertEqual(ending, "Colour 2")
+
+    def test_a_solid_offset_row_is_also_at_the_literal_count(self):
+        # The shortcut for a row naming no colour has to know the resolution
+        # too, or a solid moss row comes back 11 long and is compared against
+        # the design at 11 while the generator wrote it at 6.
+        colours, _ = co._row_colours(
+            "Sc in first st, *ch 1, sc in next ch-1 sp, skip next st; rep from * 4 more times. Ch 1, turn.",
+            11, "Colour 2")
+        self.assertEqual(colours, ["Colour 2"] * 6)
+
+    def test_a_plain_row_is_unchanged_at_its_full_width(self):
+        colours, _ = co._row_colours(
+            "Skip first st, dc in each st across, dc in top of ch. Ch 3, turn.", 8, "Colour 1")
+        self.assertEqual(colours, ["Colour 1"] * 8)
+
+    def test_the_expected_row_is_resampled_to_meet_it(self):
+        # Nearest-neighbour, matching resizeGridNN in the generator -- this is
+        # the call buildMossLinenStitchColourRowsInternal makes before writing
+        # the colours out, so the check has to make it too.
+        self.assertEqual(co._at_resolution(list("aaaabbbb"), 4), list("aabb"))
+        self.assertEqual(co._at_resolution(list("aabb"), 4), list("aabb"))
+
+
+class TestCompoundGeneratorOutput(unittest.TestCase):
+    def test_real_moss_output_passes(self):
+        self.assertEqual(co.check(_pattern(MOSS_ROWS, grid=SMALL_DESIGN)), [])
+
+    def test_real_bobble_output_passes(self):
+        self.assertEqual(co.check(_pattern(BOBBLE_ROWS, grid=SMALL_DESIGN)), [])
+
+    def test_a_wrong_design_is_still_caught_through_the_moss_grammar(self):
+        # Coverage that cannot fail anything is worth nothing. The same rows
+        # against a different design must be rejected -- otherwise reading moss
+        # would only have bought a green light.
+        other = [[A if c == "A" else B for c in row] for row in ["AAAA", "ABBB", "AABB", "ABBB"]]
+        issues = co.check(_pattern(MOSS_ROWS, grid=other))
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].severity, "error")
+
+    def test_the_position_of_a_moss_difference_is_named_honestly(self):
+        # "stitch 4" would be wrong for an offset row: it is the 4th real single
+        # crochet, not the 4th of the 11 stitches the row declares. Only the
+        # offset rows are kept here, so the difference has to land on one.
+        offset_only = [MOSS_ROWS[0]] + MOSS_ROWS[2:]
+        other = [[A if c == "A" else B for c in row] for row in ["AAAA", "ABBB", "AABB", "ABBB"]]
+        issues = co.check(_pattern(offset_only, grid=other))
+        self.assertEqual(len(issues), 1)
+        self.assertIn("colour position", issues[0].message)
+        self.assertIn(" of 6 ", issues[0].message)   # 6 real sts, not the declared 11
+
+
+class TestFoldedPanel(unittest.TestCase):
+    def test_an_odd_body_is_still_two_faces(self):
+        # Linen works one row MORE than the panel, so a linen tote's body is
+        # always odd. Treating odd as "not folded" compared a correct tote
+        # against the design stretched over the whole panel and called it wrong.
+        design = [["a", "b"], ["c", "d"]]
+        for rows in (6, 7):
+            cands = co._candidate_expectations(design, 2, rows, folded=True)
+            self.assertEqual(cands[0][0], "the design")
+            self.assertEqual(len(cands[0][1]), rows)
+            # A folded panel repeats the design per face; the stretched-across
+            # layout is only ever offered as a named WRONG answer.
+            self.assertIn("stretched across both faces", cands[1][0])
