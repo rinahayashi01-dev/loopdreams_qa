@@ -3171,3 +3171,59 @@ patterns that had it, naming 5 rows and 27. So the guard fires on the real
 defect and is silent on the fix.
 
 Full suite passes (281 tests, 5 skip).
+
+## Multi-panel patterns (Sep 5, 2026) — loopdreams_qa#47
+
+Garment colourwork shipped with no live regression coverage, because a case
+would have failed the gate outright. Three separate reasons, all fixed here.
+
+**The orientation check read a garment as one panel.** A sweater's Back and
+Front are two 40x48 rectangles, each carrying the whole design; concatenated
+they look like a single 96-row panel that matches nothing, so a correct pattern
+reported as wrong. `check()` now splits on `section` and runs the existing
+single-panel analysis per piece, prefixing findings with the panel name — "the
+Front is upside down" is worth much more than "something is off" when a garment
+has four pieces.
+
+A panel naming no colour is a **placement choice**, not a dropped design: the
+maker picks which pieces carry the picture (loopdreams#493), and faulting a
+plain panel would fail every "front only" garment. What is still an error is
+nothing carrying it at all.
+
+Sleeves are excluded by name rather than incidentally. They taper, so they never
+carry a design — but they DO state the colour they are worked in, so "does it
+mention a colour" is not enough to exclude them. That became true the same day
+(#487's reasoning applied to sleeves), and there is a test pinning it.
+
+**A cardigan's front is two half-width panels** meeting at the button band, so
+one design spans them. Panels are named as WORN and a viewer sees the wearer's
+right on their own left, so "Right Front" holds the design's LEFT half —
+mirroring the generator's own columnSlice. Backwards reports a correct cardigan
+as mirrored, and nothing else would notice, so it has its own test.
+
+**Two parsers rejected a repeated piece that names its colour.**
+`_MAKE_N_FOUNDATION_RE` and `_RE_ROW_AS_FOUNDATION` both required `Ch N` to
+follow the "(make N):" colon directly. "Sleeves (make 2): With Colour 2, Ch 18."
+then stopped being read as a component, and the misread cascaded into a false
+row-range gap where the panel rows were and a false stitch-count mismatch on the
+row after. Both now accept the colour clause in exactly the position
+`_FOUNDATION_CHAIN_RE` already accepted it.
+
+The generator half of that was loopdreams#494 — its first wording,
+"Sleeves (make 2), in Colour 2:", split the label entirely.
+
+**Verified** against the deployed function: sweater and cardigan × all three
+placements, run through the real from_pattern_json pipeline. **0 errors on all
+six** (REVIEW, from pre-existing colourwork warnings), and all six verify their
+design panel by panel. Before this chain they were 2 errors each.
+
+The check still catches what it should: the same rows against a different design
+error on every placement, naming the offending panel; a garment with its colours
+stripped out reports as a dropped design; and all ten existing colourwork cases
+still pass, so the panel split did not disturb the single-panel path.
+
+The three new parser tests were run against main's parser and two of them fail
+there, the colourless control passing — they target the fix rather than
+describing it.
+
+Full suite passes (292 tests, 5 skip).

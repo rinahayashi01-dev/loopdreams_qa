@@ -177,7 +177,20 @@ _FOUNDATION_CHAIN_RE = re.compile(
 # plain "Foundation: Ch N." shape which never has a count at all. Confirmed
 # against pattern_parser.py's own comment: "Row 1 Sleeves (make 2): Ch 35.
 # (32 sts)" -- real sample, sweater Jul 12 batch.
-_MAKE_N_FOUNDATION_RE = re.compile(r"^[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+\d+\.?\s*$", re.I)
+# The colour clause is accepted in exactly the position _FOUNDATION_CHAIN_RE
+# accepts it — immediately after the label — because a repeated piece needs to
+# say which yarn it is worked in for the same reason a main panel does
+# (loopdreams#487), and a sweater's sleeves became the first place that mattered
+# once garments could carry a design (loopdreams#493). Without it the whole
+# "(make N):" component fails to parse, the piece stops being finishing content,
+# and the misread cascades into a false row-range gap and a false stitch-count
+# mismatch on the row after it.
+_MAKE_N_FOUNDATION_RE = re.compile(
+    r"^[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*"
+    r"(?:With\s+(?:Colour\s+\S+|White)(?:\s*[—-]\s*\w+)?,?\s*)?"
+    r"Ch\s+\d+\.?\s*$",
+    re.I,
+)
 # A trailing narrative remark telling the crocheter to redo the whole
 # pattern for a second item ("To complete the pair, repeat Rows 1-29 once
 # more to make a second, matching mitten."). This isn't new row content at
