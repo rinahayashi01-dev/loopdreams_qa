@@ -900,3 +900,93 @@ class TestTurningChainCountsAsStitch(unittest.TestCase):
             "Ch 3 (counts as dc), dc in each of next 9 sts, 2 dc in top of ch. Ch 3, turn."
         )
         self.assertEqual(len([c for c in clauses if c.clause_type == "counted_chain"]), 1)
+
+
+class TestMotifRoundsWorkedIntoSpaces(unittest.TestCase):
+    """LoopDreams' Granny Square / Granny Square Blanket, Sep 2026 batch --
+    the first motif constructions ever put through this tool. See
+    ARCHITECTURE.md, "Rounds worked into spaces"."""
+
+    def test_space_is_a_stitch_target(self):
+        # "sp"/"space" was missing from _NOUN entirely, so every clause of
+        # every round of both templates failed to match any shape at all.
+        for text, produces in [("3 dc in next sp", 3), ("Dc in next sp", 1)]:
+            clauses = tokenize_round(text)
+            self.assertEqual(len(clauses), 1, text)
+            self.assertEqual(clauses[0].produces, produces, text)
+            self.assertEqual(clauses[0].consumes, 1, text)
+
+    def test_a_space_can_be_qualified_by_its_corner_or_chain(self):
+        # A space is routinely named by which corner or which chain made it,
+        # unlike a plain stitch, which never is.
+        for text in ("3 hdc in next corner sp", "Dc in next ch-2 corner sp", "Sc in next ch-1 sp"):
+            clauses = tokenize_round(text)
+            self.assertEqual(len(clauses), 1, text)
+            self.assertNotEqual(clauses[0].clause_type, "unknown", text)
+
+    def test_group_worked_into_one_shared_spot(self):
+        # The four-corner increase every square motif is built from. The
+        # ch 2 makes the corner space and produces nothing; the six dc do.
+        clauses = tokenize_round("[3 dc, ch 2, 3 dc] in next corner sp")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual(clauses[0].clause_type, "cluster_same_spot")
+        self.assertEqual(clauses[0].produces, 6)
+        self.assertEqual(clauses[0].consumes, 1)
+        # Not an abbreviation -- completeness.py reads `stitch` as one, and
+        # reported "[3 dc, ch 2, 3 dc]" as an undefined abbreviation when
+        # this clause set it.
+        self.assertIsNone(clauses[0].stitch)
+
+    def test_group_into_the_same_spot_claims_no_new_slot(self):
+        clauses = tokenize_round("[1 dc, ch 2, 2 dc] in the same sp (corner made)")
+        self.assertEqual(clauses[0].produces, 3)
+        self.assertEqual(clauses[0].consumes, 0)
+
+    def test_an_unknown_member_makes_the_whole_group_unverifiable(self):
+        # Never an undercount: a Cluster with no stated construction has no
+        # ratio, so the group cannot be scored at all.
+        clauses = tokenize_round("[Cluster, ch 1, Cluster] in next ch-1 sp")
+        self.assertIsNone(clauses[0].produces)
+        self.assertIsNotNone(clauses[0].unverifiable_reason)
+
+    def test_the_letters_only_paren_shape_still_wins(self):
+        # _RE_PAREN_CLUSTER is the narrower shape and names its members in
+        # `stitch`, which callers rely on -- the general group shape must not
+        # shadow it (it did, and broke the sedge fixture).
+        clauses = tokenize_round("(sc, hdc, dc) in next chain (sedge made)")
+        self.assertEqual(clauses[0].stitch, "(sc, hdc, dc)")
+
+    def test_travel_slip_stitch_is_a_no_op(self):
+        for text in ("Sl st to corner sp", "Sl st in next ch-2 corner sp", "Sl st in next ch-1 sp"):
+            clauses = tokenize_round(text)
+            self.assertEqual(clauses[0].consumes, 0, text)
+            self.assertEqual(clauses[0].produces, 0, text)
+
+    def test_colour_specific_fasten_off_is_not_a_finishing_fasten_off(self):
+        # completeness.py reads a fasten_off clause on the last body row as
+        # proof the piece tells the maker how to finish; a mid-pattern colour
+        # break is not that.
+        clauses = tokenize_round("Fasten off Colour 1")
+        self.assertEqual(clauses[0].clause_type, "note")
+        self.assertNotEqual(clauses[0].clause_type, "fasten_off")
+
+    def test_multi_part_count_restatement_is_a_no_op(self):
+        for text in ("(24 dc, 4 ch-2 corner sps, 4 ch-1 sps)", "(16 Clusters, 16 ch-1 sps)", "(12 dc)"):
+            clauses = tokenize_round(text)
+            self.assertEqual(clauses[0].clause_type, "note", text)
+
+    def test_a_round_can_name_the_stitch_it_works_back_over(self):
+        # "in each remaining sc around" -- the target noun was a hardcoded
+        # literal "st".
+        clauses = tokenize_round("2 dc in each remaining sc around")
+        self.assertEqual(clauses[0].clause_type, "each_st_around")
+
+    def test_n_stitches_in_the_same_spot_stay_unverifiable(self):
+        # Deliberately NOT scored consumes=0: doing that made both of the
+        # square's corner rounds parse fully and then fail with confident
+        # stitch-count mismatches against counts that are correct. See
+        # ARCHITECTURE.md, "Where this deliberately stops short".
+        clauses = tokenize_round("2 dc in the same sp")
+        self.assertEqual(clauses[0].produces, 2)
+        self.assertIsNone(clauses[0].consumes)
+        self.assertIsNotNone(clauses[0].unverifiable_reason)
