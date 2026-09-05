@@ -3172,7 +3172,7 @@ defect and is silent on the fix.
 
 Full suite passes (281 tests, 5 skip).
 
-## Rounds worked into spaces (Sep 5, 2026) — loopdreams_qa#47
+## Rounds worked into spaces (Sep 5, 2026) — loopdreams_qa#48
 
 The first two motif templates ever put through this tool — LoopDreams' Granny
 Square and Granny Square Blanket, neither of which had ever had a
@@ -3225,7 +3225,7 @@ unrecognized. `*...**` repeat notation (Basic Motif Rounds 5-6) is left
 unrecognized for the same reason — resolving it would mean guessing the partial
 final repeat.
 
-**And two real generator defects it surfaced, fixed as loopdreams#494.** The
+**And two real generator defects it surfaced, fixed as loopdreams#495.** The
 square had no fasten off anywhere in it, at any round count: every round closed
 "sl st to top of ch 3 to join." and the pattern then simply stopped. The blanket
 named a "Cluster" in Rounds 3 and 4 and defined it nowhere — not in the row
