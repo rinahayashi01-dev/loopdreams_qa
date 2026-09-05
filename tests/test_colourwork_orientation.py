@@ -335,3 +335,99 @@ class TestFoundationColour(unittest.TestCase):
         issues = co.check(_pattern(rows, grid=SMALL_DESIGN))
         self.assertEqual(len(issues), 1)
         self.assertIn("never name a colour", issues[0].message)
+
+
+# A sweater panel: a foundation chain plus straight rows, all in one section.
+def _panel(section, foundation, body_rows, width=4):
+    rows = [{"row_number": 1, "stitch_count": width, "instructions": foundation, "section": section}]
+    for i, text in enumerate(body_rows):
+        rows.append({"row_number": i + 2, "stitch_count": width, "instructions": text, "section": section})
+    return rows
+
+
+class TestMultiPanel(unittest.TestCase):
+    """A garment is several separate pieces. Read as one strip, a sweater's Back
+    and Front look like a single panel of twice the height and a perfectly
+    correct pattern reports as wrong — which is why garment colourwork had no
+    live regression coverage until this."""
+
+    SOLID_1 = "With Colour 1, sc in each st across. Ch 1, turn."
+    SOLID_2 = "With Colour 2, sc in each st across. Ch 1, turn."
+    # Solid per row, so a panel's correct instructions are unambiguous. Row 0 is
+    # the TOP of the image and the LAST row crocheted, so working order is
+    # Colour 2 then Colour 1 — derived from to_working_order, not guessed.
+    DESIGN = [["#111", "#111"], ["#222", "#222"]]
+    PALETTE = ("#111", "#222")
+    RIGHT = [SOLID_2, SOLID_1]     # what a correct panel says
+    WRONG = [SOLID_1, SOLID_2]     # the same panel upside down
+
+    def _garment(self, back, front):
+        return (_panel("Back", "Foundation: With Colour 2, Ch 5.", back)
+                + _panel("Front", "Foundation: With Colour 2, Ch 5.", front)
+                + [{"row_number": 99, "stitch_count": 3, "section": "Sleeves",
+                    "instructions": "Sleeves (make 2): With Colour 2, Ch 4."},
+                   {"row_number": 100, "stitch_count": 0, "section": "Assembly",
+                    "instructions": "Block the pieces: block all four pieces."}])
+
+    def test_panels_are_read_separately_not_as_one_strip(self):
+        # Both panels carry the SAME design. Concatenated they would be a
+        # 2x-height strip that matches nothing, so a pass here is only possible
+        # if each panel was compared against the design in its own right.
+        rows = self._garment(self.RIGHT, self.RIGHT)
+        p = _pattern(rows, grid=self.DESIGN, palette=self.PALETTE)
+        self.assertEqual([i for i in co.check(p) if i.severity == "error"], [])
+
+    def test_a_plain_panel_is_a_placement_choice_not_a_dropped_design(self):
+        # "Front only" leaves the Back plain on purpose (loopdreams#493).
+        # Faulting it would fail every garment that isn't front-and-back.
+        rows = (_panel("Back", "Foundation: Ch 5.",
+                       ["Sc in each st across. Ch 1, turn."] * 2)
+                + _panel("Front", "Foundation: With Colour 2, Ch 5.", self.RIGHT))
+        self.assertEqual([i for i in co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+                          if i.severity == "error"], [])
+
+    def test_no_panel_carrying_it_at_all_is_still_the_dropped_design_error(self):
+        rows = (_panel("Back", "Foundation: Ch 5.", ["Sc in each st across. Ch 1, turn."] * 2)
+                + _panel("Front", "Foundation: Ch 5.", ["Sc in each st across. Ch 1, turn."] * 2))
+        issues = co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].severity, "error")
+        self.assertIn("not one of its panels names a colour", issues[0].message)
+
+    def test_a_wrong_panel_is_named_in_the_finding(self):
+        # "Something is off" is worth much less than "the Front is off" when a
+        # garment has four pieces.
+        rows = self._garment(self.RIGHT, self.WRONG)
+        issues = [i for i in co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+                  if i.severity == "error"]
+        self.assertTrue(issues, "a front panel carrying the design upside down must be caught")
+        self.assertTrue(all(i.location.startswith("Front") for i in issues),
+                        f"the finding should name the Front panel, got: {[i.location for i in issues]}")
+
+    def test_sleeves_are_not_treated_as_a_panel(self):
+        # They taper, so they never carry a design — but they DO name the colour
+        # they are worked in, so "does it mention a colour" is not enough to
+        # exclude them. Being in _NON_PANEL_SECTIONS is what excludes them, and
+        # this test is what stops that being quietly removed.
+        rows = self._garment(self.RIGHT, self.RIGHT)
+        self.assertEqual([i for i in co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+                          if "Sleeve" in i.location], [])
+
+    def test_an_unsectioned_pattern_is_still_one_panel(self):
+        # Every flat template and the tote. The panel split must not change them.
+        self.assertEqual(co.check(_pattern(FAITHFUL_ROWS, grid=SMALL_DESIGN)), [])
+
+
+class TestCardiganFrontSplit(unittest.TestCase):
+    def test_right_front_takes_the_designs_left_half(self):
+        # Panels are named as WORN and a viewer sees the wearer's right on their
+        # own left. Backwards here reports a correct cardigan as mirrored — and
+        # it has to match the generator's own columnSlice exactly.
+        design = [["#111", "#111", "#222", "#222"]] * 4
+        self.assertEqual(co._panel_design(design, "Right Front")[0], ["#111", "#111"])
+        self.assertEqual(co._panel_design(design, "Left Front")[0], ["#222", "#222"])
+
+    def test_other_panels_get_the_whole_design(self):
+        design = [["#111", "#222"], ["#222", "#111"]]
+        self.assertEqual(co._panel_design(design, "Back"), design)
+        self.assertEqual(co._panel_design(design, None), design)

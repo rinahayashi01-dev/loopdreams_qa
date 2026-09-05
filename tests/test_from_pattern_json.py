@@ -448,3 +448,55 @@ class TestEndToEnd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRepeatedPieceFoundationWithColour(unittest.TestCase):
+    """A repeated piece states which yarn it is worked in, the same way a main
+    foundation does — "Sleeves (make 2): With Colour 2, Ch 18."
+
+    That became reachable when garments gained colourwork (loopdreams#493), and
+    both regexes that recognise the "<Label> (make N):" shape required `Ch N` to
+    follow the colon directly. The piece then stopped being read as a component
+    at all, and the misread cascaded into a false row-range gap where the panel
+    rows were, plus a false stitch-count mismatch on the row after it — against
+    a pattern that was entirely correct.
+    """
+
+    def _sweater(self, sleeve_line):
+        # Two 4-st panels and a 3-st sleeve piece, the shape of a real garment.
+        rows = []
+        n = 1
+        for section in ("Back", "Front"):
+            rows.append({"row_number": n, "stitch_count": 4, "section": section,
+                         "instructions": "Foundation: Ch 6."})
+            n += 1
+            for _ in range(2):
+                rows.append({"row_number": n, "stitch_count": 4, "section": section,
+                             "instructions": "Skip first st, dc in each st across, dc in top of ch. Ch 3, turn."})
+                n += 1
+        rows.append({"row_number": n, "stitch_count": 3, "section": "Sleeves",
+                     "instructions": sleeve_line})
+        # A real garment ends with one, and completeness requires it — without
+        # it the fixture fails for a reason that has nothing to do with sleeves.
+        rows.append({"row_number": n + 1, "stitch_count": 0, "section": "Assembly",
+                     "instructions": "Assembly: Block the pieces, then seam the shoulders and sides."})
+        return {**BASE_PAYLOAD, "rows": rows}
+
+    def _errors(self, sleeve_line):
+        pattern = parse(build_raw_text(self._sweater(sleeve_line)))
+        issues = list(stitch_count.check(pattern)) + list(completeness.check(pattern))
+        return [i for i in issues if i.severity == "error"]
+
+    def test_a_colourless_repeated_piece_still_parses(self):
+        # The shape that always worked — pinned so the added clause cannot
+        # break it.
+        self.assertEqual(self._errors("Sleeves (make 2): Ch 5."), [])
+
+    def test_a_repeated_piece_naming_its_colour_parses_too(self):
+        self.assertEqual(self._errors("Sleeves (make 2): With Colour 2, Ch 5."), [])
+
+    def test_the_white_designator_is_accepted_as_well(self):
+        # Blank/margin cells are labelled literally "White" by the generator's
+        # colourLabel(), not a numbered "Colour N" — the same allowance the
+        # main foundation regex already makes.
+        self.assertEqual(self._errors("Sleeves (make 2): With White, Ch 5."), [])

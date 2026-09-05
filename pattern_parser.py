@@ -277,8 +277,17 @@ def _parse_instructions(section: Section, pattern: Pattern):
 # as a no-op declaration row (establishes this component's foundation count
 # directly from its own declared "(N sts)", which is already the post-
 # turning-chain count) rather than a real stitch row to verify.
+# The optional colour clause sits where the main foundation line already
+# accepts one. A repeated piece has to say which yarn it is worked in for the
+# same reason a panel does (loopdreams#487), and a sweater's sleeves became the
+# first place that mattered once garments could carry a design (#493). Without
+# it this falls through and the component's chain count is taken from its
+# trailing "(N sts)" instead of the real "Ch N" — a false stitch-count mismatch
+# on the row after, against a perfectly correct pattern.
 _RE_ROW_AS_FOUNDATION = re.compile(
-    r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*Ch\s+(\d+)\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
+    r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*"
+    r"(?:With\s+(?:Colour\s+\S+|White)(?:\s*[—-]\s*\w+)?,?\s*)?"
+    r"Ch\s+(\d+)\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
     re.I,
 )
 # "Row 136 With RS facing, join yarn to the first stitch of the sc row.
