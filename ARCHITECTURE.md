@@ -3327,3 +3327,30 @@ passes all six, and the full from_pattern_json pipeline returns PASS / 0 errors
 / 0 warnings on each.
 
 Full suite passes (307 tests, 5 skip).
+
+## The skip clause may explain its own arithmetic (Sep 6, 2026) — loopdreams_qa#50
+
+Paired with loopdreams#507. A maker reported a cardigan reading "Ch 77" above a
+76-stitch row as an off-by-one. It is not — the counts-as-a-stitch convention
+makes the skipped turning chain the row's first stitch, so the chain is one
+shorter — but the report was fair: under the older convention the sum was
+self-evident (chain − skipped = stitches), and under this one it is not. Skip 2
+of 77, work 75, and the 76th is the skipped chain itself, which nothing said.
+
+The generator now spells that out inside the parenthetical. Both skip-clause
+patterns here were anchored immediately after the closing paren, so they now
+allow a trailing `, ...` explanation. What stays exact is the
+counts/doesn't-count phrase itself: the two conventions differ by exactly one
+stitch per row, and a regex loose enough to swallow both would silently pick one
+answer for the other's rows.
+
+**Why the explanation went in the skip clause rather than on the foundation
+line**, which is where it would most naturally sit: measured, not reasoned. Four
+phrasings were run through the real from_pattern_json pipeline on a live
+cardigan — a count appended to the foundation row gives **3 errors**, an
+explanation appended gives **5**, because both parser layers match that line
+with an end-anchored regex and anything after `Ch N.` costs the pattern its
+foundation verification. Extending the skip clause gives **0 errors**, and reads
+on the line directly under the number being doubted.
+
+Full suite passes (309 tests, 5 skip).
