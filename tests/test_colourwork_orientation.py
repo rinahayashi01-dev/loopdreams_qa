@@ -392,7 +392,7 @@ class TestMultiPanel(unittest.TestCase):
         issues = co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].severity, "error")
-        self.assertIn("not one of its panels names a colour", issues[0].message)
+        self.assertIn("not one of its panels works the design", issues[0].message)
 
     def test_a_wrong_panel_is_named_in_the_finding(self):
         # "Something is off" is worth much less than "the Front is off" when a
@@ -431,3 +431,61 @@ class TestCardiganFrontSplit(unittest.TestCase):
         design = [["#111", "#222"], ["#222", "#111"]]
         self.assertEqual(co._panel_design(design, "Back"), design)
         self.assertEqual(co._panel_design(design, None), design)
+
+
+class TestPlainPanelNamesItsColour(unittest.TestCase):
+    """A panel the placement leaves plain still has to say which yarn it is
+    worked in — the maker has two balls in front of them. Stating it must not
+    make the checker treat the panel as carrying the design."""
+
+    DESIGN = [["#111", "#111"], ["#222", "#222"]]
+    PALETTE = ("#111", "#222")
+
+    def _rows(self, back_foundation, back_body):
+        return (_panel("Back", back_foundation, back_body)
+                + _panel("Front", "Foundation: With Colour 2, Ch 5.",
+                         ["With Colour 2, sc in each st across. Ch 1, turn.",
+                          "With Colour 1, sc in each st across. Ch 1, turn."]))
+
+    def test_one_colour_named_once_is_a_plain_panel_not_a_design(self):
+        # The shape the generator now emits for a "front only" garment: the
+        # Back names its colour on the foundation and never changes.
+        rows = self._rows("Foundation: With Colour 1, Ch 5.",
+                          ["Sc in each st across. Ch 1, turn."] * 2)
+        issues = [i for i in co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+                  if i.severity == "error"]
+        self.assertEqual(issues, [], f"a solid Back must not be judged against the design: {issues}")
+
+    def test_a_panel_that_changes_colour_is_still_checked(self):
+        # Coverage that cannot fail anything is worth nothing: a Back that
+        # actually works colour changes must still be compared, and caught when
+        # it is wrong. Here it carries the design upside down.
+        rows = self._rows("Foundation: With Colour 1, Ch 5.",
+                          ["With Colour 1, sc in each st across. Ch 1, turn.",
+                           "With Colour 2, sc in each st across. Ch 1, turn."])
+        issues = [i for i in co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+                  if i.severity == "error"]
+        self.assertTrue(issues, "a Back working real colour changes must still be verified")
+        self.assertTrue(all(i.location.startswith("Back") for i in issues),
+                        f"the finding should name the Back panel: {[i.location for i in issues]}")
+
+    def test_carries_design_needs_a_change_or_a_second_colour(self):
+        one = [{"instructions": "Foundation: With Colour 1, Ch 5."},
+               {"instructions": "Sc in each st across. Ch 1, turn."}]
+        two = [{"instructions": "With Colour 1, sc across."},
+               {"instructions": "With Colour 2, sc across."}]
+        change = [{"instructions": "With Colour 1, 2 sc in next 2 sts, changing to Colour 2 in the last st."}]
+        self.assertFalse(co._carries_design(one))
+        self.assertTrue(co._carries_design(two))
+        self.assertTrue(co._carries_design(change))
+
+    def test_a_wholly_plain_garment_is_still_a_dropped_design(self):
+        # Every panel solid in the same colour is not a placement choice — it is
+        # a design that never arrived, and must stay an error.
+        rows = (_panel("Back", "Foundation: With Colour 1, Ch 5.",
+                       ["Sc in each st across. Ch 1, turn."] * 2)
+                + _panel("Front", "Foundation: With Colour 1, Ch 5.",
+                         ["Sc in each st across. Ch 1, turn."] * 2))
+        issues = co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
+        self.assertEqual(len(issues), 1)
+        self.assertIn("not one of its panels works the design", issues[0].message)

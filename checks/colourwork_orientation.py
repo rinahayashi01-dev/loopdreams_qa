@@ -352,6 +352,26 @@ def _panels(source):
 # wearer's right on their own left, so "Right Front" holds the design's LEFT
 # half — the same reasoning, and the same halves, as the generator's own
 # columnSlice. Backwards here would report a correct cardigan as mirrored.
+def _carries_design(rows):
+    """Whether a panel's text actually places a design, rather than naming the
+    single colour it is worked in.
+
+    A design needs either a colour CHANGE or more than one colour named. One
+    colour, stated once and never changed, is a solid panel — which is what a
+    "front only" placement leaves the Back as, and what the generator is
+    obliged to name so the maker knows which ball to pick up (loopdreams#487).
+    """
+    named, changed = set(), False
+    for row in rows:
+        text = row.get("instructions") or ""
+        for m in _RE_WITH.finditer(text):
+            named.add(m.group(1).title())
+        for m in _RE_CHANGE.finditer(text):
+            named.add(m.group(1).title())
+            changed = True
+    return changed or len(named) > 1
+
+
 def _panel_design(design, section):
     if section not in ("Right Front", "Left Front"):
         return design
@@ -370,14 +390,20 @@ def check(pattern) -> list:
 
     panels = _panels(source)
     if len(panels) > 1:
-        # A panel naming no colour was deliberately left plain — the maker chose
-        # which pieces carry the picture (loopdreams#493). That is a placement
-        # decision, not a dropped design, and faulting it would fail every
-        # "front only" garment. What WOULD be wrong is nothing carrying it at
-        # all, which is reported below.
+        # A panel worked in ONE colour throughout was deliberately left plain —
+        # the maker chose which pieces carry the picture (loopdreams#493). That
+        # is a placement decision, not a dropped design, and faulting it would
+        # fail every "front only" garment. What WOULD be wrong is nothing
+        # carrying the design at all, which is reported below.
+        #
+        # The test is "one colour and never changes", NOT "names no colour":
+        # a plain panel still has to tell the maker which yarn to use, and
+        # states it once on its foundation the way any solid piece does. Reading
+        # that lone mention as "this panel carries the design" would compare a
+        # deliberately solid panel against a multi-colour design and fail it.
         issues, carried = [], []
         for section, rows in panels:
-            if not any(_RE_WITH.search(r.get("instructions") or "") for r in rows):
+            if not _carries_design(rows):
                 continue
             carried.append(section)
             for issue in _check_panel(pattern, _panel_design(design, section), rows):
@@ -388,9 +414,11 @@ def check(pattern) -> list:
         if not carried:
             return [Issue(
                 category="colourwork_orientation", severity="error", location="Pattern",
-                message=("The pattern was generated from a colourwork design, but not one of its panels names a "
-                         "colour — the design was dropped somewhere between the request and the rows. The "
-                         "pattern is a valid single-colour one, which is why nothing else here objects to it."),
+                message=("The pattern was generated from a colourwork design, but not one of its panels works "
+                         "the design — every piece is a single colour throughout. A panel left plain is a "
+                         "placement choice, but ALL of them plain means the design was dropped somewhere "
+                         "between the request and the rows. The pattern is a valid single-colour one, which is "
+                         "why nothing else here objects to it."),
             )]
         return issues
     return _check_panel(pattern, design, panels[0][1])

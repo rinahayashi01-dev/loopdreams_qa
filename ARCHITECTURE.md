@@ -3298,3 +3298,32 @@ REVIEW, and the residual warnings on both are the corner-space rounds above,
 reported honestly as unverifiable.
 
 Full suite passes (303 tests, 5 skip).
+
+## A plain panel names its colour (Sep 6, 2026) — loopdreams_qa#48
+
+Paired with loopdreams#501. A garment panel the placement deliberately leaves
+plain still has to tell the maker which yarn it is worked in — a sweater
+generated "front only" had a Back of 49 rows naming no colour anywhere. That is
+loopdreams#487's omission again, reintroduced by the placement feature that
+fixed it for sleeves in the same commit.
+
+Fixing it in the generator alone would have broken this check. The multi-panel
+path treated "names no colour" as the mark of a deliberately plain panel, so the
+moment a plain Back named one it was judged as carrying the design, compared
+against a multi-colour grid, and failed. Verified rather than assumed: the new
+generator output run against this repo's previous `main` errors on every "front
+only" and "back only" garment, at `Back — Row 7`, `Front — Row 7` and
+`Right Front — Row 7`.
+
+The test is now "one colour and never changes" (`_carries_design`), which is the
+real distinction and reads the same way on either side of the fence. Also
+corrected the dropped-design message, which said "not one of its panels names a
+colour" — no longer true of the case it fires on, since every panel now names
+one. It says they do not WORK the design.
+
+**Verified** against sweater and cardigan × all three placements, built from the
+paired generator branch: every panel names a colour, the orientation check
+passes all six, and the full from_pattern_json pipeline returns PASS / 0 errors
+/ 0 warnings on each.
+
+Full suite passes (307 tests, 5 skip).
