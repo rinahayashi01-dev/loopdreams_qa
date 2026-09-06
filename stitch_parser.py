@@ -372,7 +372,8 @@ class _Patterns:
         # check) sees exactly the same shape it already knows how to verify.
         self.skip_first_chains_from_hook = re.compile(
             rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
-            rf"\((?:it|they)\s+(?:doesn't|don't)\s+count\s+as\s+a\s+stitch\)$", re.I
+            rf"\((?:it|they)\s+(?:doesn't|don't)\s+count\s+as\s+a\s+stitch"
+            rf"(?:,[^)]*)?\)$", re.I
         )
         # The same shape under the opposite convention, which loopdreams
         # adopted for every turning chain of 2 or more (hdc/hhdc/dc/tr) --
@@ -383,9 +384,18 @@ class _Patterns:
         # parentheticals would silently pick one answer for the other's rows.
         # The foundation is one chain shorter to match, so the arithmetic only
         # balances if this is told apart from its opposite.
+        # The parenthetical may carry a trailing explanation of the arithmetic
+        # ("..., so the foundation chain is one shorter than this row's stitch
+        # count"). A maker reported the bare form as confusing and was right to:
+        # under this convention the chain no longer adds up on its face --
+        # 77 chains, skip 2, work 75, yet the row has 76 -- and nothing said
+        # where the extra stitch came from. What must stay exact is the
+        # counts/doesn't-count phrase itself, since the two differ by one
+        # stitch; anything after it is prose for the human.
         self.skip_first_chains_counting = re.compile(
             rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
-            rf"\((?:it\s+counts|they\s+count)\s+as\s+this\s+row's\s+first\s+stitch\)$", re.I
+            rf"\((?:it\s+counts|they\s+count)\s+as\s+this\s+row's\s+first\s+stitch"
+            rf"(?:,[^)]*)?\)$", re.I
         )
         # The second half of the pair above: no ordinal at all (the ordinal
         # position is implied entirely by however many chains the preceding

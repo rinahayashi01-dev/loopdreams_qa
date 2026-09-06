@@ -844,6 +844,38 @@ class TestTurningChainCountsAsStitch(unittest.TestCase):
         self.assertEqual(len(folded), 1)
         self.assertTrue(folded[0].chain_counts_as_stitch)
 
+    def test_the_parenthetical_may_explain_the_arithmetic(self):
+        # A maker reported "Ch 77" for a 76-stitch row as confusing, and was
+        # right to: under this convention the chain no longer adds up on its
+        # face (77 chains, skip 2, work 75, yet the row has 76) and nothing said
+        # where the extra stitch came from. The generator now says so in the
+        # clause itself. What must stay exact is the counts-as-a-stitch phrase;
+        # anything after the comma is prose for the human.
+        clauses = tokenize_round(
+            "Skip the first 2 chains from the hook (they count as this row's first stitch, "
+            "so the foundation chain is one shorter than this row's stitch count). "
+            "Hhdc in the next chain and in each ch across. Ch 2, turn."
+        )
+        folded = [c for c in clauses if c.clause_type == "foundation_into_chain"]
+        self.assertEqual(len(folded), 1, "the explained clause must still fold into a foundation")
+        self.assertTrue(folded[0].chain_counts_as_stitch)
+
+    def test_an_explanation_cannot_flip_the_convention(self):
+        # The one thing an added explanation must never do is change which
+        # convention was matched — the two differ by exactly one stitch per row.
+        counting = tokenize_round(
+            "Skip the first 1 chain from the hook (it counts as this row's first stitch, "
+            "so the foundation chain is one shorter than this row's stitch count). "
+            "Sc in the next chain and in each ch across. Ch 1, turn."
+        )
+        plain = tokenize_round(
+            "Skip the first 1 chain from the hook (it doesn't count as a stitch, "
+            "so the foundation chain is one longer than this row's stitch count). "
+            "Sc in the next chain and in each ch across. Ch 1, turn."
+        )
+        self.assertTrue([c for c in counting if c.clause_type == "foundation_into_chain"][0].chain_counts_as_stitch)
+        self.assertFalse([c for c in plain if c.clause_type == "foundation_into_chain"][0].chain_counts_as_stitch)
+
     def test_non_counting_skip_chains_clause_is_unchanged(self):
         clauses = tokenize_round(
             "Skip the first 1 chain from the hook (it doesn't count as a stitch). "
