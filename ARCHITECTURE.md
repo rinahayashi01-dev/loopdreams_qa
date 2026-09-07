@@ -3354,3 +3354,31 @@ foundation verification. Extending the skip clause gives **0 errors**, and reads
 on the line directly under the number being doubted.
 
 Full suite passes (309 tests, 5 skip).
+
+## "at the end of the row" is a position, not a stitch (Sep 7, 2026) — loopdreams_qa#51
+
+Paired with loopdreams#508. A maker asked for the counts-as-a-stitch row edge to
+be spelled out: "Skip first st (the chain already 'fills' that slot), hhdc in
+each st across, at the end of the row, hhdc in top of the ch-2." The last stitch
+going into the previous row's turning chain is easy to miss when it is stated as
+a bare clause.
+
+`at the end of the row` arrives as its own comma-delimited clause and was
+unrecognized, and one unknown clause fails the WHOLE row's stitch-count check —
+measured at 236 rows of a single cardigan going unverified. It now joins the
+established informational no-op list (place-a-marker, do-not-join-or-turn, the
+stuffing notes), consuming and producing nothing. "beginning"/"start" are
+accepted too; recognising only one end would be arbitrary.
+
+**Measured before writing, per [[reference_pattern_text_is_parsed]].** Each half
+of the requested wording was run through the real from_pattern_json pipeline on a
+live cardigan first: the `(the chain already 'fills' that slot)` parenthetical
+passes untouched, `in top of the ch-2` passes untouched, and only the positional
+phrase warns — in ANY position, so no rewording avoided it and the parser was the
+right place to fix it. That also ruled out four alternative phrasings in about a
+minute each, rather than shipping one and finding out.
+
+Verified that the fix does not blind the check: with the new wording a row whose
+declared count is perturbed by −1 still FAILS.
+
+Full suite passes (313 tests, 5 skip).

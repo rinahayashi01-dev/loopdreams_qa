@@ -191,6 +191,19 @@ _RE_MAGIC_RING = re.compile(r"^magic\s+ring$", re.I)
 # same class of no-op as _RE_PLACE_MARKER just before it in the same
 # sentence (real samples: Amigurumi Ball/Cone/Limb, Mittens, Amigurumi Egg).
 _RE_DO_NOT_JOIN_OR_TURN = re.compile(r"^do\s+not\s+join\s+or\s+turn$", re.I)
+# "at the end of the row" -- a positional phrase saying WHERE the clause after
+# it is worked, not an instruction of its own. Ordinary pattern prose, and it
+# arrives as its own comma-delimited clause: "Skip first st (...), hhdc in each
+# st across, at the end of the row, hhdc in top of the ch-2." A maker asked for
+# exactly that wording (2026-09-07) to make the counts-as-a-stitch edge
+# unambiguous -- the last stitch of the row goes into the previous row's turning
+# chain, which is easy to miss when it is stated as a bare clause.
+#
+# A pure no-op: it consumes nothing and produces nothing. Without it the phrase
+# reads as an unrecognized clause, and one unknown clause fails the WHOLE row's
+# stitch-count verification (see the stuffing-note comment above for the same
+# failure mode) -- measured at 236 rows of a cardigan losing their check.
+_RE_ROW_END_POSITION = re.compile(r"^at\s+the\s+(?:end|beginning|start)\s+of\s+the\s+row$", re.I)
 # "Stuff the piece firmly as you go" (prefixed onto the first decrease-phase
 # round) / "Finish stuffing firmly" (prefixed onto the closing round) --
 # real, current generator text (loopdreams generate-pattern/builders.ts,
@@ -1075,7 +1088,8 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p)
             or _RE_BODY_LENGTH_CHECKPOINT.match(p) or _RE_DO_NOT_JOIN_OR_TURN.match(p)
-            or _RE_OPPOSITE_SIDE_CHAIN.match(p) or _RE_STUFF_NOTE.match(p)):
+            or _RE_OPPOSITE_SIDE_CHAIN.match(p) or _RE_STUFF_NOTE.match(p)
+            or _RE_ROW_END_POSITION.match(p)):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_MAGIC_RING.match(p):

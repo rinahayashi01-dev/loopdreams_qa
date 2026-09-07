@@ -1022,3 +1022,46 @@ class TestMotifRoundsWorkedIntoSpaces(unittest.TestCase):
         self.assertEqual(clauses[0].produces, 2)
         self.assertIsNone(clauses[0].consumes)
         self.assertIsNotNone(clauses[0].unverifiable_reason)
+
+
+class TestRowEndPositionalPhrase(unittest.TestCase):
+    """"at the end of the row" says WHERE the next clause is worked; it is not
+    an instruction of its own.
+
+    A maker asked for it (2026-09-07) so the counts-as-a-stitch edge is
+    unambiguous: the row's last stitch goes into the previous row's turning
+    chain, which is easy to miss stated as a bare clause. It arrives as its own
+    comma-delimited clause, and one unrecognized clause fails the WHOLE row's
+    stitch-count check — measured at 236 rows of one cardigan going unverified.
+    """
+
+    ROW = ("Skip first st (the chain already ‘fills’ that slot), hhdc in each st across, "
+           "at the end of the row, hhdc in top of the ch-2. Ch 2, turn.")
+
+    def test_the_row_still_verifies_with_the_phrase(self):
+        clauses = tokenize_round(self.ROW)
+        self.assertTrue(clauses, "the row should tokenize")
+        unknown = [c for c in clauses if c.clause_type == "unknown"]
+        self.assertEqual(unknown, [], f"no clause should be unrecognized: {[c.raw for c in unknown]}")
+
+    def test_the_phrase_produces_and_consumes_nothing(self):
+        # If it were counted as a stitch the row would come out one too many,
+        # which is exactly the kind of silent off-by-one this convention invites.
+        clauses = tokenize_round(self.ROW)
+        phrase = [c for c in clauses if "at the end of the row" in c.raw.lower()]
+        self.assertEqual(len(phrase), 1, f"expected one positional clause, got {[c.raw for c in clauses]}")
+        self.assertEqual((phrase[0].consumes, phrase[0].produces), (0, 0))
+
+    def test_the_same_row_without_the_phrase_is_unchanged(self):
+        # The phrase must be additive: totals identical either way.
+        with_phrase = tokenize_round(self.ROW)
+        without = tokenize_round(
+            "Skip first st, hhdc in each st across, hhdc in top of the ch-2. Ch 2, turn.")
+        self.assertEqual(sum(c.produces for c in with_phrase), sum(c.produces for c in without))
+
+    def test_beginning_of_the_row_is_accepted_too(self):
+        # Same class of phrase; accepting only one end would be arbitrary.
+        for phrase in ("at the beginning of the row", "at the start of the row"):
+            clauses = tokenize_round(f"Skip first st, {phrase}, hhdc in each st across.")
+            self.assertEqual([c for c in clauses if c.clause_type == "unknown"], [],
+                             f"{phrase!r} should be recognized as positional")
