@@ -3382,3 +3382,38 @@ Verified that the fix does not blind the check: with the new wording a row whose
 declared count is perturbed by −1 still FAILS.
 
 Full suite passes (313 tests, 5 skip).
+
+## A component's foundation need not say "(make N)" (Sep 13, 2026) — loopdreams_qa#52
+
+`_MAKE_N_FOUNDATION_RE` (from_pattern_json) and `_RE_ROW_AS_FOUNDATION`
+(pattern_parser) both required a literal `(make N)` clause to recognise a
+component that declares its own foundation chain as its "Row 1". That made the
+clause load-bearing for something it does not actually mean: whether a piece is
+a COMPONENT, not whether it is REPEATED.
+
+loopdreams' cardigan now writes its two sleeves out in full as `Sleeve 1:` /
+`Sleeve 2:` rather than once as `Sleeves (make 2):`, because the row tracker
+keys progress off a row's id — a shared piece meant the maker ticked every
+sleeve row, then had to UNTICK them all to work the second one, losing the
+first sleeve's record. Reported from tracking a real cardigan.
+
+Both regexes now make `(make N)` optional. Widening is safe because
+`_is_component_foundation` is only ever tested against a section's FIRST row
+(see `build_raw_text`), so an ordinary mid-section row that happens to end in
+`Ch N.` cannot reach it.
+
+**Reproduced on a real generated cardigan before fixing**, per
+[[reference_pattern_text_is_parsed]]: the unmodified builder scored PASS 0/0,
+and the split-sleeve build scored FAIL with exactly the cascade the old
+comments predicted — a false `No instructions are given for Rows 68-204` gap
+under SLEEVE 1 and a false stitch-count mismatch on the row after it. After the
+fix, the split cardigan, the unchanged pullover (still `Sleeves (make 2)`) and
+the pre-change cardigan all score PASS 0/0.
+
+The new tests are driven through `build_raw_text`, not hand-written raw text.
+A first attempt hand-wrote the parsed text directly and passed against the
+UNFIXED code — the adapter is what decides whether a section's first row is a
+component foundation at all, so skipping it tested nothing. Both tests were
+confirmed to fail on a worktree of `main` before being kept.
+
+Full suite passes (316 tests, 5 skip).

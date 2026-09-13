@@ -284,8 +284,16 @@ def _parse_instructions(section: Section, pattern: Pattern):
 # it this falls through and the component's chain count is taken from its
 # trailing "(N sts)" instead of the real "Ch N" — a false stitch-count mismatch
 # on the row after, against a perfectly correct pattern.
+# The "(make N)" clause is OPTIONAL, for the same reason it is in
+# from_pattern_json's _COMPONENT_FOUNDATION_RE: loopdreams' cardigan writes its
+# sleeves out as separate "Sleeve 1:" / "Sleeve 2:" components so each can be
+# tracked independently, and a component declared once but worked twice is only
+# one of the shapes this has to read. Requiring "(make N)" here made the bare
+# form fall through to having its chain count taken from the trailing "(N sts)"
+# instead of the real "Ch N" -- the exact false mismatch this comment describes,
+# reproduced on a real generated cardigan (2026-09-13).
 _RE_ROW_AS_FOUNDATION = re.compile(
-    r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*"
+    r"Row\s*(\d+)\.?\s+[A-Za-z][\w\s]*?(?:\(make\s+\d+\))?\s*:\s*"
     r"(?:With\s+(?:Colour\s+\S+|White)(?:\s*[—-]\s*\w+)?,?\s*)?"
     r"Ch\s+(\d+)\.?\s*\(\s*~?\s*(\d+)\s*sts?\s*\)\.?",
     re.I,

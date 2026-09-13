@@ -446,6 +446,69 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(errors, [], f"unexpected stitch-count errors: {errors}")
 
 
+class TestSeparatelyNamedComponents(unittest.TestCase):
+    """A component foundation need not carry a "(make N)" clause.
+
+    loopdreams' cardigan writes its two sleeves out in full as "Sleeve 1" /
+    "Sleeve 2" so a maker can track each independently -- ticking a shared
+    "Sleeves (make 2)" piece forces them to untick every row before starting
+    the second sleeve, losing the first sleeve's record.
+
+    Driven through build_raw_text rather than hand-written raw text, because
+    the adapter is what decides whether a section's first row is a component
+    foundation at all; hand-writing the text skips that decision and the test
+    passes whether or not the bug is present.
+    """
+
+    # Shaped exactly as buildCardiganRows emits it: a per-section foundation
+    # row whose label carries no "(make N)", then real worked rows.
+    def _sleeve_rows(self, label, start):
+        return [
+            {"row_number": start, "stitch_count": 3,
+             "instructions": f"{label}: Ch 6.", "section": label},
+            {"row_number": start + 1, "stitch_count": 3,
+             "instructions": "DC in 4th ch from hook and in each ch across. Ch 3, turn.",
+             "section": label},
+            {"row_number": start + 2, "stitch_count": 5,
+             "instructions": "2 DC in first st, DC in each st to last st, 2 DC in last st. Ch 3, turn.",
+             "section": label},
+        ]
+
+    def _payload(self):
+        return {**BASE_PAYLOAD, "title": "Test Cardigan",
+                "rows": self._sleeve_rows("Sleeve 1", 1) + self._sleeve_rows("Sleeve 2", 4)}
+
+    def test_the_bare_label_row_is_rendered_as_the_components_own_row_one(self):
+        raw = build_raw_text(self._payload())
+        # The "Row 1 <Label>:" shape (no colon after the row number) is what
+        # marks a component foundation; "Row 1: " would be an ordinary row.
+        self.assertIn("Row 1 Sleeve 1: Ch 6. (3 sts)", raw)
+        self.assertIn("Row 1 Sleeve 2: Ch 6. (3 sts)", raw)
+
+    def test_no_false_row_range_gap_and_no_false_stitch_mismatch(self):
+        # The cascade the "(make N)" requirement caused on a real generated
+        # cardigan (2026-09-13): a false "No instructions are given for Rows
+        # 68-204" under SLEEVE 1, plus a stitch-count mismatch on the row
+        # after, against a pattern a human reads as correct.
+        pattern = parse(build_raw_text(self._payload()))
+        errors = [i for i in stitch_count.check(pattern) if i.severity == "error"]
+        gaps = [i for i in completeness.check(pattern)
+                if "No instructions are given" in (i.message or "")]
+        self.assertEqual(errors, [], f"false stitch-count errors: {errors}")
+        self.assertEqual(gaps, [], f"false completeness gap: {gaps}")
+
+    def test_the_make_n_shape_still_works(self):
+        # The pullover still shares one sleeve piece; widening must not cost it.
+        payload = {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 3,
+             "instructions": "Sleeves (make 2): Ch 6.", "section": "Sleeves"},
+            {"row_number": 2, "stitch_count": 3,
+             "instructions": "DC in 4th ch from hook and in each ch across. Ch 3, turn.",
+             "section": "Sleeves"},
+        ]}
+        self.assertIn("Row 1 Sleeves (make 2): Ch 6. (3 sts)", build_raw_text(payload))
+
+
 if __name__ == "__main__":
     unittest.main()
 
