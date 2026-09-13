@@ -1,5 +1,6 @@
 import unittest
 
+from loopdreams_qa.from_pattern_json import build_raw_text
 from loopdreams_qa.pattern_parser import parse
 from loopdreams_qa.checks import completeness
 
@@ -24,6 +25,52 @@ def _pattern(title, pattern_steps, extra_materials=""):
         "Border: Fasten off. (40 sts)\n"
     )
     return parse(raw)
+
+
+class TestStructurallyStatedPair(unittest.TestCase):
+    """A pair can be stated by STRUCTURE, not only by a narrative note.
+
+    loopdreams writes both mittens out as "Mitten 1" / "Mitten 2" so each can
+    be ticked off in the row tracker; the old "repeat Rows 1-29 to make a
+    second mitten" note is gone. That pattern is more complete than the
+    narrative one, so flagging it would be backwards.
+
+    Driven through build_raw_text + parse so the component names come from the
+    real adapter, not from hand-written section headers.
+    """
+
+    def _rows(self, sections):
+        rows, n = [], 1
+        for section in sections:
+            rows.append({"row_number": n, "stitch_count": 21,
+                         "instructions": "Ch 22. Sc in 2nd ch from hook and each ch across.",
+                         "section": section})
+            n += 1
+            rows.append({"row_number": n, "stitch_count": 21,
+                         "instructions": "Sc in each st around. (21 sc)", "section": section})
+            n += 1
+        return rows
+
+    def _parsed(self, sections):
+        return parse(build_raw_text({
+            "title": "Mittens", "gauge_sts_per_in": 4, "gauge_rows_per_in": 2,
+            "yarn_weight_name": "Medium", "hook_label": "5.0 mm",
+            "abbreviations": [{"abbr": "sc", "definition": "Single Crochet"}],
+            "rows": self._rows(sections),
+        }))
+
+    def _paired_issues(self, pattern):
+        return [i for i in completeness.check(pattern)
+                if i.location == "Pattern" and "matched pair" in i.message]
+
+    def test_two_numbered_components_count_as_a_pair(self):
+        self.assertEqual(self._paired_issues(self._parsed(["Mitten 1", "Mitten 2"])), [])
+
+    def test_a_single_numbered_component_is_still_flagged(self):
+        # The check must not be weakened into uselessness: one mitten written
+        # out, however it is labelled, is still half a pair.
+        issues = self._paired_issues(self._parsed(["Mitten 1"]))
+        self.assertEqual(len(issues), 1, f"expected the pair check to still fire, got {issues}")
 
 
 class TestPairedItemCheck(unittest.TestCase):

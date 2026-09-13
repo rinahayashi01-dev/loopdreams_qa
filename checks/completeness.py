@@ -728,12 +728,36 @@ _SECOND_PIECE_RE = re.compile(
 )
 
 
+def _has_structural_pair(pattern, item_word: str) -> bool:
+    """True when the pattern writes BOTH pieces out as separately named components.
+
+    A pair can be stated two ways. Narratively -- "repeat Rows 1-29 to make a
+    second mitten" -- which _SECOND_PIECE_RE reads. Or structurally, as two
+    components named "Mitten 1" and "Mitten 2", every row written out.
+
+    loopdreams moved to the structural form (2026-09-13) because its row
+    tracker keys progress off a row's id: with one written mitten a maker
+    ticked the whole thing, then had to UNTICK it all to start the second,
+    losing the record of the first. That pattern is MORE complete than the
+    narrative one, not less, so failing it would be backwards -- and this check
+    still fires for a pattern that genuinely constructs only one piece.
+    """
+    numbered = re.compile(rf"{re.escape(item_word)}s?\s*\d+\Z", re.I)
+    components = {
+        (row.component or "").strip()
+        for row in getattr(pattern, "rows", [])
+    }
+    return len({c for c in components if numbered.match(c)}) >= 2
+
+
 def _check_paired_item(pattern) -> list:
     title = (pattern.title or "").lower()
     item_word = next((w for w in _PAIRED_ITEM_WORDS if w in title), None)
     if item_word is None:
         return []
     if _SECOND_PIECE_RE.search(pattern.raw_text):
+        return []
+    if _has_structural_pair(pattern, item_word):
         return []
     return [Issue(
         category="completeness", severity="error", location="Pattern",

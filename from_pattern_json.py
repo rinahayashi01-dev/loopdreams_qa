@@ -140,8 +140,21 @@ from .cli import run_for_pattern
 from .pattern_parser import parse
 
 _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
+# "Handle 1:" / "Handle 2 (shoulder-strap length):" are the per-handle rows
+# loopdreams emits so each strap can be ticked off separately in the row
+# tracker; "Handles (" is the older single-row form, still produced for
+# purchased leather handles (nothing is crocheted, so one row is right).
+#
+# Both are needed here, and missing the numbered form was not cosmetic: this
+# regex drives a BACKWARD walk collecting the trailing run of finishing rows,
+# so an unrecognised last row stops the walk and strands everything before it
+# -- observed as the tote's Assembly row becoming an ordinary numbered row with
+# a declared stitch count and no recognisable stitch instruction, two warnings
+# against a pattern that had been clean.
 _FINISHING_ROW_RE = re.compile(
-    r"^\s*(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:|^\s*Handles\s*\(",
+    r"^\s*(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"|^\s*Handles\s*\("
+    r"|^\s*Handle\s+\d+\s*[:(]",
     re.I,
 )
 # Colour name after the identifier is itself optional -- real sample

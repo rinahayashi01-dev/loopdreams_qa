@@ -509,6 +509,58 @@ class TestSeparatelyNamedComponents(unittest.TestCase):
         self.assertIn("Row 1 Sleeves (make 2): Ch 6. (3 sts)", build_raw_text(payload))
 
 
+class TestPerHandleFinishingRows(unittest.TestCase):
+    """Each tote handle is its own row so it can be ticked off separately.
+
+    _FINISHING_ROW_RE drives a BACKWARD walk over the trailing run of finishing
+    rows, so an unrecognised last row stops the walk and strands everything
+    before it. When "Handle 1:" / "Handle 2:" were unrecognised, the tote's
+    Assembly row stopped being finishing content and became an ordinary
+    numbered row — a declared stitch count with no recognisable stitch
+    instruction, two warnings against a pattern that had been clean.
+    """
+
+    def _payload(self, handle_rows):
+        return {**BASE_PAYLOAD, "title": "Tote Bag", "rows": [
+            {"row_number": 1, "stitch_count": 56,
+             "instructions": "Ch 57. Sc in 2nd ch from hook and each ch across.", "section": None},
+            {"row_number": 2, "stitch_count": 56,
+             "instructions": "Sc in each st across. Ch 1, turn.", "section": None},
+            {"row_number": 3, "stitch_count": 56,
+             "instructions": "Assembly: Lay the finished panel flat and seam the sides.", "section": None},
+            *handle_rows,
+        ]}
+
+    def test_numbered_handle_rows_are_finishing_content(self):
+        raw = build_raw_text(self._payload([
+            {"row_number": 4, "stitch_count": 12,
+             "instructions": "Handle 1: Ch 13. Sc in the next chain and each ch across.", "section": None},
+            {"row_number": 5, "stitch_count": 12,
+             "instructions": "Handle 2: Ch 13. Sc in the next chain and each ch across.", "section": None},
+        ]))
+        # The Assembly row must fall AFTER the Finishing header — that is what
+        # the backward walk decides, and what stops it being verified as an
+        # ordinary stitch row.
+        self.assertIn("Finishing", raw)
+        self.assertLess(raw.index("Finishing"), raw.index("Assembly:"),
+                        f"Assembly stranded before the Finishing header:\n{raw}")
+        for handle in ("Handle 1:", "Handle 2:"):
+            self.assertLess(raw.index("Finishing"), raw.index(handle),
+                            f"{handle} not treated as finishing content:\n{raw}")
+
+    def test_the_older_single_handles_row_still_works(self):
+        # Purchased leather handles stay one row — nothing is crocheted.
+        raw = build_raw_text(self._payload([
+            {"row_number": 4, "stitch_count": 56,
+             "instructions": "Handles (leather, purchased): Attach two purchased leather handles.", "section": None},
+        ]))
+        self.assertIn("Finishing", raw)
+        self.assertLess(raw.index("Finishing"), raw.index("Assembly:"),
+                        f"Assembly stranded before the Finishing header:\n{raw}")
+        self.assertLess(raw.index("Finishing"), raw.index("Handles (leather"),
+                        f"the leather handles row is not finishing content:\n{raw}")
+
+
 if __name__ == "__main__":
     unittest.main()
 
