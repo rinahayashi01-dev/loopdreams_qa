@@ -3417,3 +3417,52 @@ component foundation at all, so skipping it tested nothing. Both tests were
 confirmed to fail on a worktree of `main` before being kept.
 
 Full suite passes (316 tests, 5 skip).
+
+## A pair can be stated by structure, not only by prose (Sep 13, 2026) — loopdreams_qa#53
+
+Follow-on from #52, which accepted a component foundation without `(make N)`.
+loopdreams has now split every paired piece the same way — the pullover's
+sleeves, the mittens, and the tote's handles — for the same reason: the row
+tracker keys progress off a row's id, so one written piece meant ticking it all
+and then UNTICKING it to make the second.
+
+Two checks were reading the old prose form as the only valid one.
+
+**`_check_paired_item` (completeness).** It searched `raw_text` for "second
+mitten" / "make 2" / "repeat for the other hand". The mittens now express the
+pair structurally, as `Mitten 1` and `Mitten 2` components with every row
+written out — and FAILED, because the note it wanted was gone. That is
+backwards: the structural form is the more complete pattern. `_has_structural_pair`
+now also accepts two or more components named `<item> <n>`. The check still
+fires for a pattern that genuinely builds one piece, which has its own test.
+
+**`_FINISHING_ROW_RE` (from_pattern_json).** It matched `Handles (` but not
+`Handle 1:`. This regex drives a BACKWARD walk over the trailing run of
+finishing rows, so an unrecognised last row stops the walk and strands
+everything before it — observed as the tote's Assembly row becoming an ordinary
+numbered row carrying a declared stitch count and no recognisable stitch
+instruction. Two warnings, against a tote that had been clean. Both label
+shapes are now accepted; the single-row form is still produced for purchased
+leather handles, where nothing is crocheted.
+
+**Baselines taken before and after, per [[verify-after-every-deploy]].** Built
+from a worktree of loopdreams' `main` and from the branch:
+
+| | pre-change build | split build |
+|---|---|---|
+| sweater | PASS 0/0 | PASS 0/0 |
+| mittens | PASS 0/0 | FAIL 1 error → PASS 0/0 |
+| tote | PASS 0/0 | REVIEW 2 warnings → PASS 0/0 |
+
+Pre-change patterns still score PASS 0/0 against the new code, so both widenings
+are backward compatible.
+
+New tests are driven through `build_raw_text` + `parse`, and both were confirmed
+to FAIL on a worktree of `main` before being kept — the same discipline #52
+needed after a first attempt hand-wrote the parsed text and passed against
+unfixed code. One assertion in that first draft was invented rather than
+observed (`Row 3: Assembly:` must not appear — it does, legitimately, under the
+Finishing header); replaced with the property that actually matters, that the
+row falls after the Finishing header.
+
+Full suite passes (320 tests, 5 skip).
