@@ -185,8 +185,23 @@ _FOUNDATION_CHAIN_RE = re.compile(
 # "(make N):" component fails to parse, the piece stops being finishing content,
 # and the misread cascades into a false row-range gap and a false stitch-count
 # mismatch on the row after it.
-_MAKE_N_FOUNDATION_RE = re.compile(
-    r"^[A-Za-z][\w\s]*?\(make\s+\d+\)\s*:\s*"
+# The "(make N)" clause is OPTIONAL. A component is not always a repeated
+# piece: loopdreams' cardigan writes its two sleeves out separately as
+# "Sleeve 1: Ch 31." / "Sleeve 2: Ch 31." so a maker can track each one in the
+# row tracker (ticking a shared "Sleeves (make 2)" piece forces them to UNTICK
+# every row to start the second sleeve, losing the first sleeve's record).
+# Without accepting the bare "<Label>: Ch N." shape the component fails to
+# parse, and the cascade this whole regex exists to prevent fires anyway --
+# verified on a real generated cardigan before the fix: a false
+# "No instructions are given for Rows 68-204" gap under SLEEVE 1 and a false
+# stitch-count mismatch on the row after it, against a pattern a human reads
+# as perfectly correct.
+#
+# Widening is safe because this is only ever tested against a section's FIRST
+# row (see build_raw_text), so an ordinary mid-section row that happens to end
+# in "Ch N." cannot reach it.
+_COMPONENT_FOUNDATION_RE = re.compile(
+    r"^[A-Za-z][\w\s]*?(?:\(make\s+\d+\))?\s*:\s*"
     r"(?:With\s+(?:Colour\s+\S+|White)(?:\s*[—-]\s*\w+)?,?\s*)?"
     r"Ch\s+\d+\.?\s*$",
     re.I,
@@ -213,8 +228,8 @@ def _is_chain_only_foundation(instructions: str) -> bool:
     return bool(_FOUNDATION_CHAIN_RE.match(instructions.strip()))
 
 
-def _is_make_n_foundation(instructions: str) -> bool:
-    return bool(_MAKE_N_FOUNDATION_RE.match(instructions.strip()))
+def _is_component_foundation(instructions: str) -> bool:
+    return bool(_COMPONENT_FOUNDATION_RE.match(instructions.strip()))
 
 
 def _is_repeat_whole_pattern_note(instructions: str) -> bool:
@@ -286,7 +301,7 @@ def build_raw_text(payload: dict) -> str:
             lines.append(_foundation_line(remaining[0]))
             remaining = remaining[1:]
             renumber_from = 1
-        elif remaining and _is_make_n_foundation(remaining[0]["instructions"]):
+        elif remaining and _is_component_foundation(remaining[0]["instructions"]):
             lines.append(f"Row 1 {_with_trailing_count(remaining[0])}")
             remaining = remaining[1:]
             renumber_from = 2
