@@ -815,6 +815,53 @@ class TestSedgeStitchClauses(unittest.TestCase):
         self.assertIn("centre dc", row3_issues[0].message)
 
 
+class TestPostStitchLeadingCount(unittest.TestCase):
+    """A post-stitch clause may carry a leading count.
+
+    loopdreams' waffle builder writes "1 fpdc around next 1 st". Without the
+    leading count the clause was unrecognized, and ONE unknown clause fails the
+    whole row's stitch-count check — measured 2026-09-14 at 86 rows of a waffle
+    Throw Blanket and 46 of a waffle Tote Bag going entirely unverified.
+    """
+
+    def _only(self, text):
+        clauses = tokenize_round(text)
+        self.assertEqual(len(clauses), 1, f"expected one clause, got {[c.raw for c in clauses]}")
+        return clauses[0]
+
+    def test_leading_count_is_recognized(self):
+        c = self._only("1 fpdc around next 1 st")
+        self.assertIsNone(c.unverifiable_reason, c.unverifiable_reason)
+        self.assertEqual((c.consumes, c.produces), (1, 1))
+
+    def test_it_agrees_with_the_form_that_already_worked(self):
+        # The whole point: the two spellings must resolve identically, or the
+        # fix has changed what a previously-verified pattern means.
+        with_lead    = self._only("1 fpdc around next 1 st")
+        without_lead = self._only("fpdc around next 1 st")
+        self.assertEqual((with_lead.consumes, with_lead.produces),
+                         (without_lead.consumes, without_lead.produces))
+
+    def test_a_counted_run_of_posts(self):
+        c = self._only("2 fpdc around next 2 sts")
+        self.assertIsNone(c.unverifiable_reason, c.unverifiable_reason)
+        self.assertEqual((c.consumes, c.produces), (2, 2))
+
+    def test_back_post_too(self):
+        c = self._only("1 bpdc around next 1 st")
+        self.assertIsNone(c.unverifiable_reason, c.unverifiable_reason)
+        self.assertEqual((c.consumes, c.produces), (1, 1))
+
+    def test_disagreeing_counts_are_left_UNRESOLVED_rather_than_guessed(self):
+        # "3 fpdc around next 1 st" would be an increase into a single post.
+        # Nothing generates it, and picking which number governs consumption
+        # would be invention — a wrong parse turns a warning into a FAIL.
+        c = self._only("3 fpdc around next 1 st")
+        self.assertIsNotNone(c.unverifiable_reason)
+        self.assertIsNone(c.consumes)
+        self.assertIsNone(c.produces)
+
+
 if __name__ == "__main__":
     unittest.main()
 

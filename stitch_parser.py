@@ -571,8 +571,19 @@ class _Patterns:
             rf"^({stitch_alt})\s+in\s+(?:the\s+)?(?:centre|center)\s+dc\s+of\s+(?:the\s+)?(?:next|last)\s+shell$", re.I
         )
         # "fpdc around (post(s) of) next/last (N) st(s)" -- post stitches.
+        #
+        # The optional LEADING count ("1 fpdc around next 1 st") is how
+        # loopdreams' waffle builder writes these. Without it the clause was
+        # unrecognized, and one unknown clause fails the whole row's
+        # stitch-count check -- measured 2026-09-14 at 86 rows of a waffle
+        # Throw Blanket and 46 of a waffle Tote Bag going unverified, i.e.
+        # nothing at all checking the stitch maths on either.
+        #
+        # Named groups, because adding a leading capture would otherwise
+        # renumber the existing ones and silently change what `count` reads.
         self.around_post = re.compile(
-            rf"^({stitch_alt})\s+around\s+(?:the\s+)?(?:posts?\s+of\s+)?{_POS}\s*(\d+)?\s*{_NOUN}$", re.I
+            rf"^(?:(?P<lead>\d+)\s+)?(?P<stitch>{stitch_alt})\s+around\s+(?:the\s+)?"
+            rf"(?:posts?\s+of\s+)?{_POS}\s*(?P<count>\d+)?\s*{_NOUN}$", re.I
         )
         # "dc in top of ch" / "dc in top of ch-2", and the shaped-row form
         # "2 dc in top of ch" -- an increase worked into the turning chain,
@@ -1474,12 +1485,28 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     m = patterns.around_post.match(p)
     if m:
-        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
-        n = int(m.group(3)) if m.group(3) else 1
+        canon, is_compound, c, prod = _stitch_lookup(m.group("stitch"), custom_compound)
+        lead = int(m.group("lead")) if m.group("lead") else None
+        posts = int(m.group("count")) if m.group("count") else None
         # "around (post of) next/last N st(s)" names the consumed count (N,
         # default 1) in its own grammar -- this is true regardless of which
         # stitch is being worked there, compound or not. Only produces
         # genuinely depends on the stitch itself.
+        #
+        # A leading count that DISAGREES with the post count would be an
+        # increase worked into one post ("3 fpdc around next 1 st"). Nothing
+        # generates that today, and guessing which number governs consumption
+        # is exactly the kind of invention ARCHITECTURE.md forbids -- so say so
+        # rather than pick one. A wrong parse turns a warning into a FAIL.
+        if lead is not None and posts is not None and lead != posts:
+            return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
+                                 consumes=None, produces=None, is_compound=is_compound,
+                                 unverifiable_reason=(
+                                     f"'{m.group(0)}' works {lead} stitch(es) around {posts} post(s); which "
+                                     f"of the two numbers governs how many previous-row stitches are used "
+                                     f"is not stated, so this clause cannot be resolved from the text alone"
+                                 ))
+        n = lead if lead is not None else (posts if posts is not None else 1)
         consumes = (c * n) if c is not None else n
         produces = (prod * n) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
