@@ -3466,3 +3466,42 @@ Finishing header); replaced with the property that actually matters, that the
 row falls after the Finishing header.
 
 Full suite passes (320 tests, 5 skip).
+
+## A post stitch may carry a leading count (Sep 14, 2026) — loopdreams_qa#54
+
+`around_post` matched `fpdc around next 1 st` but not `1 fpdc around next 1 st`.
+One unrecognized clause fails the WHOLE row's stitch-count check, so that single
+missing prefix left **86 rows of a colourwork waffle Throw Blanket and 46 of a
+colourwork waffle Tote Bag entirely unverified** — nothing at all was checking
+the stitch maths on either.
+
+The gap was specific to post stitches. loopdreams' colourwork run-builder writes
+every run as `${count} ${stitch} ${verb} next ${count} st(s)`, and the ordinary
+form `1 dc in next 1 st` already parsed; `around_post` was simply the one
+positional pattern without the optional leading count its siblings
+(`top_of_chain`, the generic counted positional) already had.
+
+Named groups now, deliberately: adding a leading capture to a numbered pattern
+would have renumbered `count` and silently changed which digit the consumes
+calculation reads.
+
+**The disagreeing case is left UNRESOLVED rather than guessed.**
+`3 fpdc around next 1 st` would be an increase into a single post, and which of
+the two numbers governs consumption is not stated. Per this document's own rule,
+that returns `consumes=None` with a reason instead of picking one — a wrong
+parse turns a warning into a FAIL. Nothing generates it today (the builder
+always emits equal counts), so this is defensive, and it has a test.
+
+**Measured against live production, before and after:**
+
+| | qa-tool |
+|---|---|
+| before | 67/67 run — 55 pass, 12 review, 0 fail |
+| after | 67/67 run — **57 pass, 10 review**, 0 fail |
+
+The two that cleared are exactly `Throw Blanket — colourwork, waffle` and
+`Tote Bag — colourwork, waffle`. The remaining ten are the genuinely unknowable
+ones (shell positions inside a multi-stitch group, clusters with no fixed ratio,
+rows carrying two repeat groups) and are expected to persist.
+
+Full suite passes (325 tests, 5 skip).
