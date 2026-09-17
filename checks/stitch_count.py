@@ -493,6 +493,29 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
     return _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_foundation_transition)
 
 
+def _without_turning_chain(clauses):
+    """The row's clauses with its trailing TURNING chain removed.
+
+    Moss and linen count their ch-1 spaces toward the row total, so the
+    alternate convention has to count chains as stitches — but a row also ends
+    with "Ch 1, turn.", and that chain is not fabric. Telling them apart is
+    positional and nothing else: the turning chain is the last chain in the
+    row with only no-ops after it.
+
+    Without this the convention could only be applied to the repeated unit,
+    which is wrong as soon as a colour change unrolls the first unit into the
+    clauses before the bracket — a correct 21-stitch coloured moss row then
+    read as 20.
+    """
+    last_chain = None
+    for i, c in enumerate(clauses):
+        if c.clause_type == "chain":
+            last_chain = i
+        elif c.clause_type not in _NO_OP_TYPES:
+            last_chain = None      # real stitches after it: not the turn
+    return clauses if last_chain is None else clauses[:last_chain] + clauses[last_chain + 1:]
+
+
 def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
     ratio_overrides = ratio_overrides or {}
     produces, consumes = 0, 0
@@ -621,17 +644,17 @@ def _check_multi_repeat_groups(row, clauses, in_count, in_label, ratio_overrides
             ),
         ))
     if row.declared_count is not None and produced != row.declared_count:
-        # Same alternate convention the single-group path allows: moss and
-        # linen count the ch-1 spaces INSIDE their repeated unit toward the row
-        # total. Only inside the unit, exactly as the single-group path does
-        # it -- a flat zone holds the row's own turning chain, and counting
-        # that as a stitch overshoots by one. Measured: it turned a correct
-        # 97-stitch moss row into a false mismatch at 98.
+        # Same alternate convention as the single-group path, and now the same
+        # rule for which chains count: every ch-1 the row works, flat zones
+        # included, except the row's own turning chain. Applying it to units
+        # only was the earlier, narrower version -- it worked because those
+        # rows happened to keep their chains inside the brackets, and it
+        # under-counts as soon as one is unrolled into a flat zone.
         alt = 0
         alt_ok = True
         for zone in zones:
             if zone[0] == "flat":
-                p, _, r = _zone_sum(zone[1], ratio_overrides=ratio_overrides)
+                p, _, r = _zone_sum(_without_turning_chain(zone[1]), count_chains=True, ratio_overrides=ratio_overrides)
                 alt += p
             else:
                 _, unit, times = zone
@@ -696,9 +719,16 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
         # chain-1 spaces as stitches toward the row total; most patterns'
         # turning chains don't. Try the alternate convention for chains
         # INSIDE the repeated unit before concluding it's a real mismatch.
+        # The convention applies to every ch-1 the row actually works, not
+        # just the ones inside the bracket: a colour change can unroll the
+        # first repeat into the pre-zone, and its ch-1 is as much a stitch as
+        # the ones that stayed in the unit. The row's own turning chain is the
+        # single exception, and is dropped by position.
+        pre_p_alt,  _, pre_r_alt  = _zone_sum(_without_turning_chain(pre), count_chains=True, ratio_overrides=ratio_overrides)
         unit_p_alt, _, unit_r_alt = _zone_sum(unit, count_chains=True, ratio_overrides=ratio_overrides)
-        if not unit_r_alt:
-            produced_alt = pre_p + r * unit_p_alt + post_p
+        post_p_alt, _, post_r_alt = _zone_sum(_without_turning_chain(post), count_chains=True, ratio_overrides=ratio_overrides)
+        if not (pre_r_alt or unit_r_alt or post_r_alt):
+            produced_alt = pre_p_alt + r * unit_p_alt + post_p_alt
             if produced_alt == row.declared_count:
                 return []
         return [Issue(

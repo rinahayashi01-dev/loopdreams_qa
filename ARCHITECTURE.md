@@ -3764,3 +3764,44 @@ The REVIEWs the batch suite still reports are catalogued in
 it would take to change that. Read it before investigating a REVIEW; all of
 them have been read by hand and none is a wrong pattern.
 
+
+---
+
+## Counting the ch-1 spaces a colour change unrolls (2026-09-17)
+
+Moss and linen count their ch-1 spaces toward the row total, and
+`_check_repeat_group` has always allowed for that with an alternate pass that
+counts chains as stitches. It applied that pass to the REPEATED UNIT only.
+
+That holds while every ch-1 stays inside the bracket. It breaks the moment a
+colour change unrolls the first repeat into the clauses before it — which a
+coloured moss row does whenever the design's first run is short. A correct
+21-stitch row then came to 20 and every body row after it failed. Found on a
+coloured moss square coaster at 5 in; confirmed pre-existing back to this
+tool's PR #40, and confirmed by hand that the pattern is right (the row
+consumes 21 and produces 21).
+
+The convention now applies to every ch-1 the row actually works — pre-zone,
+unit and post-zone alike — with one exception, identified by position rather
+than by wording: `_without_turning_chain` drops the last chain in the row when
+only no-ops follow it. That chain is the "Ch 1, turn." and is not fabric.
+Counting it as well overshoots by exactly one, which is a mistake this
+codebase has now made twice (see the multi-group entry above, where the
+narrower unit-only rule was the workaround). The multi-group path uses the
+same rule now, so the two are no longer asymmetric.
+
+**Measured:**
+
+| | before | after |
+|---|---|---|
+| coloured moss, 5 in square coaster | FAIL, 13 errors | **PASS, 0/0** |
+| the other 16 shapes swept | unchanged | unchanged |
+
+**A test that passed for the wrong reason, and was fixed.** The natural way to
+check "a wrong row is still caught" is to edit the stated repeat count. This
+path SOLVES the repetitions from the previous row and never reads that number,
+so the mutation changes nothing it looks at and the test passed while proving
+nothing. It perturbs the declared stitch count instead, which is what the
+comparison actually uses.
+
+Full suite passes (357 tests, 5 skip).
