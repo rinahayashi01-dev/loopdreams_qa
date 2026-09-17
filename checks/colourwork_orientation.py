@@ -126,6 +126,62 @@ _RE_REPEAT = re.compile(r"\*(?P<body>[^*]*?);\s*rep from \*\s*(?P<n>\d+)\s+more 
 _RE_OFFSET_ROW = re.compile(r"in next ch-1 sp|ch 1,\s*skip 1 st", re.I)
 
 
+# ── Sedge ────────────────────────────────────────────────────────────────────
+# A sedge row is "(sc, hdc, dc) in next st" clusters separated by "skip 2 sts",
+# opened by a two-stitch hdc/dc pair and closed by a single sc. Its colours are
+# written per CLUSTER, not per stitch: the generator resamples the design to
+# one column per cluster plus one for the opener and one for the closer, so a
+# 96-stitch row carries 33 colour positions, not 96.
+#
+# It gets its own tokenizer rather than new alternatives in _TOKENS, and that
+# is deliberate. The phrases it needs -- "sc in last st" above all -- occur in
+# other fabrics' rows too, where they are currently matched by nothing; adding
+# them globally would change the token count of grammars that already read
+# correctly. A row is only parsed this way when it actually says "(sedge
+# made)", which is the generator's own marker and appears nowhere else.
+_RE_SEDGE_ROW = re.compile(r"\(sedge made\)", re.I)
+
+# The three things a sedge row places, each worth exactly one colour position.
+# "in the last chain" as well as "in the last st": row 1 is worked into the
+# foundation chain and says so throughout.
+_SEDGE_TOKENS = re.compile(
+    r"(?P<with>With\s+(?:Colour\s+\w+|White))"
+    r"|(?P<change>changing to\s+(?:Colour\s+\w+|White)\s+in the last (?:st|chain))"
+    r"|(?P<opener>hdc in first st,\s*dc in next st"
+    r"|hdc in the next chain,\s*dc in the same chain)"
+    r"|(?P<cluster>\(sc,\s*hdc,\s*dc\)\s*in next (?:st|chain)\s*\(sedge made\))"
+    r"|(?P<closer>sc in last (?:st|chain))",
+    re.I,
+)
+
+
+def _sedge_row_colours(body, target, carried):
+    """Colours a sedge row places, one per opener/cluster/closer position.
+
+    Same contract as _row_colours: (colours, ending) or (None, reason). Returns
+    None rather than a guess whenever the pieces do not add up to the row's own
+    expected position count -- a wrong parse here would turn a warning into a
+    false accusation, which is the failure this whole module exists to avoid.
+    """
+    expanded, reason = _expand_repeats(body)
+    if expanded is None:
+        return None, reason
+
+    colours, cur = [], carried
+    for m in _SEDGE_TOKENS.finditer(expanded):
+        kind = m.lastgroup
+        if kind in ("with", "change"):
+            # Same rule as the plain grammar: a change is written after the run
+            # it closes, so everything from here on is the new colour.
+            cur = _RE_COLOUR_NAME.search(m.group()).group(1).title()
+            continue
+        colours.append(cur)
+
+    if len(colours) != target:
+        return None, f"sedge row places {len(colours)} colour positions, expected {target}"
+    return colours, cur
+
+
 def _expand_repeats(body):
     """Write repeat brackets out in full, so the tokenizer sees every stitch the
     row actually works. Returns None if a bracket cannot be expanded safely."""
@@ -160,6 +216,11 @@ def _colour_positions(body, width):
     colours per real stitch. A turning chain of 2+ is itself the row's first
     stitch and is made in the previous row, so the row's own text accounts for
     one fewer."""
+    if _RE_SEDGE_ROW.search(body):
+        # Row stitch count is 3(n+1) for n clusters -- 2 opener sts + 3n + 1
+        # closer st -- so the colour positions (opener + n + closer) are
+        # width/3 + 1.
+        return width // 3 + 1
     if _RE_OFFSET_ROW.search(body):
         return (width + 1) // 2
     if _RE_CHAIN_COUNTS.search(body):
@@ -200,6 +261,9 @@ def _row_colours(text, width, carried):
     # for containing stitches they cannot count.
     if not _RE_WITH.search(body) and not _RE_CHANGE.search(body):
         return [carried] * (target + (1 if chain_counts else 0)), carried
+
+    if _RE_SEDGE_ROW.search(body):
+        return _sedge_row_colours(body, target, carried)
 
     expanded, reason = _expand_repeats(body)
     if expanded is None:
@@ -428,6 +492,7 @@ def _check_panel(pattern, design, source) -> list:
     folded = any(_RE_FOLDED.search(r.get("instructions") or "") for r in source)
 
     actual, width, carried, unread, blind = [], None, None, [], []
+    sedge_rows = any(_RE_SEDGE_ROW.search(r.get("instructions") or "") for r in source)
     for row in source:
         text = row.get("instructions") or ""
         count = row.get("stitch_count")
@@ -515,7 +580,11 @@ def _check_panel(pattern, design, source) -> list:
         # Too little to compare a layout against, but something was read or
         # something was named: say what could not be checked, do not diagnose.
         return _blind_rows(blind) + _coverage(actual, unread)
-    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread)
+    # Sedge is the one fabric whose colours are resampled straight to its own
+    # cluster columns — see _compare's expect_width.
+    read_widths = {len(a) for a in actual if a is not None}
+    expect_width = read_widths.pop() if (sedge_rows and len(read_widths) == 1) else None
+    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread, expect_width)
 
 
 def _blind_rows(blind):
@@ -591,12 +660,30 @@ def _agrees(expected, actual):
     return all(a is None or _at_resolution(e, len(a)) == a for e, a in zip(expected, actual))
 
 
-def _compare(pattern, design, actual, width, folded, unread=()) -> list:
+def _compare(pattern, design, actual, width, folded, unread=(), expect_width=None) -> list:
+    """`expect_width` is the column count the GENERATOR resampled the design to,
+    when that differs from the row's stitch count.
+
+    Normally the expectation is built at `width` and each row compared at its
+    own resolution by down-sampling (`_at_resolution`), which is right because
+    it mirrors what the generator did: a moss row's colours come from the
+    design resampled to the stitch count and then to the row's real single
+    crochets, two steps, the same two.
+
+    A sedge row is written the other way. Its colours are resampled ONCE, from
+    the design straight to one column per cluster, so 8 design columns become
+    33 — never passing through the 96-stitch resolution at all. Re-deriving it
+    as 8 -> 96 -> 33 is a different sampling and disagrees at run boundaries:
+    it reported a real, correct pattern as working Colour 2 where the design
+    called for Colour 1. Building the expectation at the resolution the
+    generator actually used removes the second step, and `_at_resolution` then
+    has nothing left to do.
+    """
     palette = getattr(pattern, "design_palette", None) or []
     labelled = _labelled(design, palette)
     rows = len(actual)
 
-    candidates = _candidate_expectations(labelled, width, rows, folded)
+    candidates = _candidate_expectations(labelled, expect_width or width, rows, folded)
     correct_name, correct = candidates[0]
     if _agrees(correct, actual):
         return _coverage(actual, unread)

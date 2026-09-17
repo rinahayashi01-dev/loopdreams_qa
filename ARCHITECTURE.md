@@ -3505,3 +3505,64 @@ ones (shell positions inside a multi-stitch group, clusters with no fixed ratio,
 rows carrying two repeat groups) and are expected to persist.
 
 Full suite passes (325 tests, 5 skip).
+
+---
+
+## Reading a sedge colourwork row (2026-09-17)
+
+`colourwork_orientation` could not read a compound colourwork row at all. Every
+one became a hole, and holes are not free: an unreadable row deliberately
+CLEARS `carried`, because a wrong carried colour would be worse than a second
+hole. On a garment panel whose design ends in a uniform band, the few rows that
+WERE readable were the silent ones, so the check reported a correct pattern as
+worked with no colour ever named — the loopdreams#487 shape — and failed the
+batch gate. loopdreams#543 had to delete the case to get main green.
+
+Two separate faults, and the second was only visible once the first was fixed.
+
+**1. The row was not tokenized.** A sedge row places its colours per CLUSTER,
+not per stitch: an opener column covering its `hdc`/`dc` pair, one per
+`(sc, hdc, dc)` cluster, and a closer. A 96-stitch row carries 33 colour
+positions. `_colour_positions` now returns `width // 3 + 1` for one, and
+`_sedge_row_colours` reads it with its own tokenizer.
+
+Its own tokenizer, not new alternatives in `_TOKENS`, and that is deliberate:
+the phrases it needs — `sc in last st` above all — occur in other fabrics'
+rows, where nothing currently matches them. Adding them globally would change
+the token count of grammars that already read correctly. A row takes this path
+only when it says `(sedge made)`, which is the generator's own marker.
+
+**2. The expectation was resampled twice.** `_compare` builds the design at the
+row's STITCH count and `_at_resolution` then down-samples each row to its
+colour resolution. For moss that is right — it mirrors the generator, which
+resamples to the stitch count and then to the row's real single crochets, the
+same two steps. Sedge is written the other way: its colours come from the
+design resampled ONCE, straight to one column per cluster. Re-deriving that as
+8 → 96 → 33 is a different sampling and disagrees at run boundaries. It
+reported a correct pattern as working Colour 2 where the design called for
+Colour 1. `expect_width` builds the expectation at the resolution the generator
+actually used, and only for sedge panels.
+
+**Verified against the generator, not against my reading of it.** Every one of
+the 64 rows of a real 46 in cardigan Back was parsed and compared to
+`resizeGridNN`'s own column colours: 64/64 read, 0 mismatches. The two
+resamplers were also compared directly at 33 columns and agree exactly — which
+is what proves the fault was the double step and not the rounding.
+
+**Measured on a real coloured sedge cardigan Back:**
+
+| | rows read | result |
+|---|---|---|
+| before | 16 / 64 | FAIL — 3 errors, all false |
+| after | **64 / 64** | REVIEW — 0 errors, design actually verified |
+
+The remaining warnings are the pre-existing "more than one repeat group" limit
+in the stitch-count check, which is a different grammar and untouched here.
+
+**What did NOT change.** Moss and linen keep the two-step path, because that is
+what their generator does. Waffle, shell and bobble colourwork rows are still
+holes — they have their own shapes and none of this guesses at them.
+
+The new reader can still FAIL a wrong pattern, which is the property worth
+testing: an upside-down sedge design and a single mis-coloured cluster are both
+caught, and both are tests. Full suite passes (331 tests, 5 skip).
