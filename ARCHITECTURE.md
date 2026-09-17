@@ -3754,3 +3754,13 @@ The three remaining warnings are the stitch-count check's own
 group, genuinely unknowable from the text, and deliberately out of scope here.
 
 Full suite passes (351 tests, 5 skip).
+
+---
+
+## Known-unverifiable rows
+
+The REVIEWs the batch suite still reports are catalogued in
+**KNOWN_UNVERIFIABLE.md**, with the reason each row cannot be checked and what
+it would take to change that. Read it before investigating a REVIEW; all of
+them have been read by hand and none is a wrong pattern.
+
