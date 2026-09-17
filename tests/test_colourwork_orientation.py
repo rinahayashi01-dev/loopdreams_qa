@@ -563,3 +563,77 @@ class SedgeColourRowsTest(unittest.TestCase):
             any(i.severity == "error" for i in issues),
             f"a mis-coloured cluster should be an error, got {[(i.severity, i.message[:70]) for i in issues]}",
         )
+
+
+# ── Shell ────────────────────────────────────────────────────────────────────
+# Real output from buildShellStitchColourRows for the F design at
+# 3.25 x 2.5 in / 4 sts / 2 rows (13 sts = 2 shells, 6 worked rows), copied
+# verbatim like every other fixture here.
+#
+# Shell alternates two row shapes and colours BOTH at cluster resolution: a
+# 13-stitch row carries 5 colour positions, not 13. Before this was read, 16
+# of 18 rows of a coloured shell piece were holes — and holes clear `carried`,
+# so the silent rows after them were reported as worked with no colour ever
+# named, on a pattern that was correct (loopdreams#543's story, for shell).
+SHELL_ROWS = [
+    {"row_number": 1, "stitch_count": 13, "instructions": "Foundation: With Colour 2, Ch 14, turn."},
+    {"row_number": 2, "stitch_count": 13, "instructions": "Skip the first 1 chain from the hook (it doesn't count as a stitch). With Colour 2, 2 Sc in the next chain and in next 1 ch across, changing to Colour 1 in the last st; 11 Sc in next 11 sts. Ch 1, turn."},
+    {"row_number": 3, "stitch_count": 13, "instructions": "With Colour 1, sc in first st; skip 2 sts, 5 dc in next st (shell made); skip 2 sts, sc in next st; skip 2 sts, 5 dc in next st (shell made), changing to Colour 2 in the last st; skip 2 sts, sc in next st. Ch 3, turn."},
+    {"row_number": 4, "stitch_count": 13, "instructions": "With Colour 2, 2 dc in first sc (turning ch-3 counts as first dc; half shell made), changing to Colour 1 in the last st; sc in centre dc of next shell; 5 dc in next sc; sc in centre dc of last shell; 3 dc in last sc (half shell made). Ch 1, turn."},
+    {"row_number": 5, "stitch_count": 13, "instructions": "With Colour 1, sc in first st; skip 2 sts, 5 dc in next st (shell made), changing to Colour 2 in the last st; skip 2 sts, sc in next st; skip 2 sts, 5 dc in next st (shell made); skip 2 sts, sc in next st. Ch 3, turn."},
+    {"row_number": 6, "stitch_count": 13, "instructions": "With Colour 2, 2 dc in first sc (turning ch-3 counts as first dc; half shell made), changing to Colour 1 in the last st; sc in centre dc of next shell; 5 dc in next sc; sc in centre dc of last shell; 3 dc in last sc (half shell made). Ch 1, turn."},
+    {"row_number": 7, "stitch_count": 13, "instructions": "With Colour 1, sc in first st; skip 2 sts, 5 dc in next st (shell made); skip 2 sts, sc in next st; skip 2 sts, 5 dc in next st (shell made), changing to Colour 2 in the last st; skip 2 sts, sc in next st. Ch 3, turn."},
+    {"row_number": 8, "stitch_count": 13, "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Fasten off, weave in ends."},
+]
+
+
+class ShellColourRowsTest(unittest.TestCase):
+    def test_a_faithful_shell_pattern_reports_nothing(self):
+        self.assertEqual(co.check(_pattern(SHELL_ROWS)), [])
+
+    def test_a_shell_row_is_read_at_cluster_resolution(self):
+        # 13 declared stitches, 5 colour positions: the opening sc, then one
+        # per shell and one per sc between them.
+        colours, _ = co._row_colours(SHELL_ROWS[2]["instructions"], 13, "Colour 2")
+        self.assertIsNotNone(colours, "a shell row should be readable")
+        self.assertEqual(len(colours), 5)
+
+    def test_a_half_shell_row_is_read_at_the_same_resolution(self):
+        colours, _ = co._row_colours(SHELL_ROWS[3]["instructions"], 13, "Colour 1")
+        self.assertIsNotNone(colours, "a half-shell row should be readable")
+        self.assertEqual(len(colours), 5)
+
+    def test_the_change_marker_applies_from_where_it_is_written(self):
+        # Row 3 opens in Colour 1 and announces the change on the second
+        # shell, so only the closing sc is Colour 2.
+        colours, ending = co._row_colours(SHELL_ROWS[2]["instructions"], 13, "Colour 2")
+        self.assertEqual(colours, ["Colour 1"] * 4 + ["Colour 2"])
+        self.assertEqual(ending, "Colour 2")
+
+    def test_an_upside_down_shell_pattern_is_still_caught(self):
+        # Reading these rows is only worth it if a wrong one can still fail.
+        flipped = [SHELL_ROWS[0], SHELL_ROWS[1]] + list(reversed(SHELL_ROWS[2:]))
+        flipped = [dict(r, row_number=i + 1) for i, r in enumerate(flipped)]
+        issues = co.check(_pattern(flipped))
+        self.assertTrue(
+            any(i.severity == "error" for i in issues),
+            f"an upside-down shell design should be reported, got {[(i.severity, i.message[:60]) for i in issues]}",
+        )
+
+    def test_a_wrong_colour_in_one_cluster_is_caught(self):
+        broken = [dict(r) for r in SHELL_ROWS]
+        broken[2]["instructions"] = broken[2]["instructions"].replace(
+            "With Colour 1, sc in first st", "With Colour 2, sc in first st", 1)
+        issues = co.check(_pattern(broken))
+        self.assertTrue(
+            any(i.severity == "error" for i in issues),
+            f"a mis-coloured shell cluster should be an error, got {[(i.severity, i.message[:70]) for i in issues]}",
+        )
+
+    def test_moss_still_uses_the_two_step_sampling(self):
+        # The regression guard for this change. Moss's generator resamples the
+        # design to the stitch count and THEN to the row's real single
+        # crochets; re-deriving those rows in one step fails against its own
+        # real output. Sedge and shell are the single-step exceptions, decided
+        # per row rather than globally.
+        self.assertEqual(co.check(_pattern(MOSS_ROWS, grid=SMALL_DESIGN)), [])

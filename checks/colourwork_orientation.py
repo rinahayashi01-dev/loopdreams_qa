@@ -141,6 +141,48 @@ _RE_OFFSET_ROW = re.compile(r"in next ch-1 sp|ch 1,\s*skip 1 st", re.I)
 # made)", which is the generator's own marker and appears nowhere else.
 _RE_SEDGE_ROW = re.compile(r"\(sedge made\)", re.I)
 
+# ── Shell ────────────────────────────────────────────────────────────────────
+# Shell alternates two row shapes and colours BOTH at cluster resolution: one
+# column per shell or sc position, so a 43-stitch row carries 15 colour
+# positions (1 + 2 x shells). Same story as sedge -- unreadable rows cleared
+# `carried` and the silent rows after them read as worked with no colour named.
+#
+# A coloured shell row writes every cluster out longhand (joinClusterSegments
+# pushes one phrase per colour column), so unlike the monochrome form there is
+# no repeat bracket to expand -- each phrase below is exactly one position.
+_RE_SHELL_ROW = re.compile(r"\(half shell made\)|\(shell made\)", re.I)
+
+_SHELL_TOKENS = re.compile(
+    r"(?P<with>With\s+(?:Colour\s+\w+|White))"
+    r"|(?P<change>changing to\s+(?:Colour\s+\w+|White)\s+in the last st)"
+    r"|(?P<half_open>2 dc in first sc \(turning ch-3 counts as first dc; half shell made\))"
+    r"|(?P<half_close>3 dc in last sc \(half shell made\))"
+    r"|(?P<shell>5 dc in next st \(shell made\))"
+    r"|(?P<centre>sc in centre dc of (?:next|last) shell)"
+    r"|(?P<dc_in_sc>5 dc in next sc)"
+    r"|(?P<sc_first>sc in first st)"
+    r"|(?P<sc_next>sc in next st)",
+    re.I,
+)
+
+
+def _shell_row_colours(body, target, carried):
+    """Colours a shell or half-shell row places, one per cluster position.
+
+    Same contract as _row_colours. Returns None rather than a guess whenever
+    the phrases do not add up to the row's own expected position count.
+    """
+    colours, cur = [], carried
+    for m in _SHELL_TOKENS.finditer(body):
+        kind = m.lastgroup
+        if kind in ("with", "change"):
+            cur = _RE_COLOUR_NAME.search(m.group()).group(1).title()
+            continue
+        colours.append(cur)
+    if len(colours) != target:
+        return None, f"shell row places {len(colours)} colour positions, expected {target}"
+    return colours, cur
+
 # The three things a sedge row places, each worth exactly one colour position.
 # "in the last chain" as well as "in the last st": row 1 is worked into the
 # foundation chain and says so throughout.
@@ -216,6 +258,10 @@ def _colour_positions(body, width):
     colours per real stitch. A turning chain of 2+ is itself the row's first
     stitch and is made in the previous row, so the row's own text accounts for
     one fewer."""
+    if _RE_SHELL_ROW.search(body):
+        # Stitch count is 6n + 1 for n shells; the colour columns are the
+        # opening position plus one per shell and one per sc between them.
+        return 1 + 2 * round((width - 1) / 6)
     if _RE_SEDGE_ROW.search(body):
         # Row stitch count is 3(n+1) for n clusters -- 2 opener sts + 3n + 1
         # closer st -- so the colour positions (opener + n + closer) are
@@ -261,6 +307,9 @@ def _row_colours(text, width, carried):
     # for containing stitches they cannot count.
     if not _RE_WITH.search(body) and not _RE_CHANGE.search(body):
         return [carried] * (target + (1 if chain_counts else 0)), carried
+
+    if _RE_SHELL_ROW.search(body):
+        return _shell_row_colours(body, target, carried)
 
     if _RE_SEDGE_ROW.search(body):
         return _sedge_row_colours(body, target, carried)
@@ -492,7 +541,10 @@ def _check_panel(pattern, design, source) -> list:
     folded = any(_RE_FOLDED.search(r.get("instructions") or "") for r in source)
 
     actual, width, carried, unread, blind = [], None, None, [], []
-    sedge_rows = any(_RE_SEDGE_ROW.search(r.get("instructions") or "") for r in source)
+    # Parallel to `actual`: True where the generator resampled the design
+    # straight to the row's own colour resolution (sedge, shell) rather than
+    # through its stitch count. See _expected_row.
+    directs = []
     for row in source:
         text = row.get("instructions") or ""
         count = row.get("stitch_count")
@@ -535,6 +587,7 @@ def _check_panel(pattern, design, source) -> list:
                 # vanish and the whole fabric read as misaligned against a
                 # perfectly correct pattern.
                 actual.append(None)
+                directs.append(False)
                 blind.append(row.get("row_number"))
                 continue
         colours, ending = _row_colours(text, width, carried)
@@ -550,10 +603,12 @@ def _check_panel(pattern, design, source) -> list:
             # unknown too, `carried` is cleared: a wrong carried colour would
             # be worse than a second hole.
             actual.append(None)
+            directs.append(False)
             unread.append((row.get("row_number"), ending))
             carried = None
             continue
         actual.append(colours)
+        directs.append(bool(_RE_SEDGE_ROW.search(text) or _RE_SHELL_ROW.search(text)))
         carried = ending
 
     # "Dropped" means the instructions name no colour ANYWHERE, and is tested
@@ -580,11 +635,7 @@ def _check_panel(pattern, design, source) -> list:
         # Too little to compare a layout against, but something was read or
         # something was named: say what could not be checked, do not diagnose.
         return _blind_rows(blind) + _coverage(actual, unread)
-    # Sedge is the one fabric whose colours are resampled straight to its own
-    # cluster columns — see _compare's expect_width.
-    read_widths = {len(a) for a in actual if a is not None}
-    expect_width = read_widths.pop() if (sedge_rows and len(read_widths) == 1) else None
-    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread, expect_width)
+    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread, directs)
 
 
 def _blind_rows(blind):
@@ -660,39 +711,81 @@ def _agrees(expected, actual):
     return all(a is None or _at_resolution(e, len(a)) == a for e, a in zip(expected, actual))
 
 
-def _compare(pattern, design, actual, width, folded, unread=(), expect_width=None) -> list:
-    """`expect_width` is the column count the GENERATOR resampled the design to,
-    when that differs from the row's stitch count.
+def _expected_row(base, per_res, name, i, a, direct):
+    """The colours row `i` should have, at that row's own resolution.
 
-    Normally the expectation is built at `width` and each row compared at its
-    own resolution by down-sampling (`_at_resolution`), which is right because
-    it mirrors what the generator did: a moss row's colours come from the
-    design resampled to the stitch count and then to the row's real single
-    crochets, two steps, the same two.
+    `direct` says which sampling the generator used for this row, and the two
+    are not interchangeable. Most fabrics resample the design to the row's
+    STITCH count and then to its colour resolution — moss's real output proves
+    it, and re-deriving those rows in one step fails against it. Sedge and
+    shell resample ONCE, straight to their cluster columns, never passing
+    through the stitch count at all; re-deriving THOSE in two steps reported
+    correct patterns as working the wrong colour. So the row says which.
+    """
+    if direct:
+        return per_res[len(a)][name][i]
+    return _at_resolution(base[name][i], len(a))
 
-    A sedge row is written the other way. Its colours are resampled ONCE, from
-    the design straight to one column per cluster, so 8 design columns become
-    33 — never passing through the 96-stitch resolution at all. Re-deriving it
-    as 8 -> 96 -> 33 is a different sampling and disagrees at run boundaries:
-    it reported a real, correct pattern as working Colour 2 where the design
-    called for Colour 1. Building the expectation at the resolution the
-    generator actually used removes the second step, and `_at_resolution` then
-    has nothing left to do.
+
+def _agrees_per_row(base, per_res, name, actual, directs):
+    for i, (a, d) in enumerate(zip(actual, directs)):
+        if a is None:
+            continue          # unreadable row — abstains, as in _agrees
+        grid = per_res[len(a)][name] if d else base[name]
+        if len(grid) != len(actual) or _expected_row(base, per_res, name, i, a, d) != a:
+            return False
+    return True
+
+
+def _first_difference_per_row(base, per_res, name, actual, directs):
+    for i, (a, d) in enumerate(zip(actual, directs)):
+        if a is None:
+            continue
+        grid = per_res[len(a)][name] if d else base[name]
+        if len(grid) != len(actual):
+            return None
+        for c, (ec, ac) in enumerate(zip(_expected_row(base, per_res, name, i, a, d), a)):
+            if ec != ac:
+                return i, c, ec, ac, len(a)
+    return None
+
+
+def _compare(pattern, design, actual, width, folded, unread=(), directs=None) -> list:
+    """Compare the fabric the instructions make against the design.
+
+    Every row is checked at ITS OWN colour resolution, and the expectation for
+    that row is built by resampling the design straight to it — one step, the
+    same one the generator took. Rows in one panel do not all share a
+    resolution: a coloured shell panel colours its setup row per stitch (43)
+    and every row after it per cluster (15), and a sedge row's 96 stitches
+    carry 33 colour positions.
+
+    Building one expectation at the row's STITCH count and down-sampling each
+    row to its colour resolution — 8 -> 43 -> 15 — is a different sampling
+    from the generator's 8 -> 15 and disagrees at run boundaries. It reported
+    correct sedge and shell patterns as working the wrong colour. Hence per
+    resolution, which is also why `_at_resolution` is no longer needed here.
     """
     palette = getattr(pattern, "design_palette", None) or []
     labelled = _labelled(design, palette)
     rows = len(actual)
 
-    candidates = _candidate_expectations(labelled, expect_width or width, rows, folded)
-    correct_name, correct = candidates[0]
-    if _agrees(correct, actual):
+    directs = list(directs) if directs is not None else [False] * len(actual)
+    base = dict(_candidate_expectations(labelled, width, rows, folded))
+    names = [name for name, _ in _candidate_expectations(labelled, width, rows, folded)]
+    # Only the single-resample rows need their own expectation grid.
+    resolutions = {len(a) for a, d in zip(actual, directs) if a is not None and d}
+    per_res = {res: dict(_candidate_expectations(labelled, res, rows, folded)) for res in resolutions}
+
+    correct_name = names[0]
+    if _agrees_per_row(base, per_res, correct_name, actual, directs):
         return _coverage(actual, unread)
 
     # Not the design. Before reporting a bare mismatch, see whether the fabric
     # matches one of the KNOWN wrong layouts -- naming the specific mistake is
     # the difference between "something is off" and a diagnosis.
-    for name, cand in candidates[1:]:
-        if _agrees(cand, actual):
+    for name in names[1:]:
+        if _agrees_per_row(base, per_res, name, actual, directs):
             return [Issue(
                 category="colourwork_orientation", severity="error", location="Pattern",
                 message=(f"The instructions do not make the chosen design: they make {name}. The design grid is "
@@ -701,12 +794,12 @@ def _compare(pattern, design, actual, width, folded, unread=(), expect_width=Non
                          f"applied before the colours are written out."),
             )]
 
-    diff = _first_difference(correct, actual)
+    diff = _first_difference_per_row(base, per_res, correct_name, actual, directs)
     if diff is None:
         return [Issue(
             category="colourwork_orientation", severity="error", location="Pattern",
             message=(f"The instructions do not make the chosen design: the fabric is {len(actual)} rows of "
-                     f"{width}, the design resolves to {len(correct)} rows."),
+                     f"{width}, the design resolves to {rows} rows."),
         )]
     r, c, ec, ac, n = diff
     # "stitch" is only accurate when the row places one colour per counted
