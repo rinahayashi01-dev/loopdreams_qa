@@ -352,7 +352,7 @@ class _Patterns:
         "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
         "skip_first_chains_from_hook", "skip_first_chains_counting",
         "foundation_stitch_in_next_chain",
-        "foundation_next_chain_and_next_chs",
+        "foundation_next_chain_and_next_chs", "counted_next_chain_and_next_chs",
         "sl_st_join", "trailing_count_restatement", "count_in_same_spot",
     )
 
@@ -472,7 +472,34 @@ class _Patterns:
             rf"each\s+(?:remaining\s+)?(?:{stitch_alt}|sts?)\s+around\b\s*(.*)$", re.I
         )
         self.corner = re.compile(rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+corner$", re.I)
-        self.literal_next = re.compile(rf"^(\d*)\s*({stitch_alt})\s+in\s+next\s+(\d+)\s*(?:sts?)?$", re.I)
+        # The trailing unit may be chains as well as stitches. A colourwork
+        # FOUNDATION row writes its runs as "8 Sc in next 8 chs" -- the same
+        # shape as the "sts" form in every respect but the noun, which was the
+        # only reason the first worked row of a coloured pattern could not be
+        # read.
+        #
+        # The noun changes nothing about the arithmetic: a flat foundation row
+        # consumes one chain per stitch exactly as a later row consumes one
+        # stitch per stitch. Deliberately NOT the consumes=0 that
+        # each_of_next_chs and its siblings use -- those describe an oval
+        # worked around BOTH sides of the chain, where no "did this row
+        # account for every chain" question arises. Trying 0 here made a
+        # correct moss row look as though it worked 1 of its 34 chains;
+        # measured, not reasoned.
+        self.literal_next = re.compile(
+            rf"^(\d*)\s*({stitch_alt})\s+in\s+next\s+(\d+)\s*(?:sts?|chs?|chains?)?$", re.I)
+        # "<N> <stitch> in the next chain and in next <M> chs across" -- the
+        # FIRST run of a colourwork foundation row, which reaches its opening
+        # stitch through the preceding skip-chains clause and then continues
+        # like any other run. N is the whole run: the one "next chain" plus the
+        # M that follow, so N == M + 1 and the two numbers corroborate each
+        # other. They are checked against each other rather than assumed; a
+        # pair that disagrees is left unverifiable and says so.
+        self.counted_next_chain_and_next_chs = re.compile(
+            rf"^(\d+)\s+({stitch_alt})\s+in\s+the\s+next\s+chain\s+and\s+in\s+next\s+(\d+)\s*(?:chs?|chains?)"
+            rf"(?:\s+across)?$",
+            re.I,
+        )
         # "<stitch> in each of (the) first/last N sts" -- a generalization of
         # "in first/last st" to an explicit count N, instead of "in next N".
         # New clause shape found on a real sample (bobble tote bag, Jun 29
@@ -1241,6 +1268,33 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         produces = (prod * n) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
                              explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "<N> <stitch> in the next chain and in next <M> chs across" -- the first
+    # colour run of a colourwork foundation row (see patterns.
+    # counted_next_chain_and_next_chs). Consumes its own span of chains: a
+    # flat foundation row works one stitch into each chain, and the row-
+    # completeness check reads those to decide whether the row accounts for
+    # the whole foundation.
+    m = patterns.counted_next_chain_and_next_chs.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        stated_total = int(m.group(1))
+        n = 1 + int(m.group(3))   # the "next chain" itself, plus the M that follow
+        if stated_total != n:
+            # The run's own two numbers contradict each other. Which one is
+            # right is not decidable from the text, and picking one would turn
+            # a warning into a false accusation -- the rule this file keeps.
+            return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                                 explicit_count=None, consumes=None, produces=None,
+                                 is_compound=is_compound,
+                                 unverifiable_reason=(
+                                     f"'{m.group(0)}' states {stated_total} stitches but spans "
+                                     f"{n} chains (1 + {m.group(3)}) -- left unverifiable rather than guessed"))
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=n, consumes=n, produces=produces, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")
 

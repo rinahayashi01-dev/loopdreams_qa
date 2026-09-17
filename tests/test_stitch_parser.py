@@ -1162,3 +1162,56 @@ class TestColourClausesAreNoOps(unittest.TestCase):
             any(c.consumes == 5 for c in clauses),
             f"the stitches were swallowed: {[(c.clause_type, c.raw) for c in clauses]}",
         )
+
+
+class TestFoundationRowCountedRuns(unittest.TestCase):
+    """A colourwork FOUNDATION row's colour runs.
+
+    The generator writes the first run as "9 Sc in the next chain and in next
+    8 chs across" and every later one as "8 Sc in next 8 chs". Neither parsed:
+    literal_next's trailing unit only accepted "sts", so the first worked row
+    of every coloured pattern was unreadable — and one unrecognized clause is
+    enough to leave the whole row unverified.
+    """
+
+    def test_a_counted_run_into_chains_reads_like_one_into_stitches(self):
+        c = tokenize_round("8 Sc in next 8 chs.")[0]
+        self.assertEqual(c.clause_type, "literal_count")
+        self.assertEqual((c.consumes, c.produces), (8, 8))
+        self.assertIsNone(c.unverifiable_reason)
+
+    def test_the_stitches_form_is_unchanged(self):
+        c = tokenize_round("8 sc in next 8 sts.")[0]
+        self.assertEqual((c.consumes, c.produces), (8, 8))
+
+    def test_the_first_run_spans_the_next_chain_plus_the_rest(self):
+        # 9 stitches: the one "next chain" reached past the skipped chains,
+        # plus the 8 that follow.
+        c = tokenize_round("9 Sc in the next chain and in next 8 chs across.")[0]
+        self.assertEqual((c.consumes, c.produces), (9, 9))
+        self.assertIsNone(c.unverifiable_reason)
+
+    def test_across_is_optional_and_singular_chain_works(self):
+        c = tokenize_round("2 sc in the next chain and in next 1 ch.")[0]
+        self.assertEqual((c.consumes, c.produces), (2, 2))
+
+    def test_a_run_whose_two_numbers_disagree_is_left_unverifiable(self):
+        # The stated total and the span corroborate each other, so they are
+        # checked against each other. A pair that disagrees is not resolved by
+        # picking one -- that is how a warning becomes a false accusation.
+        c = tokenize_round("9 Sc in the next chain and in next 5 chs across.")[0]
+        self.assertIsNone(c.consumes)
+        self.assertIsNone(c.produces)
+        self.assertIn("left unverifiable rather than guessed", c.unverifiable_reason)
+
+    def test_a_whole_foundation_row_now_accounts_for_its_chains(self):
+        # The row this was all for. Before, its two runs were unrecognized and
+        # it looked as though it worked 1 of its 34 chains.
+        clauses = tokenize_round(
+            "Skip the first 1 chain from the hook (it doesn't count as a stitch). With Colour 1, "
+            "9 Sc in the next chain and in next 8 chs across, changing to Colour 2 in the last st; "
+            "8 Sc in next 8 chs, changing to Colour 1 in the last st; 16 Sc in next 16 chs."
+        )
+        self.assertFalse([c for c in clauses if c.clause_type == "unknown"])
+        self.assertEqual(sum(c.consumes or 0 for c in clauses), 34)
+        self.assertEqual(sum(c.produces or 0 for c in clauses), 33)
