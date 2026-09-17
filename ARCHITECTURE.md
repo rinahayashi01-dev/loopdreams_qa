@@ -3619,3 +3619,43 @@ Verified present before this change too, so it is untouched here rather than
 hidden.
 
 Full suite passes (334 tests, 5 skip).
+
+---
+
+## Colour clauses the stitch parser could not read (2026-09-17)
+
+Two one-line gaps, both of which made an otherwise clean row unverifiable.
+
+`pattern_parser` strips a colour marker that OPENS a row, which covers most of
+them. A compound fabric's first worked row is the exception — "Skip the first 1
+chain from the hook (it doesn't count as a stitch). With Colour 1, hdc in the
+next chain, ..." — where the marker arrives as its own mid-row clause and was
+classified `unknown`. That alone is enough to make the row unverifiable, even
+though naming the yarn in hand places no stitches. It is a no-op now, for the
+same reason `_RE_INLINE_COLOUR_CHANGE` already was.
+
+`_RE_INLINE_COLOUR_CHANGE` itself required "changing to Colour 2 in the last
+**st**". A row worked into the foundation chain says "in the last **chain**"
+throughout, so every colour change on a compound fabric's first row was
+unreadable for want of one word.
+
+Both are anchored whole-clause, so neither can swallow a clause that merely
+begins with a colour marker — there is a test for that specifically, because
+swallowing one would under-count the row silently.
+
+| | before | after |
+|---|---|---|
+| scarf colourwork, sedge | REVIEW, 1 warning | **PASS, 0/0** |
+| scarf colourwork, moss | REVIEW, 2 warnings | REVIEW, 2 warnings |
+| coloured compound garments (4) | PASS, 0/0 | PASS, 0/0 |
+
+**Still unread, deliberately:** a foundation row's counted colour runs, e.g.
+`9 Sc in the next chain and in next 8 chs across` and `8 Sc in next 8 chs`.
+Those are knowable — N in, N out — but they are NOT specific to colourwork:
+the plain `6 dc in next 6 chs` does not parse either, so teaching them would
+newly verify the first worked row of a great many patterns at once. That is a
+much wider blast radius than the two clauses here, and today's work produced
+two false FAILs that only real generated patterns caught, so it belongs in its
+own change with its own sweep rather than bolted onto this one.
+
+Full suite passes (338 tests, 5 skip).

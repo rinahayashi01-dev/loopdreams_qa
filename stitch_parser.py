@@ -168,8 +168,25 @@ _RE_SL_ST_EDGE_ATTACH = re.compile(
 # which the generator's own colourLabel() names literally "White" rather
 # than a numbered "Colour N" (see pattern_parser.py's Foundation-clause fix
 # comment for the BLANK_COLOUR source).
+# "in the last chain" as well as "in the last st": a row worked into the
+# foundation chain says so throughout, and a compound fabric's first worked row
+# is exactly that -- its colour changes were unreadable for want of one word.
 _RE_INLINE_COLOUR_CHANGE = re.compile(
-    r"^changing\s+to\s+(?:colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?|white)\s+in\s+the\s+last\s+st$", re.I
+    r"^changing\s+to\s+(?:colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?|white)\s+in\s+the\s+last\s+(?:st|chain)$", re.I
+)
+# "With Colour 1" standing alone as a clause -- the designator for the yarn the
+# next stitches are worked in. pattern_parser strips this when it OPENS a row,
+# which covers most of them, but not when it follows something: a compound
+# fabric's first worked row reads "Skip the first 1 chain from the hook (it
+# doesn't count as a stitch). With Colour 1, hdc in the next chain, ...", and
+# there the marker arrives as its own mid-row clause and was classified
+# "unknown" -- enough on its own to make the row unverifiable.
+#
+# A no-op for the same reason _RE_INLINE_COLOUR_CHANGE above is one: naming the
+# yarn in hand places no stitches. Anchored whole-clause so it can only ever
+# match the bare designator, never a clause that happens to begin with it.
+_RE_COLOUR_DESIGNATOR = re.compile(
+    r"^with\s+(?:colour\s+[\w]+(?:\s*[—-]\s*[\w]+)?|white)$", re.I
 )
 # "Body measures approximately 67 in." -- a length checkpoint appended to a
 # scarf body's own last row before Ribbing/Fringe/Tassels (loopdreams PR
@@ -1097,7 +1114,8 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
-    if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_WORKING_LAST_INTO_CH.match(p)
+    if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_COLOUR_DESIGNATOR.match(p)
+            or _RE_WORKING_LAST_INTO_CH.match(p)
             or _RE_BODY_LENGTH_CHECKPOINT.match(p) or _RE_DO_NOT_JOIN_OR_TURN.match(p)
             or _RE_OPPOSITE_SIDE_CHAIN.match(p) or _RE_STUFF_NOTE.match(p)
             or _RE_ROW_END_POSITION.match(p)):
