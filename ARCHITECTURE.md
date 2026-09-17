@@ -3703,3 +3703,54 @@ The two that fail (bobble and shell colourwork in this harness) failed
 identically beforehand and are untouched.
 
 Full suite passes (344 tests, 5 skip).
+
+---
+
+## Reading a shell colourwork row, and how the design is resampled (2026-09-17)
+
+The same hole sedge had, still open for shell: its colourwork rows were
+unreadable, 16 of 18 on a real piece, and an unreadable row clears `carried`.
+A design with a uniform band then left silent rows reading as worked with no
+colour ever named — a hard error on a correct pattern. Nothing exercised it
+(there is no coloured-shell batch case), but shell plus a multi-colour design
+is offered on scarf, blanket and square coaster.
+
+Shell alternates two row shapes and colours both at cluster resolution: a
+13-stitch row carries 5 colour positions. `_shell_row_colours` reads them, with
+its own tokenizer for the same reason sedge has one, gated on the generator's
+own "(shell made)" / "(half shell made)". A coloured shell row writes every
+cluster longhand, so unlike the monochrome form there is no bracket to expand.
+
+**The part worth reading: rows in one panel do not share a sampling.**
+
+`_compare` used to build the expectation at the row's STITCH count and
+down-sample each row to its colour resolution. Sedge's fix replaced that with a
+single resample to the row's own resolution. Both are right, for different
+fabrics, and making it uniform broke a real test:
+
+  - moss/linen resample the design to the stitch count and THEN to the row's
+    real single crochets. Two steps. Re-deriving those rows in one step fails
+    against moss's own verbatim generator output — which is exactly what
+    happened, and the test caught it.
+  - sedge and shell resample ONCE, straight to their cluster columns, never
+    passing through the stitch count. Re-deriving those in two steps reported
+    correct patterns as working the wrong colour.
+
+So it is decided PER ROW, from the row's own text, and `directs` carries that
+alongside `actual`. A coloured shell panel genuinely mixes both: its setup row
+is coloured per stitch (43) and every row after it per cluster (15).
+
+The sedge-only `expect_width` parameter added earlier is gone, subsumed by this.
+
+**Swept across the same seventeen shapes, before and after:**
+
+| | before | after |
+|---|---|---|
+| shell colourwork | FAIL, 1 error, 4 warnings | **REVIEW, 0 errors, 3 warnings** |
+| the other 16 | unchanged | unchanged |
+
+The three remaining warnings are the stitch-count check's own
+`sc in centre dc of next shell` limitation — a position inside a multi-stitch
+group, genuinely unknowable from the text, and deliberately out of scope here.
+
+Full suite passes (351 tests, 5 skip).
