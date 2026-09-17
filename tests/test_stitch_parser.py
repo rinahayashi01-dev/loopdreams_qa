@@ -1112,3 +1112,53 @@ class TestRowEndPositionalPhrase(unittest.TestCase):
             clauses = tokenize_round(f"Skip first st, {phrase}, hhdc in each st across.")
             self.assertEqual([c for c in clauses if c.clause_type == "unknown"], [],
                              f"{phrase!r} should be recognized as positional")
+
+
+class TestColourClausesAreNoOps(unittest.TestCase):
+    """Naming the yarn in hand places no stitches.
+
+    pattern_parser strips a colour marker that OPENS a row, which covers most
+    of them. A compound fabric's first worked row is the exception: it reads
+    "Skip the first 1 chain from the hook (it doesn't count as a stitch). With
+    Colour 1, hdc in the next chain, ..." — the marker arrives mid-row, was
+    classified "unknown", and that alone made the row unverifiable.
+    """
+
+    def test_a_mid_row_colour_designator_is_a_no_op(self):
+        clauses = tokenize_round(
+            "Skip the first 1 chain from the hook (it doesn't count as a stitch). "
+            "With Colour 1, hdc in the next chain, dc in the same chain."
+        )
+        by_raw = {c.raw.strip(): c for c in clauses}
+        marker = by_raw["With Colour 1"]
+        self.assertEqual(marker.clause_type, "note")
+        self.assertEqual((marker.consumes, marker.produces), (0, 0))
+        self.assertFalse([c for c in clauses if c.clause_type == "unknown"])
+
+    def test_a_colour_change_into_the_foundation_chain_is_a_no_op(self):
+        # "in the last chain", not "in the last st": a row worked into the
+        # foundation chain says so throughout, and the clause was unreadable
+        # for want of that one word.
+        clauses = tokenize_round(
+            "With Colour 1, hdc in the next chain, dc in the same chain, "
+            "changing to Colour 2 in the last chain."
+        )
+        change = next(c for c in clauses if c.raw.strip().startswith("changing to"))
+        self.assertEqual(change.clause_type, "note")
+        self.assertEqual((change.consumes, change.produces), (0, 0))
+
+    def test_the_st_wording_still_works(self):
+        clauses = tokenize_round("Sc in first st, changing to Colour 2 in the last st.")
+        change = next(c for c in clauses if c.raw.strip().startswith("changing to"))
+        self.assertEqual(change.clause_type, "note")
+
+    def test_a_clause_that_merely_begins_with_the_marker_is_not_swallowed(self):
+        # The designator is anchored whole-clause. "With Colour 1, 5 sc in
+        # next 5 sts" splits at the comma, so the stitches keep their own
+        # clause — but if the anchor were ever loosened they would vanish
+        # into a no-op, which is silent and would under-count the row.
+        clauses = tokenize_round("With Colour 1, 5 sc in next 5 sts.")
+        self.assertTrue(
+            any(c.consumes == 5 for c in clauses),
+            f"the stitches were swallowed: {[(c.clause_type, c.raw) for c in clauses]}",
+        )
