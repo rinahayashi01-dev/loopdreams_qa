@@ -3566,3 +3566,56 @@ holes — they have their own shapes and none of this guesses at them.
 The new reader can still FAIL a wrong pattern, which is the property worth
 testing: an upside-down sedge design and a single mis-coloured cluster are both
 caught, and both are tests. Full suite passes (331 tests, 5 skip).
+
+---
+
+## More than one repeat group in a row (2026-09-17)
+
+"Only one repeat group per row" has been a documented V1 limitation since the
+first version. Every coloured compound row hits it — a colour change splits the
+fabric's repeat into two bracketed groups — so those rows were warned about and
+never checked at all.
+
+The limitation was real, not laziness. `_check_repeat_group` SOLVES the
+repetition count from the previous row's stitch count and never reads the
+stated one; with two groups that is one equation and two unknowns.
+
+**The counts are in the text.** `rep from * 26 more times` states its own
+repetitions, and the parser was throwing that number away: `_RE_REP_FROM`
+matched the whole clause and kept only an unverifiable reason. It now reads a
+bare `N more time(s)` tail. Any other tail (`to last 2 sts`, `around`) is a
+stop condition and is still left unresolved, per this document's rule.
+
+With the counts known, `_check_multi_repeat_groups` segments the row into flat
+and repeated zones and verifies it TWICE: consumed must equal the previous
+row's count, produced must equal the row's own declared count. That is
+*stronger* than the single-group path, not weaker — solving for the count can
+never notice a wrong count, and this can. A row where any group's count is
+unstated still gets a warning, and the message now names that reason instead of
+the old blanket one.
+
+**A false FAIL I caught in my own implementation, before it shipped.** The
+alternate moss/linen convention — ch-1 spaces counting toward the row total —
+has to apply to the repeated UNIT only, which is what the single-group path
+does. Applying it to the flat zones too also counts the row's own turning
+chain, and turned a correct 97-stitch moss row into a mismatch at 98. It was
+caught by running real generated patterns rather than by the unit tests, which
+is the only reason this entry is not a bug report.
+
+**Measured on real generator output, before and after:**
+
+| pattern | before | after |
+|---|---|---|
+| cardigan colourwork, sedge | REVIEW, 88 warnings | **PASS, 0/0** |
+| cardigan colourwork, moss | REVIEW, 132 warnings | **PASS, 0/0** |
+| cardigan colourwork, linen | REVIEW, 132 warnings | **PASS, 0/0** |
+| scarf colourwork, sedge | REVIEW, 120 warnings | REVIEW, 1 warning |
+| scarf colourwork, moss | REVIEW, 121 warnings | REVIEW, 2 warnings |
+| garments, single colour (9 combinations) | PASS, 0/0 | PASS, 0/0 |
+
+The scarf leftovers are a different, pre-existing thing: a leading
+`With Colour 1,` on a row that `pattern_parser` does not strip in that shape.
+Verified present before this change too, so it is untouched here rather than
+hidden.
+
+Full suite passes (334 tests, 5 skip).
