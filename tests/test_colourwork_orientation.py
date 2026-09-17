@@ -489,3 +489,77 @@ class TestPlainPanelNamesItsColour(unittest.TestCase):
         issues = co.check(_pattern(rows, grid=self.DESIGN, palette=self.PALETTE))
         self.assertEqual(len(issues), 1)
         self.assertIn("not one of its panels works the design", issues[0].message)
+
+
+# ── Sedge ────────────────────────────────────────────────────────────────────
+# Real output from buildSedgeStitchColourRows for the F design above at
+# 5 x 3 in / 4 sts / 2 rows (21 sts = 6 clusters, 6 rows), copied verbatim for
+# the same reason every other fixture here is: a hand-written imitation would
+# only prove this check agrees with my idea of the generator.
+#
+# A sedge row declares 21 stitches but places 8 colour positions -- an opener
+# column covering its hdc+dc pair, one per (sc, hdc, dc) cluster, and a closer.
+# Before this was read, every one of these rows was a hole, and a panel of
+# holes let a real defect through as "unverified" while a correct pattern was
+# reported as worked with no colour named at all (loopdreams #543).
+SEDGE_ROWS = [
+    {"row_number": 1, "stitch_count": 21, "instructions": "Foundation: With Colour 2, Ch 21, turn."},
+    {"row_number": 2, "stitch_count": 21, "instructions": "Skip the first 1 chain from the hook (it doesn't count as a stitch). With Colour 2, hdc in the next chain, dc in the same chain, changing to Colour 1 in the last chain; *skip 2 chains, (sc, hdc, dc) in next chain (sedge made); rep from * 5 more times; sc in last chain. Ch 1, turn."},
+    {"row_number": 3, "stitch_count": 21, "instructions": "With Colour 1, hdc in first st, dc in next st; *skip 2 sts, (sc, hdc, dc) in next st (sedge made); rep from * 5 more times, changing to Colour 2 in the last st; sc in last st. Ch 1, turn."},
+    {"row_number": 4, "stitch_count": 21, "instructions": "With Colour 2, hdc in first st, dc in next st, changing to Colour 1 in the last st; *skip 2 sts, (sc, hdc, dc) in next st (sedge made); rep from * 5 more times; sc in last st. Ch 1, turn."},
+    {"row_number": 5, "stitch_count": 21, "instructions": "With Colour 1, hdc in first st, dc in next st; *skip 2 sts, (sc, hdc, dc) in next st (sedge made); rep from * 5 more times, changing to Colour 2 in the last st; sc in last st. Ch 1, turn."},
+    {"row_number": 6, "stitch_count": 21, "instructions": "With Colour 2, hdc in first st, dc in next st, changing to Colour 1 in the last st; *skip 2 sts, (sc, hdc, dc) in next st (sedge made); rep from * 5 more times; sc in last st. Ch 1, turn."},
+    {"row_number": 7, "stitch_count": 21, "instructions": "With Colour 2, hdc in first st, dc in next st; *skip 2 sts, (sc, hdc, dc) in next st (sedge made); rep from * 5 more times; sc in last st. Fasten off, weave in ends."},
+]
+
+
+class SedgeColourRowsTest(unittest.TestCase):
+    def test_a_faithful_sedge_pattern_reports_nothing(self):
+        self.assertEqual(co.check(_pattern(SEDGE_ROWS)), [])
+
+    def test_rows_are_read_at_cluster_resolution_not_stitch_count(self):
+        # 21 declared stitches, 8 colour positions: opener + 6 clusters + closer.
+        colours, _ = co._row_colours(SEDGE_ROWS[2]["instructions"], 21, "Colour 2")
+        self.assertIsNotNone(colours, "a sedge row should be readable")
+        self.assertEqual(len(colours), 8)
+
+    def test_a_row_is_read_as_the_generator_wrote_it(self):
+        # Row 3: opener in Colour 1, six clusters in Colour 1, the change
+        # announced on the last of them, so the closer is Colour 2.
+        colours, ending = co._row_colours(SEDGE_ROWS[2]["instructions"], 21, "Colour 2")
+        self.assertEqual(colours, ["Colour 1"] * 7 + ["Colour 2"])
+        self.assertEqual(ending, "Colour 2")
+
+    def test_the_foundation_colour_is_still_what_the_first_row_continues(self):
+        # The opening row names its own colour here, but the check must not
+        # depend on that: the foundation is where a solid bottom band states it.
+        colours, _ = co._row_colours("Foundation: With Colour 2, Ch 21, turn.", 21, None)
+        self.assertIsNone(colours, "a chain-only row places no stitches")
+
+    def test_an_upside_down_sedge_pattern_is_still_caught(self):
+        # The point of reading these rows is to be able to FAIL them. Reversing
+        # the row order makes the fabric the design upside down; if the reader
+        # had merely stopped objecting, this would pass too.
+        flipped = [SEDGE_ROWS[0]] + list(reversed(SEDGE_ROWS[1:]))
+        for i, row in enumerate(flipped):
+            row = dict(row)
+            row["row_number"] = i + 1
+            flipped[i] = row
+        issues = co.check(_pattern(flipped))
+        self.assertTrue(issues, "an upside-down sedge design should be reported")
+        self.assertTrue(
+            any(i.severity == "error" for i in issues),
+            f"expected an error, got {[(i.severity, i.message[:60]) for i in issues]}",
+        )
+
+    def test_a_wrong_colour_in_one_cluster_is_caught(self):
+        # A single cluster worked in the other colour — the smallest real
+        # defect this can see, and the one a hole would have hidden.
+        broken = [dict(r) for r in SEDGE_ROWS]
+        broken[2]["instructions"] = broken[2]["instructions"].replace(
+            "With Colour 1, hdc in first st", "With Colour 2, hdc in first st", 1)
+        issues = co.check(_pattern(broken))
+        self.assertTrue(
+            any(i.severity == "error" for i in issues),
+            f"a mis-coloured cluster should be an error, got {[(i.severity, i.message[:70]) for i in issues]}",
+        )
