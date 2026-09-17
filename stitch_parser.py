@@ -1134,8 +1134,24 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     m = _RE_REP_FROM.match(p)
     if m:
+        # "rep from * 26 more times" states its own repetition count, and
+        # keeping it is what lets a row with more than one repeat group be
+        # verified at all: with two groups there is one equation and two
+        # unknowns, so the counts cannot be solved from the previous row the
+        # way a single group's can (see checks/stitch_count.py).
+        #
+        # Only the bare "N more time(s)" tail is read. "rep from * to the last
+        # st, 30 more times" splits at the comma, so its count arrives as its
+        # own _RE_MORE_TIMES clause and is already handled; any OTHER tail
+        # ("to last 2 sts", "around") is a stop condition this does not try to
+        # resolve, and still carries its reason.
+        tail = m.group(1).strip()
+        m_times = _RE_MORE_TIMES.match(tail)
+        if m_times:
+            return StitchClause(raw=raw_part, clause_type="repeat_close",
+                                 explicit_count=int(m_times.group(1)))
         return StitchClause(raw=raw_part, clause_type="repeat_close", explicit_count=None,
-                             unverifiable_reason=f"repeat-close modifier: '{m.group(1).strip()}'")
+                             unverifiable_reason=f"repeat-close modifier: '{tail}'")
 
     m = _RE_MORE_TIMES.match(p)
     if m:

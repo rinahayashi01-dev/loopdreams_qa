@@ -53,10 +53,42 @@ class TestMultipleRepeatGroupsPerRow(unittest.TestCase):
         # all -- numerically self-consistent, but meaningless, since the
         # second group was never actually verified as a repeat construct.
         # Must now be caught and flagged instead.
+        #
+        # Neither group here states how many times it is worked ("rep from *"
+        # means "to the end"), so it stays unverifiable — two groups and one
+        # equation. The message now names that reason specifically rather than
+        # the old blanket "only one repeat group is supported", because rows
+        # that DO state their counts are verified; see the tests below.
         issues = _row2_issues("*Sc in next st; rep from *. *Dc in next st; rep from *.")
         self.assertEqual(len(issues), 1)
         self.assertEqual(issues[0].severity, "warning")
-        self.assertIn("more than one repeat group", issues[0].message)
+        self.assertIn("does not state how many times", issues[0].message)
+
+    def test_two_counted_repeat_groups_are_verified(self):
+        # What the counts make possible. 20 sts in: 12 reps of a 1-in/1-out
+        # unit then 8 of another is 20 consumed and 20 produced, which is what
+        # the row declares. Previously this was waved through as unverifiable.
+        issues = _row2_issues(
+            "*Sc in next st; rep from * 11 more times. *Dc in next st; rep from * 7 more times.")
+        self.assertEqual(issues, [])
+
+    def test_two_counted_groups_that_do_not_add_up_are_an_error(self):
+        # The point of reading the counts is to be able to contradict them.
+        # 12 + 4 = 16 stitches worked out of the 20 the previous row leaves.
+        issues = _row2_issues(
+            "*Sc in next st; rep from * 11 more times. *Dc in next st; rep from * 3 more times.")
+        self.assertTrue(issues, "an under-worked row should be reported")
+        self.assertEqual(issues[0].severity, "error")
+        self.assertIn("consume 16 stitches", issues[0].message)
+
+    def test_a_counted_group_beside_an_uncounted_one_stays_unverified(self):
+        # Partial information is not enough, and guessing the missing half is
+        # exactly the failure this tool exists to avoid.
+        issues = _row2_issues(
+            "*Sc in next st; rep from * 11 more times. *Dc in next st; rep from *.")
+        self.assertEqual(len(issues), 1)
+        self.assertEqual(issues[0].severity, "warning")
+        self.assertIn("does not state how many times", issues[0].message)
 
 
 if __name__ == "__main__":

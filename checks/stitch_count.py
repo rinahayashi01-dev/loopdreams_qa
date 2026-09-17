@@ -456,14 +456,7 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
             None,
         )
         if second_opener_idx is not None:
-            return [Issue(
-                category="stitch_count", severity="warning", location=row.label,
-                message=(
-                    f"{row.label} appears to contain more than one repeat group (a second '*...' "
-                    f"marker found after the first repeat group closes). Only one repeat group per "
-                    f"row is currently supported, so this row's stitch-count math can't be verified."
-                ),
-            )]
+            return _check_multi_repeat_groups(row, clauses, in_count, in_label, ratio_overrides)
         return _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label, ratio_overrides)
 
     each_st = next((c for c in clauses if c.clause_type in ("each_st_across", "each_st_around")), None)
@@ -531,6 +524,131 @@ def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
         else:
             produces += c.produces
     return produces, consumes, reasons
+
+
+def _split_repeat_groups(clauses):
+    """Segment a row into [flat clauses, (unit clauses, times)] zones, in order.
+
+    Returns (zones, reason). A zone is either ("flat", clauses) or
+    ("group", unit_clauses, times). `reason` is set when the row cannot be
+    segmented safely, in which case zones is None -- an unopened or unclosed
+    group, or a group whose repetition count the text never states.
+    """
+    zones, flat = [], []
+    i = 0
+    while i < len(clauses):
+        c = clauses[i]
+        if not c.raw.strip().startswith("*"):
+            flat.append(c)
+            i += 1
+            continue
+        closer = next((j for j in range(i, len(clauses)) if clauses[j].clause_type == "repeat_close"), None)
+        if closer is None:
+            return None, "a repeat group is opened with '*' but never closed"
+        times = clauses[closer].explicit_count
+        if times is None:
+            # A bare "N more times" can arrive as its own clause right after
+            # the closer -- "rep from * to the last st, 30 more times".
+            nxt = clauses[closer + 1] if closer + 1 < len(clauses) else None
+            if nxt is not None and nxt.clause_type == "repeat_close" and nxt.explicit_count is not None:
+                times = nxt.explicit_count
+                closer = closer + 1
+        if times is None:
+            return None, f"a repeat group does not state how many times it is worked ('{clauses[closer].raw.strip()}')"
+        if flat:
+            zones.append(("flat", flat))
+            flat = []
+        zones.append(("group", clauses[i:closer], times + 1))   # "N more times" == N+1 in all
+        i = closer + 1
+    if flat:
+        zones.append(("flat", flat))
+    return zones, None
+
+
+def _check_multi_repeat_groups(row, clauses, in_count, in_label, ratio_overrides):
+    """A row with more than one repeat group.
+
+    The single-group checker SOLVES the repetition count from the previous
+    row's stitch count and never reads the stated one. That is unambiguous
+    with one group and impossible with two -- one equation, two unknowns --
+    which is why such rows used to be reported as unverifiable and left
+    entirely unchecked.
+
+    Every row the generator writes with two groups states both counts, so they
+    are read here instead of solved, and the row is then verified TWICE over:
+    the stitches it consumes must equal the previous row's count, and the
+    stitches it produces must equal its own declared count. That is a stronger
+    check than the single-group path, not a weaker one -- solving for the count
+    can never notice a wrong count, and this can.
+
+    Anything less than fully determined still returns a warning. A group whose
+    repetitions are stated as a stop condition rather than a number ("rep from
+    * to last 2 sts") is not resolved here, for the same reason it is not
+    resolved anywhere else in this tool: a wrong parse turns a warning into a
+    false accusation.
+    """
+    zones, reason = _split_repeat_groups(clauses)
+    if zones is None:
+        return [Issue(
+            category="stitch_count", severity="warning", location=row.label,
+            message=f"Cannot verify stitch-count math for {row.label}: {reason}.",
+        )]
+
+    produced = consumed = 0
+    reasons = []
+    for zone in zones:
+        if zone[0] == "flat":
+            p, c, r = _zone_sum(zone[1], ratio_overrides=ratio_overrides)
+            produced, consumed = produced + p, consumed + c
+        else:
+            _, unit, times = zone
+            p, c, r = _zone_sum(unit, ratio_overrides=ratio_overrides)
+            produced, consumed = produced + p * times, consumed + c * times
+        reasons.extend(r)
+    if reasons:
+        return [Issue(
+            category="stitch_count", severity="warning", location=row.label,
+            message=f"Cannot verify stitch-count math for {row.label}: {'; '.join(reasons)}.",
+        )]
+
+    issues = []
+    if in_count is not None and consumed != in_count:
+        issues.append(Issue(
+            category="stitch_count", severity="error", location=row.label,
+            message=(
+                f"Stitch-count mismatch at {row.label}: its repeat groups, worked the number of times "
+                f"the row states, consume {consumed} stitches, but {in_label} leaves {in_count}."
+            ),
+        ))
+    if row.declared_count is not None and produced != row.declared_count:
+        # Same alternate convention the single-group path allows: moss and
+        # linen count the ch-1 spaces INSIDE their repeated unit toward the row
+        # total. Only inside the unit, exactly as the single-group path does
+        # it -- a flat zone holds the row's own turning chain, and counting
+        # that as a stitch overshoots by one. Measured: it turned a correct
+        # 97-stitch moss row into a false mismatch at 98.
+        alt = 0
+        alt_ok = True
+        for zone in zones:
+            if zone[0] == "flat":
+                p, _, r = _zone_sum(zone[1], ratio_overrides=ratio_overrides)
+                alt += p
+            else:
+                _, unit, times = zone
+                p, _, r = _zone_sum(unit, count_chains=True, ratio_overrides=ratio_overrides)
+                alt += p * times
+            if r:
+                alt_ok = False
+        if alt_ok and alt == row.declared_count:
+            return issues
+        issues.append(Issue(
+            category="stitch_count", severity="error", location=row.label,
+            message=(
+                f"Stitch-count mismatch at {row.label}: its repeat groups, worked the number of times "
+                f"the row states, produce {produced} sts, but the pattern declares {row.declared_count}."
+            ),
+        ))
+    return issues
 
 
 def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label, ratio_overrides):
