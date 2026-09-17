@@ -3659,3 +3659,47 @@ two false FAILs that only real generated patterns caught, so it belongs in its
 own change with its own sweep rather than bolted onto this one.
 
 Full suite passes (338 tests, 5 skip).
+
+---
+
+## A colourwork foundation row's counted runs (2026-09-17)
+
+The last systematic gap on coloured patterns, and the one with the widest
+reach, so it went in on its own with its own sweep.
+
+The generator writes a foundation row's colour runs as
+`9 Sc in the next chain and in next 8 chs across` for the first and
+`8 Sc in next 8 chs` for every later one. Neither parsed: `literal_next`'s
+trailing unit accepted only `sts?`. The noun was the only difference, and one
+unrecognized clause is enough to leave a whole row unverified — so the first
+worked row of every coloured pattern was unchecked, plain `6 dc in next 6 chs`
+included. That is why this was never a colourwork fix.
+
+`literal_next` now accepts a chain noun, and `counted_next_chain_and_next_chs`
+reads the first run. Its two numbers corroborate each other — the stated total
+should be one more than the span — so they are checked against each other, and
+a pair that disagrees is left unverifiable with a reason rather than resolved
+by picking one.
+
+**consumes, and the mistake worth recording.** The first attempt set
+`consumes=0` for a chain noun, copying `each_of_next_chs` and its siblings. It
+is wrong here. Those clauses describe an oval worked around BOTH sides of the
+foundation, where no "did this row account for every chain" question arises. A
+flat foundation row consumes one chain per stitch exactly as a later row
+consumes one stitch per stitch, and with 0 the completeness check saw a correct
+moss row working 1 of its 34 chains — it swapped one warning for another. Found
+by running real patterns, not by reasoning about the two conventions.
+
+**Swept across every builder this could reach, before and after:**
+
+| | before | after |
+|---|---|---|
+| scarf colourwork, moss | REVIEW, 2 warnings | **PASS, 0/0** |
+| the other 16 shapes measured | unchanged | unchanged |
+
+Seventeen shapes in all — plain flat, moss, waffle, shell, shawl, the five
+colourwork builders, coloured compound garments and scarves. Exactly one moved.
+The two that fail (bobble and shell colourwork in this harness) failed
+identically beforehand and are untouched.
+
+Full suite passes (344 tests, 5 skip).
