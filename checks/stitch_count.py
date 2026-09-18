@@ -34,6 +34,7 @@ Per ARCHITECTURE.md:
   stated), disagreement is a real reportable inconsistency, and a token
   with no solvable row at all is left exactly as unverifiable as before.
 """
+import re
 from collections import defaultdict
 
 from ..models import Issue
@@ -153,6 +154,14 @@ def check(pattern) -> list:
 
         row_issues = _check_row(row, in_count, in_label, is_foundation_transition, ratio_overrides)
         issues.extend(row_issues)
+
+        # Phase 1 of the row-to-row model: record the row's group structure
+        # alongside its verdict. Recorded, not read -- no check consults it
+        # yet, so it cannot move a verdict either way. See
+        # _row_group_structure and SCOPE_ROW_TO_ROW.md.
+        row.produced_groups, row.produced_groups_reason = _row_group_structure(
+            row, in_count, ratio_overrides
+        )
 
         prev_count = row.declared_count
         prev_label = row.label
@@ -548,6 +557,230 @@ def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
             produces += c.produces
     return produces, consumes, reasons
 
+
+# ----------------------------------------------------------------------
+# Row structure -- phase 1 of the row-to-row model (SCOPE_ROW_TO_ROW.md)
+# ----------------------------------------------------------------------
+#
+# Everything above reads a row as a flat total: how many stitches it
+# consumes, how many it produces. That is enough for every row whose
+# clauses each name their own target, and not enough for a clause that
+# points INTO the previous row -- "sc in centre dc of next shell" cannot
+# say how many stitches it passes over, because the width of the thing it
+# points at lives in a row this one cannot see.
+#
+# What follows derives the missing half: the ordered list of GROUPS a row
+# produces, a group being a set of stitches worked into one place. A plain
+# 5-st row is [1, 1, 1, 1, 1]; a shell row is [3, 1, 5, 1, 3]. Nothing
+# reads it in this phase -- it cannot change a verdict yet. Phase 2 will
+# resolve the clauses above against the previous row's list.
+#
+# The safety rule is the same one the rest of this tool follows, applied
+# twice over: any clause whose structure isn't determined abstains for the
+# whole row (produced_groups stays None with a reason), AND a structure
+# that IS derived is only accepted when its widths sum to the count the
+# row itself declares. The second gate is what makes this safe to build
+# on: a model that disagreed with the row's own arithmetic is a model that
+# got something wrong, and it is discarded rather than carried forward.
+
+# Clause types whose stitches all go into ONE place, so they contribute a
+# single group that wide rather than that many singles. This is the whole
+# distinction the flat total cannot express: "5 dc in next sc" and "dc in
+# next 5 sts" both produce 5, but only the first leaves a group a later
+# row can aim at the centre of.
+_ONE_GROUP_TYPES = {"cluster_same_spot", "corner", "count_in_same_spot"}
+
+# Per-stitch clauses -- their produces value is a RATIO, not a total, so
+# how many groups they make depends on the in-count. Handled by the row
+# walk below, never by _append_clause_groups.
+_PER_STITCH_TYPES = {"each_st_across", "each_st_around", "each_st_to_marker", "each_st_to_last"}
+
+# A clause working into the spot the clause before it already named
+# ("3 dc in same corner sp", "1 dc in the same sp"). It does not open a new
+# group -- it widens the one just made. Detected from the text because the
+# parser gives these the same clause_type as an ordinary cluster; what sets
+# them apart is only the word "same".
+_SAME_SPOT_RE = re.compile(r"\bsame\b", re.I)
+
+# Rows whose stitches move between pieces rather than stacking on the row
+# below (a thumb gusset setting stitches aside on a holder, or a later row
+# picking them back up). Their produced order is genuinely not stated, so
+# they abstain rather than report a structure that only looks right.
+_NO_STRUCTURE_TYPES = {"held_aside", "held_gusset_resume", "bridge_chain"}
+
+
+def _append_clause_groups(c, groups, count_chains=False):
+    """Append the groups this clause produces to `groups`, in place.
+
+    Returns None when the clause's contribution is known (including when it
+    contributes nothing), or a reason string when it is not. In place, and
+    not a fresh list, so a "same spot" clause can widen the group the
+    previous clause just made.
+    """
+    t = c.clause_type
+
+    if t == "chain":
+        # A chain is fabric only under the moss/linen convention, where each
+        # ch-1 space is itself a stitch the next row works into -- exactly
+        # the same either/or _zone_sum's own count_chains already models.
+        if count_chains:
+            groups.extend([1] * (c.explicit_count or 0))
+        return None
+    if t in _NO_OP_TYPES or t in ("repeat_close", "skip", "closure", "skip_first_chains_from_hook"):
+        return None
+    if t == "unknown":
+        return f"unrecognized clause: '{c.raw}'"
+    if t in _NO_STRUCTURE_TYPES:
+        return f"'{c.raw.strip()}' moves stitches to or from a holder, so where they fall in this row isn't stated"
+    if t in _PER_STITCH_TYPES:
+        # Unreachable via _row_group_structure, which peels these off first.
+        return f"'{c.raw.strip()}' covers a number of stitches the clause itself doesn't state"
+
+    if t == "bracket_group":
+        if not c.sub_clauses:
+            return f"'{c.raw.strip()}' is a bracketed group whose contents aren't broken out"
+        inner = []
+        for sub in c.sub_clauses:
+            reason = _append_clause_groups(sub, inner, count_chains)
+            if reason is not None:
+                return reason
+        groups.extend(inner * (c.explicit_count or 1))
+        return None
+
+    if c.produces is None:
+        # Deliberately NOT resolved from ratio_overrides the way _zone_sum
+        # resolves a total. Knowing a compound stitch produces 1.5 sts per
+        # repeat says nothing about how those stitches are grouped, and this
+        # model is about grouping.
+        return c.unverifiable_reason or f"'{c.stitch}' has no fixed consumes/produces ratio"
+
+    if t in _ONE_GROUP_TYPES:
+        if _SAME_SPOT_RE.search(c.raw):
+            if not groups:
+                return (f"'{c.raw.strip()}' works into the spot the clause before it named, "
+                        f"but it is the first clause in the row")
+            groups[-1] += c.produces
+            return None
+        if c.produces > 0:
+            groups.append(c.produces)
+        return None
+
+    groups.extend([1] * c.produces)
+    return None
+
+
+def _zone_groups(clauses, count_chains=False):
+    """(groups, reason) for a flat run of clauses."""
+    groups = []
+    for c in clauses:
+        reason = _append_clause_groups(c, groups, count_chains)
+        if reason is not None:
+            return None, reason
+    return groups, None
+
+
+def _row_group_structure(row, in_count, ratio_overrides):
+    """(groups, reason) -- the ordered group widths this row produces.
+
+    Mirrors _check_row's own dispatch (repeat group / per-stitch clause /
+    flat sequence) rather than re-deriving it, so the structure is read off
+    the same shape the arithmetic was.
+    """
+    clauses = row.clauses
+    if not clauses:
+        return None, "the row has no parsed clauses"
+
+    def finish(groups, reason, count_chains):
+        if reason is not None:
+            return None, reason
+        if row.declared_count is None:
+            return None, "the row states no stitch count to check the derived structure against"
+        if sum(groups) != row.declared_count:
+            if not count_chains:
+                return None, None      # caller retries under the chain convention
+            return None, (f"the structure derived for this row totals {sum(groups)} sts, but the row "
+                          f"declares {row.declared_count} -- discarded rather than carried forward")
+        return groups, None
+
+    def derive(count_chains):
+        # The row's own turning chain is never fabric, under either
+        # convention -- dropped by position, exactly as the arithmetic above
+        # drops it (see _without_turning_chain). Only matters when chains
+        # count at all; leaving it in made a correct 21-st moss row derive 22
+        # and abstain.
+        clauses = _without_turning_chain(row.clauses) if count_chains else row.clauses
+
+        # A row worked into the foundation chain: one stitch per chain
+        # (after the ones skipped for height), so every group is 1 wide. The
+        # produced count comes from the CHAIN, not from the row's declared
+        # count -- deriving it from the declared count would make the check
+        # in finish() circular and unable to catch anything.
+        foundation_clause = next((c for c in clauses if c.clause_type == "foundation_into_chain"), None)
+        if foundation_clause is not None:
+            idx = clauses.index(foundation_clause)
+            inline_chain = next((c for c in reversed(clauses[:idx]) if c.clause_type == "chain"), None)
+            chain = inline_chain.explicit_count if inline_chain is not None else in_count
+            if chain is None:
+                return None, "no foundation chain count was found to derive this row's structure from"
+            produced = (chain - (foundation_clause.explicit_count - 1)
+                        + (1 if foundation_clause.chain_counts_as_stitch else 0))
+            if produced < 0:
+                return None, "the foundation chain is shorter than the chains this row skips"
+            return finish([1] * produced, None, count_chains)
+
+        opener_idx = next((i for i, c in enumerate(clauses) if c.raw.strip().startswith("*")), None)
+        if opener_idx is not None:
+            zones, reason = _split_repeat_groups(clauses)
+            if zones is None:
+                return None, reason
+            groups = []
+            for zone in zones:
+                if zone[0] == "flat":
+                    g, r = _zone_groups(zone[1], count_chains)
+                else:
+                    _, unit, times = zone
+                    g, r = _zone_groups(unit, count_chains)
+                    if g is not None:
+                        g = g * times
+                if r is not None:
+                    return None, r
+                groups.extend(g)
+            return finish(groups, None, count_chains)
+
+        each_st = next((c for c in clauses if c.clause_type in _PER_STITCH_TYPES), None)
+        if each_st is not None:
+            if in_count is None:
+                return None, "no usable starting count, so the per-stitch clause's own width isn't known"
+            idx = clauses.index(each_st)
+            pre, post = clauses[:idx], clauses[idx + 1:]
+            pre_g,  pre_r  = _zone_groups(pre, count_chains)
+            post_g, post_r = _zone_groups(post, count_chains)
+            if pre_r is not None or post_r is not None:
+                return None, pre_r or post_r
+            _, pre_c, _   = _zone_sum(pre, ratio_overrides=ratio_overrides)
+            _, post_c, _  = _zone_sum(post, ratio_overrides=ratio_overrides)
+            if each_st.produces is None or each_st.consumes is None or each_st.consumes <= 0:
+                return None, f"'{each_st.raw.strip()}' has no fixed consumes/produces ratio"
+            remaining = in_count - pre_c - post_c
+            if remaining < 0 or remaining % each_st.consumes != 0:
+                return None, (f"the stitches left for '{each_st.raw.strip()}' ({remaining}) don't divide "
+                              f"evenly into what it consumes per repeat ({each_st.consumes})")
+            reps = remaining // each_st.consumes
+            mid = [each_st.produces] * reps if each_st.produces > 0 else []
+            return finish(pre_g + mid + post_g, None, count_chains)
+
+        g, r = _zone_groups(clauses, count_chains)
+        return finish(g, r, count_chains)
+
+    groups, reason = derive(count_chains=False)
+    if groups is None and reason is None:
+        # The plain convention's total disagreed with the declared count.
+        # Moss and linen count their ch-1 spaces toward the row total, and
+        # under that reading those spaces are real groups the next row works
+        # into -- try it before giving up, exactly as the arithmetic above
+        # already does.
+        groups, reason = derive(count_chains=True)
+    return groups, reason
 
 def _split_repeat_groups(clauses):
     """Segment a row into [flat clauses, (unit clauses, times)] zones, in order.

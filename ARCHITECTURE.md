@@ -3805,3 +3805,72 @@ nothing. It perturbs the declared stitch count instead, which is what the
 comparison actually uses.
 
 Full suite passes (357 tests, 5 skip).
+
+---
+
+## Phase 1 of the row-to-row model: rows emit their group structure (2026-09-18)
+
+Per SCOPE_ROW_TO_ROW.md. Every check above this point reads a row as a flat
+total — how many stitches it consumes, how many it produces. That is enough
+for a row whose clauses each name their own target, and not enough for one
+that points INTO the row below it: `sc in centre dc of next shell` cannot say
+how many stitches it passes over, because the width of the thing it names
+lives in a row the clause cannot see.
+
+Rows now also record the ordered widths of the GROUPS they produce, a group
+being a set of stitches worked into one place — `RoundRow.produced_groups`,
+filled in by `checks/stitch_count.py`'s own row walk (the only place that
+knows each row's in-count). A plain 20-st row is `[1] * 20`; a shell row is
+`[1, 5, 1, 5, 1]`; its alternating half-shell row is `[3, 1, 5, 1, 3]`.
+
+**Nothing reads it.** No check consults `produced_groups`, so this phase
+cannot move a verdict in either direction — which is the point of landing it
+on its own: phase 2, where the risk actually lives, starts with the plumbing
+already proven. Full suite passes unchanged (372 tests, 5 skip — 357 before,
+15 new).
+
+**What the distinction actually is.** `dc in next 5 sts` and `5 dc in next st`
+both produce 5. Only the second leaves a group a later row can aim at the
+centre of, and the flat total cannot tell them apart. So `cluster_same_spot`/
+`corner` contribute one group that wide, and everything else with a known
+produces contributes that many groups of 1.
+
+**Two things it refuses to guess:**
+
+- A compound stitch whose per-repeat ratio was *solved* (`ratio_overrides`)
+  is deliberately NOT resolved here. Knowing moss produces 1.5 sts per repeat
+  says nothing about how those stitches are grouped, and grouping is the whole
+  subject. It abstains, as the arithmetic does for other reasons.
+- A row worked into the foundation chain derives its width from the CHAIN
+  (`chain - skipped + counts-as-stitch`), never from the row's declared count.
+  Deriving it from the declared count would make the check below circular.
+
+**The gate that makes phase 2 safe to build on.** A derived structure is only
+kept when its widths sum to the count the row itself declares. A model that
+disagrees with the row's own arithmetic is a model that got something wrong,
+and it is discarded with a reason rather than carried forward. In testing this
+fired exactly where the arithmetic independently reported an error, which is
+the behaviour wanted: the two abstain together rather than quietly disagreeing.
+
+**Conventions it had to learn, both already settled elsewhere in this file:**
+
+- The row's own turning chain is never fabric. `_without_turning_chain` is
+  applied by position before deriving under the chain-counting convention —
+  without it a correct 21-stitch moss row derived 22 and abstained. Same
+  mistake as the two entries above; same fix.
+- A clause working into the spot the clause before it named (`3 dc in same
+  corner sp`, `1 dc in the same sp`) widens that group rather than opening a
+  new one. The parser gives these the same `clause_type` as an ordinary
+  cluster, so the model reads the word "same".
+
+**Fixtures.** The tests reuse verbatim generator output already in this suite
+(`SHELL_ROWS`, the moss rows) rather than re-typing it. A hand-written
+imitation would only prove the model agrees with my idea of the generator —
+and one invented waffle row in the scratch diagnostics did turn out to be
+wrong, which is how the declared-count gate got exercised in the first place.
+
+**Still to come (phase 2):** `centre_dc`, `count_in_same_spot` and
+`each_of_position` resolve their `consumes` against the previous row's list,
+advancing a cursor as the row is read. That is where a wrong answer could turn
+a warning into a false accusation, so it lands separately and is swept against
+every builder before and after.

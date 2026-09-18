@@ -1,8 +1,9 @@
 # Scope: a row-to-row model
 
 What it would take for this tool to verify the rows it currently abstains on,
-what that buys, and where the risk is. Written 2026-09-17; nothing here is
-built yet. The rows in question are catalogued in KNOWN_UNVERIFIABLE.md.
+what that buys, and where the risk is. Written 2026-09-17; phase 1 is built
+(2026-09-18), phases 2 and 3 are not. The rows in question are catalogued
+in KNOWN_UNVERIFIABLE.md.
 
 ## The gap in one sentence
 
@@ -26,7 +27,7 @@ wide each one is. Clauses return scalar `consumes` / `produces`; nothing
 records that a shell row produced `[1, 5, 1, 5, …, 1]` rather than 19 stitches
 in a flat line.
 
-## Phase 1 — rows emit their structure
+## Phase 1 — rows emit their structure — **DONE (2026-09-18)**
 
 Each row additionally returns the ordered list of groups it produces, with
 widths. A shell row becomes `[1, 5, 1, 5, …, 1]`; a plain dc row becomes
@@ -37,6 +38,10 @@ one group of N, `count_in_same_spot` likewise, and every positional single is
 a group of 1. The work is threading a second return value through `_zone_sum`
 and the row walk, and deciding what a repeat group contributes (its unit's
 groups, repeated).
+
+Landed as `RoundRow.produced_groups`, filled in by
+`checks/stitch_count.py`'s row walk. See ARCHITECTURE.md's entry for what it
+turned out to involve.
 
 **Risk: very low.** Purely additive — nothing reads it in this phase, so it
 cannot change a verdict. Landing it on its own means the risky phase arrives
