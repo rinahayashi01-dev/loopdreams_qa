@@ -3874,3 +3874,78 @@ wrong, which is how the declared-count gate got exercised in the first place.
 advancing a cursor as the row is read. That is where a wrong answer could turn
 a warning into a false accusation, so it lands separately and is swept against
 every builder before and after.
+
+---
+
+## Phase 2 of the row-to-row model: clauses resolve against those groups (2026-09-18)
+
+The other direction from the entry above. A clause naming a position inside
+one of the previous row's groups — `sc in centre dc of next shell` — passes
+over the whole group, and now that the previous row's widths are recorded,
+over how many stitches is knowable. `_resolve_group_references` fills in the
+clause's `consumes` before anything reads the row; every check above then runs
+on it unchanged, not knowing this step exists.
+
+**Measured, 79-case sweep, identical generated input to both sides:**
+
+| | before | after |
+|---|---|---|
+| batch suite | 71 PASS, 8 REVIEW, 0 FAIL | **73 PASS, 6 REVIEW, 0 FAIL** |
+| `Coaster (square) — shell, intermediate` | REVIEW | **PASS** |
+| `Throw Blanket — colourwork, shell` | REVIEW | **PASS** |
+| the other 77 cases | — | **byte-identical findings** |
+| shell rows verified by nothing at all | 74 | **0** |
+
+The remaining 6 REVIEWs are the two granny causes, which need phase 3.
+
+**This is the phase where a mistake is expensive.** A wrong `consumes` does
+not produce a warning — it produces a confident MISMATCH against a correct
+pattern, the one failure mode this tool exists to avoid. So the model is
+deliberately narrow and each of its assumptions is checked rather than
+assumed:
+
+- **One clause, one group.** Each stitch-bearing clause accounts for exactly
+  one of the previous row's groups. That is the shape of a shell row, and
+  anything else — a `skip 2 sts`, a second repeat group — abstains.
+- **The slots must add up exactly.** Clause slots, with a repeat unit counted
+  as many times as it divides the remainder, must come to the number of groups
+  the previous row made. Not "at least".
+- **Every non-reference clause must line up with a group of exactly the width
+  it says it consumes.** This is what keeps the one-clause-one-group reading
+  honest: a plain `sc in next st` sitting over a 5-wide shell means the
+  alignment is wrong somewhere, and the row abstains rather than being handed
+  a number.
+- **All or nothing.** Nothing is written unless every pairing checks out. A
+  half-resolved row would be worse than an unresolved one, because the
+  arithmetic would then run on a row it only partly understands.
+- **One clause, one answer.** The same clause object covers every repetition
+  of a repeat unit, so groups of differing widths under it abstain.
+
+**The repeat count is solved twice, independently.** `_resolve_group_
+references` divides the previous row's groups into pre + unit×r + post; the
+arithmetic then solves the same r from the stitch count. On the shell row that
+is 7 groups into 1 + 2×2 + 2, and (19 − 1 − 6) / 6. They agree, and if they
+did not the row would fail its own produced-vs-declared check.
+
+**The width is read, not assumed — and the corpus cannot prove that.** Every
+shell in the live corpus is 5 dc, so 74 rows passing is equally consistent
+with a hardcoded 5. What distinguishes them is a test that drives the same
+half-shell row over 3-, 5- and 7-wide shells and gets 3, 5 and 7. That
+distinction was the whole argument in KNOWN_UNVERIFIABLE.md for not fixing
+this with a regex, and it is why the fix reads the previous row instead.
+
+**`in the same sp` is deliberately NOT resolved yet**, though SCOPE_ROW_TO_
+ROW.md lists it under phase 2. The rounds that use it (Granny Square Blanket
+round 3) also abstain for the mixed bracket and the undeclared `cluster`, so
+resolving it alone cannot move a single verdict — it would mean shipping code
+that no measurement could check. It lands with phase 3, where it can be.
+
+Also note `each_of_position` in that scope table is already fully resolved
+(`consumes=n` in the parser) and needed nothing.
+
+**Mutation is in place and on purpose.** The resolver writes `consumes` onto
+the clause objects so the dispatch above needs no changes at all. It is
+idempotent — a resolved clause reads as an ordinary one-slot clause on a
+second pass.
+
+Full suite passes (383 tests, 5 skip).
