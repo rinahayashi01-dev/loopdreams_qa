@@ -4,8 +4,8 @@ Every REVIEW the batch suite currently reports, why the row cannot be checked,
 and what it would take to change that. If a REVIEW you are looking at is on
 this list, it has already been investigated — please don't re-derive it.
 
-As of 2026-09-17: **76 cases — 68 pass, 8 review, 0 fail.** All 8 REVIEWs come
-from the three causes below.
+As of 2026-09-18: **79 cases — 73 pass, 6 review, 0 fail.** All 6 REVIEWs come
+from the two causes below, and both are granny.
 
 A REVIEW means "this tool could not do the arithmetic", never "the pattern is
 wrong". Every one of these has been read by hand and the pattern is correct.
@@ -15,34 +15,7 @@ accusation — see ARCHITECTURE.md.
 
 ---
 
-## 1. `sc in centre dc of next shell` — a position inside a multi-stitch group
-
-**Affects:** `Coaster (square) — shell, intermediate`,
-`Throw Blanket — colourwork, shell` (2 cases)
-
-A shell is 5 dc worked into one stitch. The next row works an sc into that
-shell's *centre* dc. To know how many of the previous row's stitches that
-clause passes over, you have to know how wide the group is — and the clause
-names a position inside it without stating its width. The width lives in the
-previous row's construction, not in this clause.
-
-**Why it is not just hardcoded.** The tool reads clause by clause; assuming
-"a shell is 5 dc" would be reading one row's arithmetic out of another row's
-text. It also stops being true the moment a pattern uses a 3-dc or 7-dc shell,
-and the instruction reads identically in all three cases — so the wrong answer
-would be silent.
-
-**What would change it:** teaching the checker to carry the previous row's
-group widths forward, which is a real feature (a row-to-row model rather than
-a clause-local one), not a regex.
-
-**Not to be confused with** the colour grammar, which *can* read these rows —
-see loopdreams_qa#59. Shell colourwork is verified against the design; it is
-only the stitch-count arithmetic that abstains.
-
----
-
-## 2. Granny Square round 2 — a bracketed group of mixed stitches worked in a ring
+## 1. Granny Square round 2 — a bracketed group of mixed stitches worked in a ring
 
 **Affects:** `Granny Square — beginner / intermediate / advanced` (3 cases)
 
@@ -67,7 +40,7 @@ assumption.
 
 ---
 
-## 3. Granny Square Blanket round 3 — "the same sp", and an undeclared cluster
+## 2. Granny Square Blanket round 3 — "the same sp", and an undeclared cluster
 
 **Affects:** `Granny Square Blanket — beginner / intermediate / advanced`
 (3 cases)
@@ -79,15 +52,20 @@ stated` plus `'cluster' has no fixed consumes/produces ratio`.
 - **`in the same sp`** is a back-reference. It consumes nothing new — it works
   into the spot the clause before it already named — but how much of the
   previous round *that* spot accounts for is a property of the previous round,
-  which the clause does not state. Same shape of problem as #1.
+  which the clause does not state. Same shape of problem as the shell case that used to head this list — see
+  the table below.
 - **`cluster`** is a named group whose stitch count the pattern never declares.
   Unlike `bobble`, which the tool solves algebraically across many rows that
   each declare their own counts, the granny motif's rounds do not give it
   enough independent equations to solve.
 
-**What would change it:** the same row-to-row model as #1, plus either a
-declared construction for `cluster` in the abbreviation key or enough rows to
-solve it from.
+**What would change it:** phase 3 of SCOPE_ROW_TO_ROW.md (expanding a mixed
+bracket, and accepting a declared count stated as several tallies), plus
+either a declared construction for `cluster` in the abbreviation key or enough
+rows to solve it from. The row-to-row model that cleared the shell case is
+built and would resolve `in the same sp` on its own, but on its own it changes
+nothing here: these rounds abstain for the bracket and the `cluster` as well,
+so all three have to go together.
 
 ---
 
@@ -103,3 +81,26 @@ again:
 | mid-row `With Colour N`, `changing to … in the last chain` | #57 |
 | a foundation row's counted runs (`8 Sc in next 8 chs`) | #58 |
 | shell colourwork rows unreadable | #59 |
+| `sc in centre dc of next shell` — a position inside a multi-stitch group | #63/#64 |
+
+### On the shell case in particular
+
+It headed this list until 2026-09-18, and the reason it is gone is worth
+keeping, because the argument for *not* fixing it was a good one:
+
+> **Why it is not just hardcoded.** The tool reads clause by clause; assuming
+> "a shell is 5 dc" would be reading one row's arithmetic out of another row's
+> text. It also stops being true the moment a pattern uses a 3-dc or 7-dc
+> shell, and the instruction reads identically in all three cases — so the
+> wrong answer would be silent.
+
+That still holds, and the fix does not violate it. The width is not assumed;
+it is read from the previous row's own recorded structure, which is why the
+same row resolves to 3 over a 3-dc shell and 7 over a 7-dc one (there is a
+test that drives exactly that). Every shell in the live corpus happens to be
+5 wide, so the corpus alone could not tell a correct reading from a hardcoded
+one — the test is what distinguishes them.
+
+**Measured:** 74 shell rows across `Coaster (square) — shell, intermediate`
+and `Throw Blanket — colourwork, shell` went from verified by nothing to
+verified and passing. Nothing else in the 79-case sweep changed.

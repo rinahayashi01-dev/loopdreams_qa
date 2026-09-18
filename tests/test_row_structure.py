@@ -13,7 +13,8 @@ import unittest
 from loopdreams_qa.from_pattern_json import build_raw_text
 from loopdreams_qa.pattern_parser import parse
 from loopdreams_qa.checks import stitch_count
-from loopdreams_qa.checks.stitch_count import _zone_groups
+from loopdreams_qa.checks.stitch_count import _zone_groups, _resolve_group_references
+from loopdreams_qa.models import RoundRow
 from loopdreams_qa.stitch_parser import tokenize_round
 
 # Imported as modules, not as names: importing the TestCase classes directly
@@ -74,19 +75,20 @@ class ShellStructureTest(unittest.TestCase):
             self.assertIsNotNone(row.produced_groups, f"{label}: {row.produced_groups_reason}")
             self.assertEqual(sum(row.produced_groups), row.declared_count, label)
 
-    def test_a_row_whose_consumes_is_unknown_still_reports_what_it_produces(self):
-        # The point of splitting the two. Rows 3/5/7 are exactly the rows
-        # this tool cannot do the arithmetic for -- "sc in centre dc of next
-        # shell" has no consumes -- and they are also the rows whose produced
-        # structure phase 2 will need. Both are true at once.
-        self.assertTrue(any("centre dc" in i.message for i in self.issues))
-        self.assertIsNotNone(self.rows["Row 3"].produced_groups)
+    def test_what_a_row_produces_is_known_even_when_what_it_consumes_is_not(self):
+        # The point of splitting the two, and what makes phase 2 possible.
+        # Rows 3/5/7 are exactly the rows whose arithmetic could not be done
+        # -- "sc in centre dc of next shell" states no consumes -- and their
+        # PRODUCED structure was knowable all along. Phase 2 feeds one to the
+        # other.
+        for label in ("Row 3", "Row 5", "Row 7"):
+            self.assertIsNotNone(self.rows[label].produced_groups, label)
 
-    def test_recording_structure_added_no_findings(self):
-        # Phase 1 is additive. The only thing this pattern has ever reported
-        # is the centre-dc abstention, and it still is.
-        self.assertEqual(len(self.issues), 1, [i.message for i in self.issues])
-        self.assertEqual(self.issues[0].severity, "warning")
+    def test_the_whole_shell_piece_now_verifies(self):
+        # Before phase 2 this pattern's only finding was the centre-dc
+        # abstention. With the previous row's widths available there is
+        # nothing left it cannot do.
+        self.assertEqual(self.issues, [], [i.message for i in self.issues])
 
 
 class PlainAndIncreaseStructureTest(unittest.TestCase):
@@ -210,6 +212,113 @@ class AbstentionTest(unittest.TestCase):
         groups, reason = _zone_groups(tokenize_round("sc in each st across"))
         self.assertIsNone(groups)
         self.assertIn("doesn't state", reason)
+
+
+class GroupReferenceResolutionTest(unittest.TestCase):
+    """Phase 2: a clause naming a position inside one of the previous row's
+    groups gets its consumes from that row's structure.
+
+    Driven directly, with the previous row's widths supplied, because that
+    is the only way to prove the width is READ rather than assumed -- the
+    same half-shell row over a 3-wide shell has to come out as 3.
+    """
+
+    # Verbatim generator wording, both forms buildHalfShellRowText writes:
+    # every shell spelled out, and the middle ones as a repeat group.
+    WRITTEN_OUT = ("2 dc in first sc (turning ch-3 counts as first dc; half shell made), "
+                   "sc in centre dc of next shell; 5 dc in next sc; "
+                   "sc in centre dc of last shell; 3 dc in last sc (half shell made). Ch 1, turn.")
+    AS_REPEAT   = ("2 dc in first sc (turning ch-3 counts as first dc; half shell made), "
+                   "*sc in centre dc of next shell, 5 dc in next sc; "
+                   "rep from * to last shell, 1 more time, sc in centre dc of last shell, "
+                   "3 dc in last sc (half shell made).")
+
+    def _resolve(self, text, prev_groups):
+        row = RoundRow(label="Row X", row_start=1, row_end=1, raw_text=text,
+                       clauses=tokenize_round(text))
+        reason = _resolve_group_references(row, prev_groups)
+        return reason, [c.consumes for c in row.clauses if c.group_reference]
+
+    def test_the_shell_width_is_read_from_the_previous_row_not_assumed(self):
+        # The reason this could never be a regex: the instruction reads
+        # identically whatever the shell's width, so a hardcoded 5 would be
+        # silently wrong on any other shell -- see KNOWN_UNVERIFIABLE.md.
+        for width in (3, 5, 7):
+            reason, consumes = self._resolve(self.WRITTEN_OUT, [1, width, 1, width, 1])
+            self.assertIsNone(reason)
+            self.assertEqual(consumes, [width, width], f"{width}-wide shell")
+
+    def test_it_resolves_the_same_row_written_as_a_repeat_group(self):
+        # The repeat count is solved from the GROUP count (7 groups into
+        # 1 + 2x2 + 2), independently of the arithmetic solving the same
+        # number of repeats from the stitch count.
+        reason, consumes = self._resolve(self.AS_REPEAT, [1, 5, 1, 5, 1, 5, 1])
+        self.assertIsNone(reason)
+        self.assertEqual(consumes, [5, 5])
+
+    def test_it_abstains_when_the_previous_rows_structure_is_unknown(self):
+        reason, consumes = self._resolve(self.WRITTEN_OUT, None)
+        self.assertIn("isn't known", reason)
+        self.assertEqual(consumes, [None, None])
+
+    def test_it_abstains_when_the_clauses_and_the_groups_do_not_line_up(self):
+        # One group too many for the clauses to account for.
+        reason, _ = self._resolve(self.WRITTEN_OUT, [1, 5, 1, 5, 1, 1])
+        self.assertIn("accounts for 5 groups", reason)
+
+    def test_it_abstains_when_a_plain_clause_sits_over_a_wide_group(self):
+        # The check that keeps one-clause-one-group honest. Here the row's
+        # opening "2 dc in first sc" consumes 1, but the alignment would put
+        # it over a 5-wide shell -- so something is wrong and nothing is
+        # written, rather than the row being told a number.
+        reason, consumes = self._resolve(self.WRITTEN_OUT, [5, 1, 1, 5, 1])
+        self.assertIn("lines up with a group of 5", reason)
+        self.assertEqual(consumes, [None, None])
+
+    def test_it_abstains_on_a_clause_that_consumes_more_than_one_group(self):
+        # "skip 2 sts" accounts for two of the previous row's stitches, which
+        # may be one group or two -- the model cannot tell, so it stops.
+        reason, _ = self._resolve("sc in centre dc of next shell, skip 2 sts, sc in next st.", [5, 2, 1])
+        self.assertIn("rather than", reason)
+
+    def test_it_abstains_when_one_clause_would_need_two_different_answers(self):
+        # The same clause object covers every repetition of the unit. If the
+        # shells under it are not all the same width there is no single
+        # consumes to give it.
+        reason, _ = self._resolve(self.AS_REPEAT, [1, 5, 1, 3, 1, 5, 1])
+        self.assertIn("different widths", reason)
+
+    def test_it_abstains_when_the_groups_do_not_divide_into_the_repeat(self):
+        reason, _ = self._resolve(self.AS_REPEAT, [1, 5, 1, 5, 1, 5, 1, 1])
+        self.assertIn("don't divide evenly", reason)
+
+    def test_nothing_is_written_when_any_part_of_the_row_fails(self):
+        # All-or-nothing: a half-resolved row would be worse than an
+        # unresolved one, because the arithmetic would then run on a row it
+        # only partly understands. The first reference here could be paired
+        # with a group; the row still comes back untouched.
+        reason, consumes = self._resolve(self.WRITTEN_OUT, [1, 5, 1, 5, 1, 1])
+        self.assertIsNotNone(reason)
+        self.assertEqual(consumes, [None, None])
+
+
+class ShellNowCheckedTest(unittest.TestCase):
+    """The coverage this buys: shell rows were verified by nothing at all,
+    so a real regression in them would have passed silently."""
+
+    def test_a_wrong_declared_count_on_a_shell_row_is_now_caught(self):
+        import copy
+        rows = copy.deepcopy(SHELL_ROWS)
+        rows[3]["stitch_count"] = 15          # the half-shell row; really 13
+        _, issues = _checked(rows)
+        self.assertTrue(any(i.severity == "error" for i in issues),
+                        [f"{i.severity} {i.location} {i.message}" for i in issues])
+
+    def test_the_correct_piece_still_passes(self):
+        # The other half of the same claim -- catching a wrong count is only
+        # worth anything if the right one is not also flagged.
+        _, issues = _checked(SHELL_ROWS)
+        self.assertEqual(issues, [], [i.message for i in issues])
 
 
 if __name__ == "__main__":
