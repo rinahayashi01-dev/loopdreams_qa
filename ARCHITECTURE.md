@@ -3988,3 +3988,49 @@ idempotent — a resolved clause reads as an ordinary one-slot clause on a
 second pass.
 
 Full suite passes (384 tests, 5 skip).
+
+---
+
+## A tote names its handles but not its body (2026-09-18)
+
+`main` went red on the batch-test gate immediately after loopdreams #551: all
+four colourwork Tote Bag cases FAILed with
+
+> The pattern was generated from a colourwork design, but not one of its
+> panels works the design — every piece is a single colour throughout.
+
+The patterns are correct. A rebuilt colourwork tote names a colour in **121 of
+its 169 rows**; checking that first is what stopped this being chased on the
+generator side.
+
+**What happened.** #551 split the handles into two rows each, carrying their
+own section (`Handle 1`, `Handle 2`), where they had been one unsectioned row.
+`_panels` treats a pattern as sectioned the moment ANY row has a section, and
+then discarded every row *without* one — the entire bag body. What remained
+were the two plain sc straps, so nothing carried the design.
+
+Two separate faults, both fixed:
+
+- **`_NON_PANEL_SECTIONS` held the bare `"handles"`** and matched none of the
+  new per-piece names. `_is_non_panel` now also matches `Handle 1`,
+  `Handle 2` and `Handle 1 (shoulder strap)`. A strip is plain sc whatever the
+  bag is worked in and is never a design panel. (Same family of slip as
+  loopdreams #550's `Handles` vs `Handle 1:` — a name that gained a number.)
+- **Unsectioned rows were dropped rather than collected.** They are a piece
+  too, and are now gathered into one unnamed panel. The old behaviour rested
+  on "a sectioned pattern names every piece", which is true of garments and
+  false as soon as a pattern names only its accessories.
+
+**Measured** — 79 payloads captured from the deployed post-#551 function, so
+both sides saw exactly what CI saw:
+
+| | qa `main` (what CI ran) | with the fix |
+|---|---|---|
+| batch suite | 69 PASS, 6 REVIEW, **4 FAIL** | **73 PASS, 6 REVIEW, 0 FAIL** |
+| the four colourwork tote cases | FAIL | **PASS** |
+| the other 75 cases | — | identical findings |
+
+Four new tests. The two that matter fail on `main` with this exact error; the
+other two are guards — a flipped design is still caught with handles present,
+and a garment's real named panels still split per piece rather than merging
+into the new unnamed one.
