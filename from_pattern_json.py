@@ -145,6 +145,16 @@ _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
 # tracker; "Handles (" is the older single-row form, still produced for
 # purchased leather handles (nothing is crocheted, so one row is right).
 #
+# "Attaching Handle N:" is the current crocheted form (loopdreams, 2026-09-18).
+# Making a strip and attaching it were one row that ran them together; they are
+# now two, because only the attaching is finishing -- the strip is a piece you
+# crochet and belongs above this section. Missing the new wording is the same
+# failure as missing the numbered form was: the backward walk stops at an
+# unrecognised last row, so nothing is collected at all and the pattern reports
+# "No Finishing/assembly section found". Measured on a rebuilt tote before this
+# line was added. The bare "Handle N:" alternative below stays for saved
+# patterns, which still carry the old combined row.
+#
 # Both are needed here, and missing the numbered form was not cosmetic: this
 # regex drives a BACKWARD walk collecting the trailing run of finishing rows,
 # so an unrecognised last row stops the walk and strands everything before it
@@ -153,6 +163,7 @@ _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
 # against a pattern that had been clean.
 _FINISHING_ROW_RE = re.compile(
     r"^\s*(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"|^\s*Attaching\s+Handle\s+\d+\s*:"
     r"|^\s*Handles\s*\("
     r"|^\s*Handle\s+\d+\s*[:(]",
     re.I,
