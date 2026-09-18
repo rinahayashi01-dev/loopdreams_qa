@@ -45,6 +45,19 @@ class RoundRow:
     # globally unique within a pattern, so checks that walk pattern.rows in
     # row-number order must group by component first.
     component: Optional[str] = None
+    # Phase 1 of the row-to-row model (see SCOPE_ROW_TO_ROW.md): the ordered
+    # widths of the GROUPS this row produces, where a group is a set of
+    # stitches worked into one place. A plain 5-st row is [1, 1, 1, 1, 1]; a
+    # shell row is [3, 1, 5, 1, 3]. None when the row's structure could not
+    # be established, with produced_groups_reason saying why -- the same
+    # abstain-rather-than-guess rule the rest of this tool follows.
+    #
+    # Filled in by checks/stitch_count.py's own row walk, which is the only
+    # place that knows each row's in-count. Nothing reads it yet; phase 2
+    # will, to resolve clauses that point INTO a previous row's group
+    # ("sc in centre dc of next shell").
+    produced_groups: Optional[list] = None
+    produced_groups_reason: Optional[str] = None
 
 
 @dataclass
