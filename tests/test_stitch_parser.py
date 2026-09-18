@@ -758,7 +758,23 @@ class TestSedgeStitchClauses(unittest.TestCase):
         self.assertEqual(c.produces, 3)
         self.assertIsNone(c.unverifiable_reason)
 
-    def test_shell_row_still_reports_review_not_pass_or_fail(self):
+    def test_shell_row_now_verifies_against_the_previous_rows_groups(self):
+        # Renamed 2026-09-18. This was
+        # test_shell_row_still_reports_review_not_pass_or_fail, and asserted
+        # the row abstained: "sc in centre dc of next shell" could not say
+        # how many stitches it passed over, because a shell's width lives in
+        # the row below. Phase 2 of the row-to-row model (SCOPE_ROW_TO_ROW.md)
+        # gives the checker that row's group widths, so the row verifies now
+        # -- twice over, and independently: the resolver divides the previous
+        # row's 7 groups ([1, 5, 1, 5, 1, 5, 1]) into 1 + 2x2 + 2 and gets 2
+        # repeats, and the arithmetic then solves the SAME 2 repeats from the
+        # stitch count ((19 - 1 - 6) / 6) and checks the 19 produced against
+        # the 19 declared.
+        #
+        # What has NOT changed is the width being read rather than assumed:
+        # nothing here knows a shell is 5 dc (see
+        # TestGroupReferenceResolution, which drives the same row shape over
+        # a 3-wide shell and gets 3).
         # End-to-end guard, real CURRENT text (loopdreams builders.ts
         # buildHalfShellRowText, refreshed Aug 29 2026 -- see PR history
         # below): the half-shell/centre-dc row must still come back as an
@@ -810,9 +826,12 @@ class TestSedgeStitchClauses(unittest.TestCase):
         pattern = parse(raw)
         issues = stitch_count.check(pattern)
         row3_issues = [i for i in issues if i.location == "Row 3"]
-        self.assertEqual(len(row3_issues), 1)
-        self.assertEqual(row3_issues[0].severity, "warning")
-        self.assertIn("centre dc", row3_issues[0].message)
+        self.assertEqual(row3_issues, [], [i.message for i in row3_issues])
+        # Resolved, not skipped: the clause now carries a real consumes, and
+        # it is the shell's actual width.
+        row3 = next(r for r in pattern.rows if r.label == "Row 3")
+        centre = [c for c in row3.clauses if c.group_reference]
+        self.assertEqual([c.consumes for c in centre], [5, 5])
 
 
 class TestPostStitchLeadingCount(unittest.TestCase):
