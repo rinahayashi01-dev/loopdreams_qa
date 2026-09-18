@@ -637,3 +637,50 @@ class ShellColourRowsTest(unittest.TestCase):
         # real output. Sedge and shell are the single-step exceptions, decided
         # per row rather than globally.
         self.assertEqual(co.check(_pattern(MOSS_ROWS, grid=SMALL_DESIGN)), [])
+
+
+class ToteHandleSectionsTest(unittest.TestCase):
+    """A tote names its handle strips but not its body.
+
+    Real incident (2026-09-18, loopdreams #551 + this repo's #65): the handles
+    became two rows each carrying their own section ("Handle 1", "Handle 2"),
+    where they had been one unsectioned row. _panels then treated the pattern
+    as sectioned, DISCARDED every row without a section -- the entire bag body
+    -- and was left with two plain sc straps. All four colourwork tote cases
+    turned FAIL on "not one of its panels works the design", against patterns
+    whose rows name a colour 121 times.
+
+    Two things were wrong and both are fixed: _NON_PANEL_SECTIONS held the old
+    bare "handles" and matched none of the new per-piece names, and rows with
+    no section were dropped rather than collected into a panel of their own.
+    """
+
+    HANDLE_ROWS = [
+        {"row_number": 8, "stitch_count": 6, "instructions": "Foundation: Ch 7.", "section": "Handle 1"},
+        {"row_number": 9, "stitch_count": 6, "instructions": "Sc in the next chain and each ch across. Work 5 more rows of sc (6 rows total). Fasten off. (6 sts)", "section": "Handle 1"},
+        {"row_number": 10, "stitch_count": 6, "instructions": "Foundation: Ch 7.", "section": "Handle 2"},
+        {"row_number": 11, "stitch_count": 6, "instructions": "Sc in the next chain and each ch across. Work 5 more rows of sc (6 rows total). Fasten off. (6 sts)", "section": "Handle 2"},
+    ]
+
+    def test_the_body_is_still_checked_when_only_the_handles_are_sectioned(self):
+        rows = [*FAITHFUL_ROWS, *self.HANDLE_ROWS]
+        self.assertEqual(co.check(_pattern(rows, grid=SMALL_DESIGN)), [])
+
+    def test_the_shoulder_strap_naming_is_covered_too(self):
+        # The longer variant names its pieces "Handle 1 (shoulder strap)".
+        rows = [*FAITHFUL_ROWS, *[{**r, "section": f"{r['section']} (shoulder strap)"} for r in self.HANDLE_ROWS]]
+        self.assertEqual(co.check(_pattern(rows, grid=SMALL_DESIGN)), [])
+
+    def test_a_genuinely_wrong_body_is_still_caught_through_the_handles(self):
+        # The fix must not become a way for a sectioned pattern to stop being
+        # checked at all. Same handles, design flipped: still reported.
+        flipped = SMALL_DESIGN[::-1]
+        issues = co.check(_pattern([*FAITHFUL_ROWS, *self.HANDLE_ROWS], grid=flipped))
+        self.assertTrue(issues, "a flipped design should still be reported with handles present")
+
+    def test_a_real_named_panel_is_unaffected(self):
+        # Garments name every fabric row, and must still split per piece --
+        # the unsectioned-rows change must not merge them into one strip.
+        back  = [{**r, "section": "Back"} for r in FAITHFUL_ROWS]
+        front = [{**r, "row_number": r["row_number"] + 7, "section": "Front"} for r in FAITHFUL_ROWS]
+        self.assertEqual(co.check(_pattern([*back, *front], grid=SMALL_DESIGN)), [])

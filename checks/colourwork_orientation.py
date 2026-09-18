@@ -429,6 +429,21 @@ def _candidate_expectations(design, width, rows, folded):
 # wording change silently turning them into a panel that fails.
 _NON_PANEL_SECTIONS = {"sleeves", "assembly", "neckline", "finishing", "handles", "pocket"}
 
+# Handle strips are named PER PIECE since loopdreams #551 — "Handle 1",
+# "Handle 2", and "Handle 1 (shoulder strap)" for the longer variant — where
+# they used to be one unsectioned row matched by the bare "handles" above.
+# A strip is always plain sc whatever the bag is worked in and never carries a
+# design, so it is not a panel. Missing this turned every colourwork tote into
+# a FAIL: its handles were the only sections, so the bag's entire body (which
+# has no section of its own) was dropped and the two plain straps became the
+# only "panels" — "not one of its panels works the design", against a pattern
+# whose rows name a colour 121 times.
+_NON_PANEL_SECTION_RE = re.compile(r"^handles?\s*\d*(?:\s*\(.*\))?$", re.I)
+
+
+def _is_non_panel(section: str) -> bool:
+    return section.lower() in _NON_PANEL_SECTIONS or bool(_NON_PANEL_SECTION_RE.match(section))
+
 
 def _panels(source):
     """A pattern's fabric panels, in order, as (section name, rows).
@@ -439,7 +454,13 @@ def _panels(source):
     wrong, which is why garment colourwork had no live coverage until this.
 
     Returns a single unnamed panel when the pattern is not sectioned, which is
-    every flat template and the tote.
+    every flat template.
+
+    Rows with NO section are a piece too, and are collected into one unnamed
+    panel rather than discarded. They used to be dropped the moment any other
+    row carried a section, on the assumption that a sectioned pattern names
+    every one of its pieces — true of garments, and false as soon as a tote
+    named only its handles: the whole bag body disappeared from the check.
     """
     named = [r for r in source if (r.get("section") or "").strip()]
     if not named:
@@ -447,14 +468,13 @@ def _panels(source):
     order, groups = [], {}
     for row in source:
         sec = (row.get("section") or "").strip()
-        if sec.lower() in _NON_PANEL_SECTIONS:
+        if sec and _is_non_panel(sec):
             continue
-        if not sec:
-            continue
-        if sec not in groups:
-            groups[sec] = []
-            order.append(sec)
-        groups[sec].append(row)
+        key = sec or None
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(row)
     if not order:
         return [(None, source)]
     return [(sec, groups[sec]) for sec in order]
@@ -522,7 +542,8 @@ def check(pattern) -> list:
             for issue in _check_panel(pattern, _panel_design(design, section), rows):
                 # "Back — Row 12" reads; "Back — Pattern" does not. A
                 # panel-wide finding is located by the panel itself.
-                issue.location = section if issue.location == "Pattern" else f"{section} — {issue.location}"
+                if section:
+                    issue.location = section if issue.location == "Pattern" else f"{section} — {issue.location}"
                 issues.append(issue)
         if not carried:
             return [Issue(
