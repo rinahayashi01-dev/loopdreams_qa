@@ -548,6 +548,39 @@ class TestPerHandleFinishingRows(unittest.TestCase):
             self.assertLess(raw.index("Finishing"), raw.index(handle),
                             f"{handle} not treated as finishing content:\n{raw}")
 
+    def test_attaching_rows_are_finishing_content(self):
+        # Current shape (loopdreams, 2026-09-18): making a strip and attaching
+        # it are two different jobs and are now two rows. The strip is a piece
+        # you crochet, carrying its own section, and sits ABOVE Finishing;
+        # only the attaching is finishing. Missing this wording strands the
+        # Assembly row exactly as the numbered form did.
+        payload = {**BASE_PAYLOAD, "title": "Tote Bag", "rows": [
+            {"row_number": 1, "stitch_count": 56,
+             "instructions": "Ch 57. Sc in 2nd ch from hook and each ch across.", "section": None},
+            {"row_number": 2, "stitch_count": 56,
+             "instructions": "Sc in each st across. Ch 1, turn.", "section": None},
+            {"row_number": 3, "stitch_count": 12, "instructions": "Foundation: Ch 13.", "section": "Handle 1"},
+            {"row_number": 4, "stitch_count": 12,
+             "instructions": "Sc in the next chain and each ch across. Fasten off. (12 sts)", "section": "Handle 1"},
+            {"row_number": 5, "stitch_count": 56,
+             "instructions": "Assembly: Lay the finished panel flat and seam the sides.", "section": None},
+            {"row_number": 6, "stitch_count": 56,
+             "instructions": "Attaching Handle 1: Attach this handle to the front panel.", "section": None},
+        ]}
+        raw = build_raw_text(payload)
+        self.assertIn("Finishing", raw)
+        self.assertLess(raw.index("Finishing"), raw.index("Assembly:"),
+                        f"Assembly stranded before the Finishing header:\n{raw}")
+        self.assertLess(raw.index("Finishing"), raw.index("Attaching Handle 1:"),
+                        f"the attaching row is not treated as finishing content:\n{raw}")
+        # ...and the strip is NOT finishing: it is a piece, under its own
+        # heading, numbered from its own Row 1.
+        self.assertLess(raw.index("HANDLE 1"), raw.index("Finishing"),
+                        f"the handle strip was swept into Finishing:\n{raw}")
+        strip = raw[raw.index("HANDLE 1"):raw.index("Finishing")]
+        self.assertIn("Foundation: Ch 13.", strip)
+        self.assertIn("Row 1:", strip)
+
     def test_the_older_single_handles_row_still_works(self):
         # Purchased leather handles stay one row — nothing is crocheted.
         raw = build_raw_text(self._payload([

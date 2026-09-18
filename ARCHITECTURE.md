@@ -3874,3 +3874,41 @@ wrong, which is how the declared-count gate got exercised in the first place.
 advancing a cursor as the row is read. That is where a wrong answer could turn
 a warning into a false accusation, so it lands separately and is swept against
 every builder before and after.
+
+---
+
+## A tote's "Attaching Handle N:" rows (2026-09-18)
+
+loopdreams split its Tote Bag handle rows: making a strip is crochet and now
+sits above the Finishing section as its own piece, and only attaching it is
+finishing, worded `Attaching Handle 1: ...`.
+
+`_FINISHING_ROW_RE` drives a BACKWARD walk over the trailing run of finishing
+rows, so an unrecognised last row stops the walk and strands everything before
+it. Measured on a locally rebuilt tote before this wording was added:
+
+```
+FAIL  errors=2 warnings=6
+  error   | Pattern | No Finishing/assembly section found.
+  warning | Row 80  | Row 80 is numbered as a pattern row with a declared
+                      stitch count (46 sts), but none of its text matches any
+                      recognizable stitch instruction
+  ... same for Rows 81 and 82
+```
+
+The identical failure missing the numbered `Handle N:` form caused, and for
+the identical reason — the entry above this one already records it. Adding the
+wording takes the same tote back to PASS, 0/0.
+
+The 79-case sweep shows no change at all, which is expected: none of the live
+corpus emits the new wording yet. That is why the measurement above was taken
+against rebuilt generator output directly rather than from the sweep.
+
+Also worth recording, because it is what settled the shape on the generator
+side: a strip written as ONE combined row kept its global row number under its
+own section heading, and this tool reported a false
+`No instructions are given for Row 77` gap under `HANDLE 1`. A section is
+renumbered from its own Row 1 only when its first row is a recognised
+foundation (`_is_chain_only_foundation` / `_is_component_foundation`), so the
+strips are now a foundation row plus a worked row, exactly like a garment
+panel. Suite: 373 tests, 5 skip.
