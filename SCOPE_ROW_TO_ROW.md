@@ -2,7 +2,7 @@
 
 What it would take for this tool to verify the rows it currently abstains on,
 what that buys, and where the risk is. Written 2026-09-17; phase 1 is built
-(2026-09-18), phases 2 and 3 are not. The rows in question are catalogued
+(2026-09-18), and so is phase 2. Phase 3 is not. The rows in question are catalogued
 in KNOWN_UNVERIFIABLE.md.
 
 ## The gap in one sentence
@@ -47,7 +47,7 @@ turned out to involve.
 cannot change a verdict. Landing it on its own means the risky phase arrives
 with the plumbing already proven.
 
-## Phase 2 — clauses that reference a group resolve against it
+## Phase 2 — clauses that reference a group resolve against it — **DONE (2026-09-18)**
 
 The clauses that currently return `consumes=None` for this reason, with the
 patterns that produce them:
@@ -61,6 +61,20 @@ patterns that produce them:
 
 Each resolves against the previous row's group list from phase 1, advancing a
 cursor as the row is read.
+
+Landed as `_resolve_group_references`. Two corrections to the table above,
+found in the building:
+
+- `each_of_position` was already fully resolved in the parser
+  (`consumes=n`) and needed nothing.
+- `count_in_same_spot` is deliberately left for phase 3. The rounds that use
+  it abstain for the mixed bracket and the undeclared `cluster` as well, so
+  resolving it alone cannot move a verdict — it would be code no measurement
+  could check.
+
+**Measured:** 71 PASS / 8 REVIEW → 73 PASS / 6 REVIEW across 79 cases, 0 FAIL
+either side, with byte-identical findings on the other 77. 74 shell rows went
+from verified by nothing to verified and passing. See ARCHITECTURE.md.
 
 **Risk: this is where it lives.** A wrong resolution turns a warning into a
 false accusation, which is the one failure mode this tool exists to avoid — so

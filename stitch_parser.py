@@ -1565,6 +1565,12 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         # left unknown rather than guessed at 1, per ARCHITECTURE.md.
         return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
                              consumes=None, produces=prod, is_compound=is_compound,
+                             # Not resolvable HERE -- but the width is knowable
+                             # from the previous row, which the checker can see
+                             # and this parser cannot. Marked so that phase 2 of
+                             # the row-to-row model can resolve it there; left
+                             # exactly as unverifiable as before if it can't.
+                             group_reference="inside_group",
                              unverifiable_reason=(
                                  f"'{m.group(0)}' references a position inside a multi-stitch group; how many "
                                  f"previous-row stitches this passes over depends on that group's width, which "

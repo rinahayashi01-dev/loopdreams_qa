@@ -24,6 +24,13 @@ class StitchClause:
     chain_counts_as_stitch: bool = False
     unverifiable_reason: Optional[str] = None
     sub_clauses: list = field(default_factory=list)   # for clause_type == "bracket_group"
+    # Set when the clause names a position INSIDE a group the previous row
+    # made, rather than naming its own target ("sc in centre dc of next
+    # shell"). Such a clause cannot state its own consumes -- the width of
+    # the thing it points at lives in the previous row. Phase 2 of the
+    # row-to-row model resolves these against that row's produced_groups;
+    # see checks/stitch_count.py's _resolve_group_references.
+    group_reference: Optional[str] = None
 
 
 @dataclass

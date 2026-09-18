@@ -61,6 +61,7 @@ def check(pattern) -> list:
 
     prev_count = None
     prev_label = "Foundation chain"
+    prev_groups = None
     prev_component = _UNSET
     body_width = None
     total_rows = 0
@@ -81,6 +82,7 @@ def check(pattern) -> list:
         if row.component != prev_component:
             prev_count = None
             prev_label = "Foundation chain"
+            prev_groups = None
             prev_component = row.component
             cur_foundation_chain, cur_is_magic_ring = pattern.component_foundations.get(
                 row.component, (pattern.foundation_chain, pattern.foundation_is_magic_ring)
@@ -95,6 +97,7 @@ def check(pattern) -> list:
             # carry the count forward.
             prev_count = row.declared_count
             prev_label = row.label
+            prev_groups = None
             body_width = row.declared_count if row.declared_count is not None else body_width
             continue
 
@@ -139,6 +142,7 @@ def check(pattern) -> list:
             # referenced_rows bypass above.
             prev_count = row.declared_count
             prev_label = row.label
+            prev_groups = None
             body_width = row.declared_count if row.declared_count is not None else body_width
             continue
 
@@ -152,6 +156,12 @@ def check(pattern) -> list:
         # the foundation actually came from a chain.
         is_foundation_transition = prev_count is None and not cur_is_magic_ring
 
+        # Phase 2 of the row-to-row model: clauses naming a position inside
+        # one of the previous row's groups get their consumes filled in
+        # from that row's structure, before anything reads them. Silent
+        # when it can't -- the row then reports exactly what it always did.
+        _resolve_group_references(row, prev_groups)
+
         row_issues = _check_row(row, in_count, in_label, is_foundation_transition, ratio_overrides)
         issues.extend(row_issues)
 
@@ -162,6 +172,7 @@ def check(pattern) -> list:
         row.produced_groups, row.produced_groups_reason = _row_group_structure(
             row, in_count, ratio_overrides
         )
+        prev_groups = row.produced_groups
 
         prev_count = row.declared_count
         prev_label = row.label
@@ -557,6 +568,168 @@ def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
             produces += c.produces
     return produces, consumes, reasons
 
+
+# ----------------------------------------------------------------------
+# Resolving group references -- phase 2 of the row-to-row model
+# ----------------------------------------------------------------------
+#
+# Phase 1 above records what each row PRODUCES as a list of group widths.
+# This reads the other direction: a clause that names a position inside one
+# of those groups ("sc in centre dc of next shell") passes over the whole
+# group, and now that the previous row's widths are known, over how many
+# stitches is knowable too.
+#
+# This is the phase where a mistake would be expensive. A wrong consumes
+# does not produce a warning -- it produces a confident stitch-count
+# MISMATCH against a pattern that is correct, which is the one failure mode
+# this tool exists to avoid. So the model here is deliberately narrow, and
+# every one of its assumptions is checked rather than assumed:
+#
+#   * one clause, one group. Each stitch-bearing clause in the row accounts
+#     for exactly one of the previous row's groups. That is precisely the
+#     shape of a shell row ("2 dc in first sc, sc in centre dc of next
+#     shell, 5 dc in next sc, ..."), and anything else -- a "skip 2 sts", a
+#     clause consuming nothing, a second repeat group -- abstains.
+#   * the slots must add up. The clauses' slots, with a repeat unit counted
+#     as many times as it divides the remainder, must come to exactly the
+#     number of groups the previous row made. Not "at least"; exactly.
+#   * every clause that is NOT a group reference must line up with a group
+#     of exactly the width it says it consumes. This is what keeps the
+#     one-clause-one-group reading honest: if a plain "sc in next st" is
+#     sitting over a 5-wide shell, the alignment is wrong somewhere and the
+#     row abstains instead of being told a number.
+#
+# When all of that holds, the clause's consumes is filled in and the row is
+# then checked by the ordinary machinery above, unchanged -- including its
+# own independent produced-vs-declared comparison. When any of it does not,
+# nothing is written and the row reports exactly what it reported before.
+
+def _clause_slots(c):
+    """How many of the previous row's groups this clause accounts for.
+
+    Returns (slots, reason). One clause accounts for one group or none;
+    anything else means the one-clause-one-group reading doesn't hold for
+    this row and there is nothing safe to say.
+    """
+    t = c.clause_type
+    if t in _NO_OP_TYPES or t in ("repeat_close", "closure", "skip_first_chains_from_hook"):
+        return 0, None
+    if c.group_reference:
+        return 1, None
+    if c.consumes == 0:
+        return 0, None
+    if c.consumes == 1:
+        return 1, None
+    return None, (f"'{c.raw.strip()}' accounts for {c.consumes} of the previous row's stitches rather than "
+                  f"one of its groups")
+
+
+def _zone_slots(clauses):
+    total = 0
+    for c in clauses:
+        slots, reason = _clause_slots(c)
+        if slots is None:
+            return None, reason
+        total += slots
+    return total, None
+
+
+def _resolve_group_references(row, prev_groups):
+    """Fill in consumes for this row's clauses that point into a group the
+    previous row made. Mutates those clauses in place -- deliberately, so
+    that every check above runs on the resolved row without knowing this
+    step exists. Idempotent: a clause already resolved simply reads as an
+    ordinary one-slot clause on a second pass.
+
+    Returns a reason when there were references it could not resolve, and
+    None when there was nothing to do or everything resolved.
+    """
+    refs = [c for c in row.clauses if c.group_reference and c.consumes is None]
+    if not refs:
+        return None
+    if not prev_groups:
+        return "the previous row's group structure isn't known"
+
+    clauses = row.clauses
+    opener_idx = next((i for i, c in enumerate(clauses) if c.raw.strip().startswith("*")), None)
+    closer_idx = None
+    if opener_idx is not None:
+        closer_idx = next((i for i in range(opener_idx, len(clauses)) if clauses[i].clause_type == "repeat_close"), None)
+        if closer_idx is None:
+            return "a repeat group is opened with '*' but never closed"
+        if any(c.raw.strip().startswith("*") for c in clauses[closer_idx + 1:]):
+            return "the row has more than one repeat group"
+
+    if opener_idx is None:
+        pre, unit, post = clauses, [], []
+    else:
+        pre, unit, post = clauses[:opener_idx], clauses[opener_idx:closer_idx], clauses[closer_idx + 1:]
+
+    pre_s,  r1 = _zone_slots(pre)
+    unit_s, r2 = _zone_slots(unit)
+    post_s, r3 = _zone_slots(post)
+    if r1 or r2 or r3:
+        return r1 or r2 or r3
+
+    # How many times the unit runs, solved from the GROUP count the same way
+    # _check_repeat_group solves its own repetitions from the stitch count.
+    # Deliberately solved rather than read from the text, for the same
+    # reason: the stated "N more times" is a stop condition on some rows and
+    # a count on others.
+    reps = 0
+    if unit:
+        if unit_s == 0:
+            return "the repeated unit accounts for none of the previous row's groups"
+        remainder = len(prev_groups) - pre_s - post_s
+        if remainder < 0 or remainder % unit_s != 0:
+            return (f"the previous row's {len(prev_groups)} groups don't divide evenly into this row's "
+                    f"clauses ({pre_s} before the repeat, {unit_s} per repeat, {post_s} after)")
+        reps = remainder // unit_s
+    elif pre_s + post_s != len(prev_groups):
+        return (f"this row accounts for {pre_s + post_s} groups but the previous row made "
+                f"{len(prev_groups)}")
+
+    # Walk the groups in order, pairing each with the clause that covers it.
+    # Collected first and only written once every pairing has checked out --
+    # a half-resolved row would be worse than an unresolved one.
+    resolved = {}      # id(clause) -> width
+    gi = 0
+
+    def walk(zone):
+        nonlocal gi
+        for c in zone:
+            slots, _ = _clause_slots(c)
+            if slots == 0:
+                continue
+            width = prev_groups[gi]
+            gi += 1
+            if c.group_reference:
+                seen = resolved.get(id(c))
+                if seen is not None and seen != width:
+                    # The same clause object covers every repetition of the
+                    # unit, so it can only be given one answer. Groups of
+                    # differing widths under it means there isn't one.
+                    return (f"'{c.raw.strip()}' falls over groups of different widths ({seen} and "
+                            f"{width}) on different repeats, so it has no single answer")
+                resolved[id(c)] = width
+            elif c.consumes != width:
+                return (f"'{c.raw.strip()}' consumes {c.consumes} but lines up with a group of {width} "
+                        f"-- the row and the previous row's structure don't line up")
+        return None
+
+    for zone in [pre] + [unit] * reps + [post]:
+        reason = walk(zone)
+        if reason:
+            return reason
+    if gi != len(prev_groups):
+        return f"this row covers {gi} of the previous row's {len(prev_groups)} groups"
+
+    for c in clauses:
+        width = resolved.get(id(c))
+        if width is not None:
+            c.consumes = width
+            c.unverifiable_reason = None
+    return None
 
 # ----------------------------------------------------------------------
 # Row structure -- phase 1 of the row-to-row model (SCOPE_ROW_TO_ROW.md)
