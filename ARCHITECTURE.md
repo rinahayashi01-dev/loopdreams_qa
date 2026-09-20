@@ -4034,3 +4034,85 @@ Four new tests. The two that matter fail on `main` with this exact error; the
 other two are guards — a flipped design is still caught with handles present,
 and a garment's real named panels still split per piece rather than merging
 into the new unnamed one.
+
+---
+
+## Phase 3 of the row-to-row model: the motif rounds (2026-09-20)
+
+The last phase of SCOPE_ROW_TO_ROW.md, and the one that doc recommended
+deferring ("granny rounds are hardcoded in the generator... correspondingly
+less to gain"). Done on request; the measurement below is what it bought.
+
+**Measured, 79-case sweep, identical generated input to both sides:**
+
+| | before | after |
+|---|---|---|
+| batch suite | 73 PASS, 6 REVIEW, 0 FAIL | **76 PASS, 3 REVIEW, 0 FAIL** |
+| `Granny Square — beginner / intermediate / advanced` | REVIEW (4 warnings) | **PASS, 0** |
+| `Granny Square Blanket — ×3` | REVIEW, 4 warnings | REVIEW, **2** |
+| the other 73 cases | — | identical findings |
+
+The three remaining REVIEWs are one cause, and it is arguably a finding about
+the pattern rather than a gap here — see KNOWN_UNVERIFIABLE.md.
+
+**The doc named two blockers; there were four.** It was written before phases
+1–2 landed and had gone stale. What actually stopped these rounds:
+
+1. **A bracket of mixed stitches** — `[3 dc, ch 2] 3 times in ring`. The real
+   problem was NOT the bracket wrapper, which already carries `sub_clauses`:
+   it was that the members name no target of their own, because the bracket
+   names it once for all of them. A bare `3 dc` matched no clause shape and
+   came back `unknown`. A shared trailing target is now pushed onto any
+   member that fails to parse alone — and only onto those, so a member with
+   its own target (`[3 dc in next sp, ch 1] 2 times`) and a chain are
+   untouched. `_zone_sum` then expands the bracket the way
+   `_append_clause_groups` already did for the group model.
+2. **`in the same sp`** — see below.
+3. **`then * to ** once`** — a square's fourth side, worked without the
+   corner that closes the other three. New clause type `repeat_partial`,
+   resolved in `_check_repeat_group` against the `**` marker inside the unit
+   (only that function can see the unit, so `_zone_sum` still abstains on it
+   everywhere else, which is the safe direction).
+4. **No usable in-count** — the one that made the other three dangerous.
+
+**A motif round's consumption is not comparable to the previous round's
+count, and that is the whole difficulty.** A Granny Square's Round 3 works
+into 4 corner SPACES; Round 2 declares 12 dc. Fixing any of 1–3 on its own
+made the round computable and it promptly reported a confident MISMATCH
+against a correct pattern — twice, during this work:
+
+- fixing the bracket alone: Round 2's 11 ring-consumptions against the 12 its
+  foundation row happens to declare (`Ch 5, join with sl st to form ring`);
+- fixing `then * to **` alone: three new FAILs on the Blanket's Rounds 5–6.
+
+So the in-count is now dropped for a round worked into a ring, and for one
+worked into a SHARED SPOT, and only then is a "same spot" clause scored 0.
+Those two are one condition on purpose — scoring it 0 while the consumption
+was still being checked is exactly what stitch_parser's own note records as
+having turned both corner rounds into false errors. What the round PRODUCES
+is still checked against what it declares.
+
+**Two near-misses on that gate, both found by measuring, both worth keeping:**
+
+- gating on "works into a space" caught **moss and linen**, which work into
+  ch-1 spaces on every row and whose counts ARE comparable — four of their
+  tests failed;
+- gating on `consumes is None` missed the bracketed corner
+  `[1 dc, ch 2, 2 dc] in the same sp`, which already scores 0 — three new
+  FAILs. The gate is on a clause type worked into a shared spot, not on
+  either of those.
+
+**Reading a stated repeat count, as a fallback only.** With no in-count there
+is nothing to solve the repetition from, so `_check_repeat_group` reads the
+number the row states and checks produced-vs-declared. Deliberately second
+choice: solving from the previous row is stronger, because a solved count can
+disagree with the stated one and that disagreement is itself the finding.
+Reading can never notice a wrong stated count — so it is used only where
+there is no in-count at all.
+
+**Verification.** 14 new tests, 10 of which fail on `main` (the other 4 are
+guards that should pass both ways). Every new check was mutation-tested
+against real generated patterns before being believed: a wrong declared
+count, a wrong stated repeat count, a dropped stitch inside the bracket, a
+partial worked twice, and a partial removed entirely are all caught, each
+with a message naming the produced total. Full suite 402 tests, 5 skip.
