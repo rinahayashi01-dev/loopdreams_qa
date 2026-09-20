@@ -23,23 +23,30 @@ accusation — see ARCHITECTURE.md.
 Reported as `'cluster' has no fixed consumes/produces ratio`. Rounds 5 and 6
 of the same patterns verify; only the two Cluster rounds abstain.
 
-**`cluster`** is a named group whose stitch count the pattern never settles.
-The abbreviation key defines it as *"2 dc worked together in the same space"*,
-which normally yields ONE stitch — but the round declares
-`(16 Clusters, 16 ch-1 sps)` while its own stitch count is **32**, i.e. two
-per Cluster. The pattern says both things, so the tool cannot pick one without
-guessing, and the round states its repeat as "rep from * around" with no
-number, so there is no second equation to solve it from either.
+**`cluster`** is a named group whose produces-count the round never pins down
+for the checker. The abbreviation key defines it as *"2 dc worked together in
+the same space"*, and a completed Cluster is ONE stitch — the loops are
+gathered and closed with a single final loop, so the round shows 16 Vs. The
+round says so itself: `(16 Clusters, 16 ch-1 sps)`.
 
-Unlike `bobble`, which the tool solves algebraically across many rows that each
-declare their own counts, these rounds do not give it enough independent
-equations.
+Knowing that is still not enough to check the arithmetic. The round states its
+repeat as "rep from * around" with no number, and it is worked into the
+previous round's spaces so there is no usable in-count to solve the repeat
+from either — two unknowns, one equation. Unlike `bobble`, which the tool
+solves algebraically across many rows that each declare their own counts,
+these two rounds do not give it enough to work with.
 
-**What would change it:** a pattern that agrees with itself. Either the
-declared count counts Clusters as one stitch each, or the abbreviation says a
-Cluster is two separate dc. This one is arguably a finding about the pattern
-rather than a gap in the tool — worth raising with the generator before
-teaching the checker to prefer one reading.
+**An earlier version of this entry said the pattern "disagrees with itself",
+because the round's `stitch_count` was 32 against its stated 16 Clusters.
+That was wrong** and is worth recording so it is not re-derived: 32 was the dc
+actually worked, which the yarn estimate needs, and it was simply sharing a
+field with the count a maker checks. The generator now states both separately
+(`stitch_count: 16`, `yarn_stitches: 32` — loopdreams #562), and these two
+rounds still abstain for exactly the reason above. Correcting the count did
+not change this result, which was verified before the change was made.
+
+**What would change it:** a stated repeat count on those rounds, or any other
+second equation. Not a parser feature.
 
 ---
 
