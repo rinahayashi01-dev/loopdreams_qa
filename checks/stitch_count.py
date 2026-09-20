@@ -36,8 +36,13 @@ Per ARCHITECTURE.md:
 """
 import re
 from collections import defaultdict
+from dataclasses import replace
 
 from ..models import Issue
+
+# A clause worked into the foundation ring rather than into previous-round
+# stitches ("2 dc in ring", "[3 dc, ch 2] 3 times in ring").
+_RE_WORKED_INTO_RING = re.compile(r"\bin(?:to)?\s+(?:the\s+)?(?:magic\s+)?ring\b", re.I)
 
 _NO_OP_TYPES = {"chain", "turn", "join", "note", "fasten_off"}
 
@@ -454,6 +459,58 @@ def _check_row(row, in_count, in_label, is_foundation_transition, ratio_override
     if any(c.clause_type == "held_gusset_resume" for c in clauses):
         in_count = None
 
+    # A round worked INTO A RING consumes the ring, not counted stitches, so
+    # there is no previous-row count to check its consumption against. Same
+    # treatment as the gusset-resume case above and for the same reason: the
+    # inherited in_count is not merely unknown, it is the wrong KIND of
+    # number, and checking against it is actively wrong. Produced-vs-declared
+    # is still verified below.
+    #
+    # Found by fixing the mixed bracket (phase 3): with "[3 dc, ch 2] 3 times
+    # in ring" finally resolving, a Granny Square's Round 2 started comparing
+    # its 11 ring-consumptions against the 12 its foundation row happens to
+    # declare, and reported a confident mismatch against a correct pattern.
+    # The 12 is not a stitch count a round can work into -- Round 1 is
+    # "Ch 5, join with sl st to form ring".
+    if any(_RE_WORKED_INTO_RING.search(c.raw) for c in clauses):
+        in_count = None
+
+    # A round built on SHARED SPOTS -- "Ch 3 ..., 2 dc in the same sp, ch 2,
+    # 3 dc in the same sp (corner made)" -- is a motif round worked into the
+    # spaces the previous round left, not into its stitches. Its consumption
+    # is a count of spaces and the number it would be checked against is a
+    # count of stitches: a Granny Square's Round 3 works 4 corner spaces
+    # while Round 2 declares 12 dc. Not comparable, so not compared; what the
+    # round PRODUCES is still checked against what it declares.
+    #
+    # Only once that comparison is off the table is it safe to score a "same
+    # spot" clause at 0. It genuinely consumes nothing new -- it works into
+    # the spot the clause before it already named -- but scoring it 0 while
+    # the round's consumption was still being checked is what turned both of
+    # LoopDreams' Granny Square corner rounds into confident MISMATCH errors
+    # against correct counts (see stitch_parser's own note). The two are only
+    # sound together, which is why they are one condition.
+    #
+    # Keyed on a group worked into a SHARED SPOT, not on "works into a space"
+    # and not on the clause being unresolvable. Two near-misses found by
+    # measuring, both worth keeping written down:
+    #
+    #   * gating on the space target instead caught moss and linen, which
+    #     work into ch-1 spaces on every row and whose counts ARE comparable
+    #     -- four of their tests failed.
+    #   * gating on `consumes is None` missed the bracketed corner
+    #     "[1 dc, ch 2, 2 dc] in the same sp", which already scores 0. Rounds
+    #     5 and 6 of every Granny Square Blanket then computed against a
+    #     stitch count they do not consume and reported a confident mismatch
+    #     against a correct pattern -- three new FAILs in the sweep.
+    if any(c.clause_type in _ONE_GROUP_TYPES and _SAME_SPOT_RE.search(c.raw) for c in clauses):
+        in_count = None
+        clauses = [
+            replace(c, consumes=0, unverifiable_reason=None)
+            if c.consumes is None and _SAME_SPOT_RE.search(c.raw) else c
+            for c in clauses
+        ]
+
     opener_idx = next((i for i, c in enumerate(clauses) if c.raw.strip().startswith("*")), None)
     closer_idx = None
     if opener_idx is not None:
@@ -548,6 +605,26 @@ def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
             continue
         if c.clause_type == "unknown":
             reasons.append(f"unrecognized clause: '{c.raw}'")
+            continue
+        if c.clause_type == "bracket_group":
+            # A bracket holding several DIFFERENT stitches has no single
+            # ratio of its own -- its members do. Sum them and multiply, the
+            # same expansion _append_clause_groups already does for the group
+            # model. Without this the clause reported "'None' has no fixed
+            # consumes/produces ratio" (the None being its absent single
+            # stitch) and took the whole round with it: every Granny Square's
+            # Round 2, "[3 dc, ch 2] 3 times in ring".
+            if not c.sub_clauses or c.explicit_count is None:
+                reasons.append(c.unverifiable_reason
+                               or f"'{c.raw.strip()}' is a bracketed group whose contents aren't broken out")
+                continue
+            sub_p, sub_c, sub_r = _zone_sum(c.sub_clauses, count_chains=count_chains,
+                                            ratio_overrides=ratio_overrides)
+            if sub_r:
+                reasons.extend(sub_r)
+                continue
+            produces += sub_p * c.explicit_count
+            consumes += sub_c * c.explicit_count
             continue
         if c.consumes is None:
             reasons.append(c.unverifiable_reason or f"'{c.stitch}' has no fixed consumes/produces ratio")
@@ -1080,8 +1157,42 @@ def _check_multi_repeat_groups(row, clauses, in_count, in_label, ratio_overrides
     return issues
 
 
+def _partial_repeat(unit, post, ratio_overrides):
+    """A trailing "then * to ** once" and what it is worth.
+
+    Returns (post_without_it, produces, consumes, reason). The clause repeats
+    the part of the unit BEFORE the ** marker -- a square motif's last side,
+    worked without the corner that closes the other three. Nothing to do and
+    no reason when the row has no such clause.
+
+    Taken out of `post` here rather than taught to _zone_sum, because only
+    this function can see the unit the segment lives in. Everywhere else the
+    clause stays unresolved and abstains, which is the safe direction.
+    """
+    idx = next((i for i, c in enumerate(post) if c.clause_type == "repeat_partial"), None)
+    if idx is None:
+        return post, 0, 0, None
+    times = post[idx].explicit_count
+    rest = post[:idx] + post[idx + 1:]
+    if times is None:
+        return rest, 0, 0, f"'{post[idx].raw.strip()}' does not state how many times"
+    mark = next((i for i, c in enumerate(unit) if c.raw.strip().startswith("**")), None)
+    if mark is None:
+        return rest, 0, 0, f"'{post[idx].raw.strip()}' refers to a ** marker the repeated unit does not have"
+    seg_p, seg_c, seg_r = _zone_sum(unit[:mark], ratio_overrides=ratio_overrides)
+    if seg_r:
+        return rest, 0, 0, "; ".join(seg_r)
+    return rest, seg_p * times, seg_c * times, None
+
+
 def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label, ratio_overrides):
     pre, unit, post = clauses[:opener_idx], clauses[opener_idx:closer_idx], clauses[closer_idx + 1:]
+    post, partial_p, partial_c, partial_r = _partial_repeat(unit, post, ratio_overrides)
+    if partial_r:
+        return [Issue(
+            category="stitch_count", severity="warning", location=row.label,
+            message=f"Cannot verify stitch-count math for {row.label}: {partial_r}.",
+        )]
     pre_p, pre_c, pre_r = _zone_sum(pre, ratio_overrides=ratio_overrides)
     unit_p, unit_c, unit_r = _zone_sum(unit, ratio_overrides=ratio_overrides)
     post_p, post_c, post_r = _zone_sum(post, ratio_overrides=ratio_overrides)
@@ -1094,10 +1205,39 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
         )]
 
     if in_count is None:
-        return [Issue(
-            category="stitch_count", severity="warning", location=row.label,
-            message=f"Cannot verify stitch-count math for {row.label}: no usable starting count from {in_label}.",
-        )]
+        # Nothing to solve the repetition count FROM. If the row states it,
+        # read it and check what the row produces against what it declares --
+        # half the usual check, but the half that is still available.
+        #
+        # Deliberately a fallback and not the default: solving from the
+        # previous row's count is stronger, because a solved count can
+        # disagree with the stated one and that disagreement is itself the
+        # finding. Reading the stated count can never notice a wrong stated
+        # count. Only rows with no usable in-count at all take this path --
+        # today, rounds worked into a ring or into chain spaces, where the
+        # previous round's count is the wrong KIND of number.
+        zones, zone_reason = _split_repeat_groups(clauses)
+        stated = None
+        if zones is not None:
+            groups = [z for z in zones if z[0] == "group"]
+            if len(groups) == 1:
+                stated = groups[0][2]
+        if stated is None or row.declared_count is None:
+            return [Issue(
+                category="stitch_count", severity="warning", location=row.label,
+                message=(f"Cannot verify stitch-count math for {row.label}: no usable starting count from "
+                         f"{in_label}" + (f", and {zone_reason}" if zone_reason else "") + "."),
+            )]
+        produced_stated = pre_p + stated * unit_p + post_p + partial_p
+        if produced_stated != row.declared_count:
+            return [Issue(
+                category="stitch_count", severity="error", location=row.label,
+                message=(
+                    f"Stitch-count mismatch at {row.label}: worked the {stated} time(s) the row states, its "
+                    f"stitches produce {produced_stated} sts, but the pattern declares {row.declared_count}."
+                ),
+            )]
+        return []
 
     if unit_c == 0:
         return [Issue(
@@ -1106,7 +1246,7 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
                      f"repeat, so the repeat count can't be solved from the previous row's count.",
         )]
 
-    remainder = in_count - pre_c - post_c
+    remainder = in_count - pre_c - post_c - partial_c
     if remainder < 0 or remainder % unit_c != 0:
         return [Issue(
             category="stitch_count", severity="error", location=row.label,
@@ -1119,7 +1259,7 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
         )]
 
     r = remainder // unit_c
-    produced_total = pre_p + r * unit_p + post_p
+    produced_total = pre_p + r * unit_p + post_p + partial_p
     if row.declared_count is not None and produced_total != row.declared_count:
         # Some stitches (e.g. moss/linen stitch) conventionally count their
         # chain-1 spaces as stitches toward the row total; most patterns'
@@ -1134,7 +1274,7 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
         unit_p_alt, _, unit_r_alt = _zone_sum(unit, count_chains=True, ratio_overrides=ratio_overrides)
         post_p_alt, _, post_r_alt = _zone_sum(_without_turning_chain(post), count_chains=True, ratio_overrides=ratio_overrides)
         if not (pre_r_alt or unit_r_alt or post_r_alt):
-            produced_alt = pre_p_alt + r * unit_p_alt + post_p_alt
+            produced_alt = pre_p_alt + r * unit_p_alt + post_p_alt + partial_p
             if produced_alt == row.declared_count:
                 return []
         return [Issue(

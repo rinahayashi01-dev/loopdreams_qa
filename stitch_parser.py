@@ -280,7 +280,25 @@ _RE_PULL_TIGHT_CLOSE = re.compile(r"^pull\s+tight\s+to\s+close\s+the\s+.+$", re.
 # matched, so the plain "weave in ends" close -- the majority case -- fell
 # through as an unrecognized clause on every non-amigurumi pattern's last row.
 _RE_WEAVE_IN_END = re.compile(r"^(?:and\s+)?weave\s+in\s+(?:the\s+end|ends)$", re.I)
+# "then * to ** once" -- after the main repeat, work the part of the unit
+# between the * and the ** markers again. A square motif's four sides but
+# only three trailing corners: the last side is worked without the corner
+# that closes the others. Real sample: Granny Square Blanket rounds 5 and 6.
+#
+# The ** marker itself opens a clause inside the unit ("** [2 dc, ch 2, 2 dc]
+# in next st"), so the segment is the unit's clauses BEFORE that one -- which
+# only the row-level checker can see, not this parser. Carried as its own
+# clause type for _check_repeat_group to resolve.
+_RE_REPEAT_PARTIAL = re.compile(
+    r"^then\s+\*\s+to\s+\*\*\s+(once|twice|\d+\s*times?|[a-z]+\s+times?)$", re.I
+)
 _RE_BRACKET_GROUP = re.compile(r"^\[(.*)\]\s*(once|twice|[a-z]+\s+times?|\d+\s*times?)\b", re.I)
+# What a repeated bracket is worked INTO, when the target is stated once after
+# the bracket instead of on each member: "[3 dc, ch 2] 3 times in ring". The
+# members then read as bare "3 dc", which no clause shape matches -- so the
+# whole bracket resolved to no stitch and the round was unverifiable. Real
+# sample: every Granny Square's Round 2.
+_RE_BRACKET_TARGET = re.compile(r"^\s*(?:all\s+)?in\s+(.+?)\s*$", re.I)
 # "(sc, hdc, dc) in next st" -- a named list of different stitches, all into ONE shared spot.
 # Captures arbitrary lowercase words, so it works for custom tokens too without
 # needing the dynamic alternation -- each captured word is individually looked
@@ -905,7 +923,25 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
         if m:
             inner_text = m.group(1)
             mult = _parse_multiplier(m.group(2))
+            # A target stated once after the bracket belongs to every member
+            # that does not name its own ("[3 dc, ch 2] 3 times in ring" =>
+            # "3 dc in ring" + "ch 2"). Applied only to a member that fails to
+            # parse on its own, so a member that DOES name a target
+            # ("[3 dc in next sp, ch 1] 2 times") is left exactly as it was,
+            # and a chain -- which is not worked into anything -- never picks
+            # one up.
+            tgt = _RE_BRACKET_TARGET.match(part[m.end():])
             sub = tokenize_round(inner_text, custom_compound)
+            if tgt:
+                retried = []
+                for member, sub_clause in zip(_split_top_level(inner_text), sub):
+                    if sub_clause.clause_type != "unknown":
+                        retried.append(sub_clause)
+                        continue
+                    alt = tokenize_round(f"{member.strip()} in {tgt.group(1)}", custom_compound)
+                    retried.append(alt[0] if len(alt) == 1 and alt[0].clause_type != "unknown" else sub_clause)
+                if len(retried) == len(sub):
+                    sub = retried
             clauses.append(StitchClause(raw=part, clause_type="bracket_group", explicit_count=mult,
                                          sub_clauses=sub,
                                          unverifiable_reason=None if mult is not None else
@@ -1159,6 +1195,12 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     if _RE_SL_ST_EDGE_ATTACH.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
+
+    m = _RE_REPEAT_PARTIAL.match(p)
+    if m:
+        return StitchClause(raw=raw_part, clause_type="repeat_partial",
+                             explicit_count=_parse_multiplier(m.group(1)),
+                             unverifiable_reason=None)
 
     if (_RE_LEAVING_LONG_TAIL.match(p) or _RE_THREAD_TAIL_FRONT_LOOP.match(p)
             or _RE_PULL_TIGHT_CLOSE.match(p) or _RE_WEAVE_IN_END.match(p)):

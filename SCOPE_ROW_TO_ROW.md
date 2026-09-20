@@ -2,7 +2,7 @@
 
 What it would take for this tool to verify the rows it currently abstains on,
 what that buys, and where the risk is. Written 2026-09-17; phase 1 is built
-(2026-09-18), and so is phase 2. Phase 3 is not. The rows in question are catalogued
+(2026-09-18), and so are phases 2 and 3 (2026-09-20). The rows in question are catalogued
 in KNOWN_UNVERIFIABLE.md.
 
 ## The gap in one sentence
@@ -86,7 +86,7 @@ before and after, expect exactly the intended cases to move, and treat any new
 FAIL as guilty until the pattern is checked by hand. Recent precedent: three
 separate false FAILs were caught that way and none by the unit tests.
 
-## Phase 3 — the granny bracket (independent)
+## Phase 3 — the granny bracket (independent) — **DONE (2026-09-20)**
 
 Does **not** need phases 1–2, and should not be bundled with them. Two
 unrelated parser features:
@@ -98,6 +98,21 @@ unrelated parser features:
 
 The second changes a shared assumption (one row, one declared count), so it
 reaches well beyond granny squares.
+
+**What it actually took.** Both of the above, plus two the list did not
+mention: `then * to ** once`, and — the one that mattered — dropping the
+in-count for a round worked into a ring or a shared spot, because a motif
+round's consumption is a count of SPACES and the number it was being checked
+against is a count of STITCHES. Fixing the bracket without that turned a
+correct Round 2 into a confident mismatch. The multi-tally declared count was
+NOT needed: from_pattern_json already appends the generator's own
+`(N sts)`, and that is the number to check against. See ARCHITECTURE.md.
+
+**Measured:** 73 PASS / 6 REVIEW → 76 PASS / 3 REVIEW across 79 cases, 0 FAIL
+either side, identical findings on the other 73. The three Granny Square
+cases clear completely; the three Blanket cases drop from 4 warnings to 2,
+and what remains is a pattern that disagrees with itself about how many
+stitches a Cluster is.
 
 ## What it buys, honestly
 
