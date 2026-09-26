@@ -4186,3 +4186,32 @@ now they are actually checked. +1 mutations on sleeve rows are caught on every
 real row sampled (17/17; the one "miss" in the sample was a `Sleeve 2: Ch 70.`
 foundation line, which states no count to perturb). The 3 new tests fail on
 `main` and pass here. Full suite: 405 passed, 5 skipped.
+
+## Stepped decreases and naming the right side (2026-09-26)
+
+loopdreams' cardigan now has a V-neck. In sedge, moss and linen it is shaped
+a whole pattern repeat at a time, because a one-stitch decrease breaks the
+repeat at the edge. That needed two clauses this tool could not read.
+
+**"leaving the last N sts unworked"** (`_RE_LEAVE_UNWORKED`). The row stops N
+stitches short and turns. Those stitches exist but nothing is worked into
+them, so they are consumed and make nothing, exactly a `skip`, and scored as
+one. The count is stated in the clause, so this is knowable and not a guess.
+A bare "leaving the last st unworked" with no number is deliberately still
+unrecognised.
+
+**Naming and marking the right side** (`_RE_RS_DESIGNATION`): "The side facing
+you as you work this row is the right side (RS); clip a marker to it". This is
+pure instruction and a no-op, like placing a marker. A shaped piece needs it,
+because which end of a row is the neck edge follows from it. Plain rows had
+been slipping past it via the foundation-row path, but a sedge first row lost
+its verification wherever the sentence was placed (probed at four positions).
+
+**Measured** on builder-generated V-neck cardigans:
+- sedge, moss and linen at chest 46/36/20: all PASS 0/0;
+- every Front row's +1 is caught (320/320), and so is every step with its
+  "leaving … unworked" removed (68/68);
+- plain-stitch V-necks (8 stitches × 2 sizes) and the 36 compound garments from
+  the #72 sweep are unchanged, all PASS.
+
+6 new tests; 4 fail on `main`. The other 2 are guards that hold either way.

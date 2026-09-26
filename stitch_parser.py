@@ -112,6 +112,14 @@ _RE_SKIP_FIRST_ST = re.compile(r"^skip\s+first\s+sts?\b", re.I)
 # ARCHITECTURE.md's "chain stitches never count toward stitch total"), so
 # it consumes 0.
 _RE_SKIP_CHAIN_SPACE = re.compile(r"^skip\s+(?:the\s+)?ch-?1\s+sp(?:ace)?$", re.I)
+# "leaving the last 3 sts unworked" -- a stepped decrease at the end of a row,
+# the way a textured fabric (sedge, moss/linen) is shaped a whole pattern repeat
+# at a time: the row stops N sts short and turns. Those N sts exist but nothing
+# is worked into them, so they are consumed and produce nothing -- exactly a
+# skip, and scored as one. Knowable from the clause alone (the count is stated);
+# first real use: loopdreams' cardigan V-neck in a compound stitch (2026-09-26).
+_RE_LEAVE_UNWORKED = re.compile(
+    r"^(?:and\s+)?leav(?:e|ing)\s+(?:the\s+)?last\s+(\d+)\s+sts?\s+unworked$", re.I)
 _RE_NOTE = re.compile(r"^at (?:the )?end of this row$", re.I)
 # "Increase row: 2 DC in first st, ..." -- a leading row-type label, real
 # phrasing (sweater, Jul 12 batch, sleeve shaping rows). Purely descriptive
@@ -129,6 +137,15 @@ _RE_ROW_TYPE_LABEL = re.compile(r"^[^A-Za-z]*(?:increase|decrease)\s+row$", re.I
 # stitch-count purposes (informational markers, not stitches), EXCEPT
 # held_aside/bridge_chain which carry real numbers other clauses need.
 _RE_PLACE_MARKER = re.compile(r"^place\s+a\s+(?:stitch\s+)?marker\b", re.I)
+# Naming which face is the right side, and marking it: "The side facing you as
+# you work this row is the right side (RS); clip a marker to it". Pure
+# instruction, no stitches -- a no-op like placing a marker. A shaped piece
+# needs it (which end of a row is the neck edge follows from it); first used on
+# loopdreams' V-neck cardigan fronts (2026-09-26). Plain rows already slipped
+# past it through the foundation-row path, but a sedge first row could not.
+_RE_RS_DESIGNATION = re.compile(
+    r"^(?:the\s+side\s+facing\s+you\b.*\bright\s+side\s+\(rs\)|this\s+row\s+is\s+the\s+right\s+side\s+\(rs\)"
+    r"|clip\s+a\s+(?:stitch\s+)?marker\s+to\s+it)$", re.I)
 # "Place the next 10 sts on a holder or scrap yarn (thumb gusset)" -- sets
 # aside N sts from the active round (they're picked back up later, in a
 # separate row/round -- see held_gusset_resume below). Removes N from
@@ -1177,7 +1194,8 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
-    if (_RE_PLACE_MARKER.match(p) or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_COLOUR_DESIGNATOR.match(p)
+    if (_RE_PLACE_MARKER.match(p) or _RE_RS_DESIGNATION.match(p)
+            or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_COLOUR_DESIGNATOR.match(p)
             or _RE_WORKING_LAST_INTO_CH.match(p)
             or _RE_BODY_LENGTH_CHECKPOINT.match(p) or _RE_DO_NOT_JOIN_OR_TURN.match(p)
             or _RE_OPPOSITE_SIDE_CHAIN.match(p) or _RE_STUFF_NOTE.match(p)
@@ -1768,6 +1786,11 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     m = _RE_SKIP_CHAIN_SPACE.match(p)
     if m:
         return StitchClause(raw=raw_part, clause_type="skip", consumes=0, produces=0)
+
+    m = _RE_LEAVE_UNWORKED.match(p)
+    if m:
+        n = int(m.group(1))
+        return StitchClause(raw=raw_part, clause_type="skip", explicit_count=n, consumes=n, produces=0)
 
     m = _RE_SKIP.match(p)
     if m:
