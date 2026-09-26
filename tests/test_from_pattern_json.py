@@ -648,3 +648,42 @@ class TestRepeatedPieceFoundationWithColour(unittest.TestCase):
         # colourLabel(), not a numbered "Colour N" — the same allowance the
         # main foundation regex already makes.
         self.assertEqual(self._errors("Sleeves (make 2): With White, Ch 5."), [])
+
+
+class TestGarmentNotesSectionDoesNotSwallowLaterPieces(unittest.TestCase):
+    """A moss/linen/sedge sweater or cardigan files a straight-sleeve note under
+    section "Notes" just before its sleeves. Emitted as a "NOTES" heading it
+    switched parse() into the document's Notes section, so both sleeves were
+    read as notes and never checked -- silently (found 2026-09-26)."""
+
+    def _payload(self):
+        dc_row = "Dc in each st across. Ch 3, turn. (10 sts)"
+        return {**BASE_PAYLOAD, "rows": [
+            {"row_number": 1, "stitch_count": 10, "instructions": "Foundation: Ch 12.", "section": "Back"},
+            {"row_number": 2, "stitch_count": 10, "instructions": "Dc in 3rd ch from hook and in each ch across. Ch 3, turn.", "section": "Back"},
+            {"row_number": 3, "stitch_count": 10, "instructions": dc_row, "section": "Back"},
+            {"row_number": 4, "stitch_count": 0, "instructions": "Sleeve shape: Moss stitch has no edge increase, so both sleeves are worked STRAIGHT.", "section": "Notes"},
+            {"row_number": 5, "stitch_count": 10, "instructions": "Sleeve 1: Ch 12.", "section": "Sleeve 1"},
+            {"row_number": 6, "stitch_count": 10, "instructions": "Dc in 3rd ch from hook and in each ch across. Ch 3, turn.", "section": "Sleeve 1"},
+            {"row_number": 7, "stitch_count": 10, "instructions": dc_row, "section": "Sleeve 1"},
+        ]}
+
+    def test_pieces_after_the_note_are_still_read(self):
+        pattern = parse(build_raw_text(self._payload()))
+        components = {r.component for r in pattern.rows}
+        self.assertIn("SLEEVE 1", components)
+
+    def test_the_note_lands_in_the_trailing_notes_section_uncounted(self):
+        raw = build_raw_text(self._payload())
+        self.assertNotIn("\nNOTES\n", raw)
+        tail = raw.split("\nNotes\n", 1)
+        self.assertEqual(len(tail), 2, raw)
+        self.assertIn("Sleeve shape: Moss stitch has no edge increase", tail[1])
+        self.assertNotIn("(0 sts)", tail[1])
+
+    def test_a_wrong_count_after_the_note_is_now_caught(self):
+        payload = self._payload()
+        payload["rows"][-1] = {**payload["rows"][-1], "stitch_count": 11,
+                               "instructions": "Dc in each st across. Ch 3, turn. (11 sts)"}
+        issues = stitch_count.check(parse(build_raw_text(payload)))
+        self.assertTrue(any(i.severity == "error" for i in issues), [i.message for i in issues])
