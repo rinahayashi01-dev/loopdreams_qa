@@ -63,6 +63,13 @@ class TestRightSideDesignation(unittest.TestCase):
         for c in tokenize_round(text):
             self.assertEqual((c.consumes, c.produces), (0, 0), c.raw)
 
+    def test_the_design_face_form_is_a_no_op_too(self):
+        text = ("The right side (RS) is the side on which this row ends at the right-hand edge when the "
+                "foundation is at the bottom; clip a marker to it. This Front carries the left half of the "
+                "design as pictured and the design reads the right way round on the RS")
+        for c in tokenize_round(text):
+            self.assertEqual((c.consumes, c.produces), (0, 0), c.raw)
+
     def test_it_does_not_cost_a_row_its_verification(self):
         rows = _rows("Decrease row: " + MOSS.format(n=3) + ", leaving the last 2 sts unworked. Ch 1, turn. (9 sts)")
         rows[2] = {**rows[2], "instructions": rows[2]["instructions"].replace(

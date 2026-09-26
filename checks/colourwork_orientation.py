@@ -101,6 +101,10 @@ _TOKENS = re.compile(
     # ("2 fpdc around next 2 sts"), which is how every waffle colour run reads.
     r"|(?P<run_n>(?P<n_run>\d+)\s+[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?next\s+\d+\s+(?:sts?|chs?|chains?))"
     r"|(?P<each>\bin each (?:st|ch) across\b)"
+    # A decrease worked as one bare clause ("dc2tog") on a V-neck Front's
+    # shaping row: two stitches of the row below, ONE stitch of fabric, in one
+    # colour -- so one position.
+    r"|(?P<dec>\b(?:sc|hdc|dc|tr)2tog\b)"
     # "Sc in first st" opens every moss/linen row; "sc in next ch-1 sp" is the
     # one real stitch inside their offset repeat. Neither appears in the plain
     # grammar, and both are single stitches.
@@ -291,6 +295,10 @@ def _row_colours(text, width, carried):
     resampled the design to write it.
     """
     body = re.sub(r"\.\s*(?:Ch \d+, turn|Turn|Fasten off[^.]*)\.?\s*$", "", text.strip(), flags=re.I)
+    # A decrease's inline how-to, "(dc2tog: [yo, insert hook in next st, ...])",
+    # names stitch motions, not stitches of the row; read as runs it would add
+    # phantom stitches.
+    body = re.sub(r"\((?:sc|hdc|dc|tr)2tog:[^)]*\)", "", body, flags=re.I)
 
     # Resolution first: it decides how long a SOLID row is too, so it has to be
     # settled before the shortcut below and not just before the tokenizer.
@@ -562,6 +570,13 @@ def _check_panel(pattern, design, source) -> list:
     folded = any(_RE_FOLDED.search(r.get("instructions") or "") for r in source)
 
     actual, width, carried, unread, blind = [], None, None, [], []
+    # A V-neck Front narrows at its centre-front edge. Its narrower rows are the
+    # design with the V's cells cut away, not finishing rows, so they keep their
+    # slot and are compared against the design row minus those cells (see
+    # _shape_expectation). `drops` is how many cells each row lost.
+    section = next((r.get("section") for r in source if r.get("section")), None)
+    shaped_front = section in ("Right Front", "Left Front")
+    drops = []
     # Parallel to `actual`: True where the generator resampled the design
     # straight to the row's own colour resolution (sedge, shell) rather than
     # through its stitch count. See _expected_row.
@@ -575,7 +590,7 @@ def _check_panel(pattern, design, source) -> list:
             continue
         if width is None:
             width = count
-        if count != width:
+        if count != width and not (shaped_front and count < width):
             continue          # a finishing row of a different width
         if carried is None:
             # The colour is read BEFORE the row is judged to be a foundation
@@ -609,9 +624,10 @@ def _check_panel(pattern, design, source) -> list:
                 # perfectly correct pattern.
                 actual.append(None)
                 directs.append(False)
+                drops.append(width - count)
                 blind.append(row.get("row_number"))
                 continue
-        colours, ending = _row_colours(text, width, carried)
+        colours, ending = _row_colours(text, count, carried)
         if colours is None:
             # Unreadable rows are HOLES, not a reason to abandon the pattern.
             # A compound colourwork row states its texture as well as its
@@ -625,11 +641,13 @@ def _check_panel(pattern, design, source) -> list:
             # be worse than a second hole.
             actual.append(None)
             directs.append(False)
+            drops.append(width - count)
             unread.append((row.get("row_number"), ending))
             carried = None
             continue
         actual.append(colours)
         directs.append(bool(_RE_SEDGE_ROW.search(text) or _RE_SHELL_ROW.search(text)))
+        drops.append(width - count)
         carried = ending
 
     # "Dropped" means the instructions name no colour ANYWHERE, and is tested
@@ -656,7 +674,8 @@ def _check_panel(pattern, design, source) -> list:
         # Too little to compare a layout against, but something was read or
         # something was named: say what could not be checked, do not diagnose.
         return _blind_rows(blind) + _coverage(actual, unread)
-    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread, directs)
+    return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread, directs,
+                                         drops=drops, section=section)
 
 
 def _blind_rows(blind):
@@ -771,7 +790,30 @@ def _first_difference_per_row(base, per_res, name, actual, directs):
     return None
 
 
-def _compare(pattern, design, actual, width, folded, unread=(), directs=None) -> list:
+def _shape_expectation(grid, drops, section):
+    """The expected fabric of a V-neck Front: each row of the full-width
+    working-order expectation with the cells the V removed cut from its
+    centre-front end.
+
+    Which end that is follows from the garment, not from the text: the Right
+    Front carries the LEFT half of the design (it is worn on the viewer's left),
+    so its centre-front edge is that half's right-hand side, and the Left
+    Front's is its left-hand side. to_working_order keeps even rows in design
+    order and reverses odd ones, so for the Right Front the centre-front cells
+    are at the END of even rows and the START of odd rows; the Left Front is the
+    other way round."""
+    out = []
+    for i, row in enumerate(grid):
+        d = drops[i] if i < len(drops) else 0
+        if d <= 0:
+            out.append(row)
+            continue
+        at_end = (section == "Right Front") == (i % 2 == 0)
+        out.append(row[:len(row) - d] if at_end else row[d:])
+    return out
+
+
+def _compare(pattern, design, actual, width, folded, unread=(), directs=None, drops=None, section=None) -> list:
     """Compare the fabric the instructions make against the design.
 
     Every row is checked at ITS OWN colour resolution, and the expectation for
@@ -794,6 +836,8 @@ def _compare(pattern, design, actual, width, folded, unread=(), directs=None) ->
     directs = list(directs) if directs is not None else [False] * len(actual)
     base = dict(_candidate_expectations(labelled, width, rows, folded))
     names = [name for name, _ in _candidate_expectations(labelled, width, rows, folded)]
+    if drops and any(d > 0 for d in drops):
+        base = {name: _shape_expectation(g, drops, section) for name, g in base.items()}
     # Only the single-resample rows need their own expectation grid.
     resolutions = {len(a) for a, d in zip(actual, directs) if a is not None and d}
     per_res = {res: dict(_candidate_expectations(labelled, res, rows, folded)) for res in resolutions}

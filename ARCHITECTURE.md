@@ -4215,3 +4215,43 @@ its verification wherever the sentence was placed (probed at four positions).
   the #72 sweep are unchanged, all PASS.
 
 6 new tests; 4 fail on `main`. The other 2 are guards that hold either way.
+
+## A V-neck Front carrying a colourwork design (2026-09-26)
+
+loopdreams now shapes a coloured cardigan Front into a V. Its narrower rows
+are the design with the V's cells cut from the centre-front edge. The
+colourwork check dropped every row whose width differed from the panel's first
+row ("a finishing row of a different width"), then compared the shortened panel
+against the full design. The result was a **false FAIL** on a correct pattern,
+at "stitch 23 of crocheted row 5" on both Fronts.
+
+**Shaped Fronts.** In a Right Front or Left Front, a narrower row now keeps its
+slot and is compared against the full-width expectation minus its lost cells
+(`_shape_expectation`). The cells come off the **centre-front** end, which
+follows from the garment rather than the text. The Right Front carries the
+design's left half (worn on the viewer's left), so its centre-front is that
+half's right-hand side. `to_working_order` keeps even rows in design order and
+reverses odd ones. Other panels keep the old rule.
+
+**Reading a coloured decrease row.**
+- A bare `dc2tog`/`sc2tog`/`hdc2tog`/`tr2tog` is one colour position.
+- A decrease's inline how-to, "(dc2tog: [yo, insert hook in next st, …])", is
+  stripped before reading runs. Its "insert hook in next st" had been counted
+  as a stitch, which is why a row with the how-to *happened* to add up while
+  the bare decrease was unknown.
+
+**The design-face RS sentence** ("The right side (RS) is the side on which
+this row ends at the right-hand edge …; this Front carries the left half of
+the design …") is a no-op, alongside the #73 forms.
+
+**Measured** on builder output:
+- sc, hdc, hhdc, dc and tr with the design on front-and-back, front only or
+  back only: all PASS 0/0 (15/15). `main` gave a false FAIL on every one with
+  shaped coloured Fronts.
+- A wrong colour in any V row is caught (16/16).
+- A generator deliberately made to cut the design at the **wrong** edge is
+  caught, at the exact row.
+- +1 on any coloured V row is caught (96/96).
+- Plain V-necks and the 36 compound garments are unchanged.
+
+4 new tests, all failing on `main`.
