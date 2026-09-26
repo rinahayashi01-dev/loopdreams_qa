@@ -145,7 +145,13 @@ _RE_PLACE_MARKER = re.compile(r"^place\s+a\s+(?:stitch\s+)?marker\b", re.I)
 # past it through the foundation-row path, but a sedge first row could not.
 _RE_RS_DESIGNATION = re.compile(
     r"^(?:the\s+side\s+facing\s+you\b.*\bright\s+side\s+\(rs\)|this\s+row\s+is\s+the\s+right\s+side\s+\(rs\)"
-    r"|clip\s+a\s+(?:stitch\s+)?marker\s+to\s+it)$", re.I)
+    # A Front carrying a colourwork design defines its RS by the design:
+    # "The right side (RS) is the side on which the design reads the right way
+    # round; clip a marker to it once the design shows".
+    r"|the\s+right\s+side\s+\(rs\)\s+is\s+the\s+side\s+on\s+which\b.*"
+    # ...and which half of the design that Front carries, as a cross-check.
+    r"|this\s+front\s+carries\s+the\s+(?:left|right)\s+half\s+of\s+the\s+design\b.*"
+    r"|clip\s+a\s+(?:stitch\s+)?marker\s+to\s+it(?:\s+once\s+the\s+design\s+shows)?)$", re.I)
 # "Place the next 10 sts on a holder or scrap yarn (thumb gusset)" -- sets
 # aside N sts from the active round (they're picked back up later, in a
 # separate row/round -- see held_gusset_resume below). Removes N from
