@@ -4,6 +4,19 @@ Keep this file updated as we make decisions. Drop it in the project's
 knowledge files so any new chat in this project has it, even without
 conversation memory.
 
+## The crochet conventions this tool checks against
+
+The house rules LoopDreams patterns follow (turning chains, what a count means
+for a joined cluster vs a group of separate stitches, inline how-tos, colour,
+paired pieces) are written down once, in the app repo:
+[`loopdreams/docs/crochet-conventions.md`](https://github.com/rinahayashi01-dev/loopdreams/blob/main/docs/crochet-conventions.md) (sibling checkout:
+`../loopdreams/docs/crochet-conventions.md`).
+
+**Link to it; don't restate it here.** The conventions start in the generator
+(e.g. loopdreams #473 → this repo's #41), and a second copy is how two
+definitions drift apart. If this tool's model of a convention disagrees with
+that file, one of them is wrong. Find out which before changing either.
+
 ## What this tool does
 Automatically QA-checks AI-generated crochet patterns (PDF or Word) before
 they go to testers/customers. Three check categories:
@@ -4116,3 +4129,29 @@ against real generated patterns before being believed: a wrong declared
 count, a wrong stated repeat count, a dropped stitch inside the bracket, a
 partial worked twice, and a partial removed entirely are all caught, each
 with a message naming the produced total. Full suite 402 tests, 5 skip.
+
+## The Granny Blanket REVIEW, re-diagnosed; linking the shared conventions (2026-09-26)
+
+Docs only; no code change.
+
+**KNOWN_UNVERIFIABLE §1 was half right.** It said a stated repeat count would
+clear Granny Square Blanket Rounds 3–4. loopdreams #577 added exactly that (for
+the maker's sake, not this tool's), and both rounds still abstain. The reason
+is that there were two independent blockers, and the entry named only one.
+Measured by swapping `Cluster` for a known-yield stitch in the real generated
+rows:
+
+- old text ("rep from * around"): still REVIEW, because of the unstated repeat;
+- new text (stated repeats): PASS, and a +1 on either round's declared count is
+  caught.
+
+So the Cluster's unknown yield (`cluster` comes from the pattern's own key and
+is scored as a custom compound, `produces=None`) is now the only blocker. The
+entry now says so, and it records why the fix must read "worked together" from
+the key rather than hardcode "cluster = 1": granny patterns also use "cluster"
+for a group of separate dc.
+
+**Shared conventions.** Linked `loopdreams/docs/crochet-conventions.md` at the
+top of this file and from KNOWN_UNVERIFIABLE.md, rather than copying it. The
+reasoning is in the section at the top.
+
