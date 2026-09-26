@@ -4155,3 +4155,34 @@ for a group of separate dc.
 top of this file and from KNOWN_UNVERIFIABLE.md, rather than copying it. The
 reasoning is in the section at the top.
 
+
+## A garment's "Notes" section no longer swallows the sleeves (2026-09-26)
+
+**The bug.** A moss/linen/sedge sweater or cardigan files a straight-sleeve
+note under section `Notes` (loopdreams' `GARMENT_NOTES_SECTION`), just before
+its sleeves. `build_raw_text` emitted every section as an all-caps component
+heading, so this one became a `NOTES` line, and `parse()` reads `notes` as a
+document section header. From that line on, the whole remainder of the
+pattern, both sleeves included, was parsed as notes. Nothing was checked and
+nothing warned.
+
+**Measured before the fix.** On 36 builder-generated garments (moss, linen and
+sedge; sweater and cardigan; three sizes; plain and colourwork), `main` read
+**0 sleeve rows in every case**, and a +1 on any sleeve row's count was never
+caught. The status was still PASS, because an unread row cannot fail. This
+went unnoticed since the compound garment cases were added (loopdreams #541).
+It was found while shaping the cardigan's V-neck, where a note placed the same
+way hid both Fronts.
+
+**The fix.** Rows whose section name `_match_section_header` maps to `notes`
+are routed to the trailing Notes section, uncounted, the same treatment the
+Mittens "repeat the whole pattern" note already gets. The adapter uses the
+parser's own matcher rather than a hardcoded `"Notes"`, so whatever would switch
+sections is exactly what is diverted.
+
+**After.** All 36 cases read every sleeve row: 40–146 per garment. All still
+PASS with 0 errors and 0 warnings, so the sleeves held no hidden errors, but
+now they are actually checked. +1 mutations on sleeve rows are caught on every
+real row sampled (17/17; the one "miss" in the sample was a `Sleeve 2: Ch 70.`
+foundation line, which states no count to perturb). The 3 new tests fail on
+`main` and pass here. Full suite: 405 passed, 5 skipped.

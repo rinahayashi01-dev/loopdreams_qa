@@ -137,7 +137,7 @@ import re
 import sys
 
 from .cli import run_for_pattern
-from .pattern_parser import parse
+from .pattern_parser import parse, _match_section_header
 
 _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
 # "Handle 1:" / "Handle 2 (shoulder-strap length):" are the per-handle rows
@@ -315,6 +315,25 @@ def build_raw_text(payload: dict) -> str:
     body_rows = payload.get("rows") or []
     finishing_lines = []
     note_lines = []
+    # A garment's "Notes" section (loopdreams' GARMENT_NOTES_SECTION: the
+    # straight-sleeve note a moss/linen/sedge sweater or cardigan files just
+    # before its sleeves) is prose, not a piece. Emitted like any other section
+    # it became a "NOTES" heading line, which parse() reads as the document's
+    # Notes SECTION -- so every piece after it (both sleeves) was read as notes
+    # and never checked, with no warning at all (found 2026-09-26). Route any
+    # row whose section name is itself a notes heading to the trailing Notes
+    # section instead, uncounted, exactly like the Mittens "repeat the whole
+    # pattern" note below. Uses the parser's own header matcher rather than a
+    # hardcoded "Notes", so whatever parse() would switch sections on is what
+    # is caught here.
+    piece_rows = []
+    for row in body_rows:
+        section = row.get("section")
+        if section and _match_section_header(section) == "notes":
+            note_lines.append(row["instructions"].strip())
+        else:
+            piece_rows.append(row)
+    body_rows = piece_rows
     groups = _section_groups(body_rows)
     for group_idx, (section, rows) in enumerate(groups):
         if section:
