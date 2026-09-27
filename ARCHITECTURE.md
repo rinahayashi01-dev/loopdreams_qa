@@ -4255,3 +4255,43 @@ the design …") is a no-op, alongside the #73 forms.
 - Plain V-necks and the 36 compound garments are unchanged.
 
 4 new tests, all failing on `main`.
+
+## Stepped (textured) V-neck Fronts carrying a design (2026-09-27)
+
+loopdreams now steps a sedge, moss or linen cardigan Front into a V even when
+it carries a colourwork design: a whole repeat at a time, the design cut at
+the centre-front edge. Three things this check did not handle.
+
+**Reading a step row.**
+- `", leaving the last N sts unworked"` and the anchor on the row after a step
+  ("(the sc you just made — …)") are stripped before reading colours. Neither
+  is a stitch, and both broke the texture grammars.
+- A sedge step row closes on "sc in **next** st" (the last *worked* stitch);
+  `_SEDGE_TOKENS` now accepts it as the closer. Nothing else in a sedge row
+  reads that way.
+
+**Matching a narrowed sedge row.** The generator lays the design out at the
+panel's full width, cuts it in *design* orientation, resamples to the row's
+cluster columns, and only then reverses odd rows. Nearest-neighbour resampling
+does not commute with that reversal. So a narrowed direct (sedge/shell) row's
+expectation is built in the same order instead of being cut from the
+working-order grid. Moss and linen resample *after* reversal, so they match
+through the existing truncated expectation.
+
+**The generator's `resizeGridNN` was not exact.** It used
+`floor((c / target) * cols)` in floating point, which floors one column short
+in 427 of ~871k cases up to 120 wide, 231 of them same-size resizes that
+should be no-ops. `_resize_nn` here was always exact, so the two disagreed
+exactly at those cells. The V path resizes a cut row to its own width and hit
+this constantly. It is fixed in the generator (loopdreams, same change), not
+here.
+
+**Measured.**
+- sedge, moss and linen at chest 46/36/20 × design on front-and-back / front /
+  back: **27/27 PASS**.
+- Wrong colour in a V row caught (89/89); +1 on a V row caught (135/135); a
+  generator deliberately cutting at the wrong edge caught for sedge and moss.
+- Regression unchanged: plain-stitch coloured V (15), plain V (16), 36
+  compound garments, blankets and a sweater.
+
+4 new tests, all failing on `main`.
