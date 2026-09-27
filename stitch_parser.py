@@ -1463,6 +1463,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     m = patterns.literal_next.match(p)
     if m:
         canon, is_compound, c, prod = _stitch_lookup(m.group(2), custom_compound)
+        contradiction = None
         consumed_target = int(m.group(3))
         if not m.group(1):
             # Bare "<stitch> in next N sts" -- no leading count at all.
@@ -1498,10 +1499,22 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                     f"confirmed real-sample precedent for what that combination means here -- left unverifiable "
                     f"rather than guessed"
                 )
+                # When N is not a whole multiple of M, no reading works: N
+                # stitches can be neither one in each of M places nor the
+                # same number in each. That is knowable without choosing
+                # which number is right, and it is wrong for a maker either
+                # way ("5 sc in next 4 chs"). A clean multiple ("6 sc in next
+                # 3 sts") can be a real increase and stays unverifiable.
+                if consumed_target == 0 or n_stitches % consumed_target != 0:
+                    contradiction = (
+                        f"'{m.group(0)}' puts {n_stitches} stitches into {consumed_target} "
+                        f"{'place' if consumed_target == 1 else 'places'}, which is neither one in each nor the same "
+                        f"number in each -- one of the two numbers is wrong"
+                    )
         return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
                              explicit_count=n_stitches, consumes=consumed_target,
                              produces=produces, is_compound=is_compound,
-                             unverifiable_reason=unverifiable_reason)
+                             unverifiable_reason=unverifiable_reason, contradiction=contradiction)
 
     # "<N> <stitch> in ring" -- the opening round of a magic-ring
     # construction (see patterns.ring_literal's own comment). The stated N

@@ -4412,3 +4412,26 @@ Both skip regexes (`skip_first_chains_from_hook`, `skip_first_chains_counting`) 
 - Foundation chain ±1 on each of those 35 cases (70 mutants): 63 FAIL / 6 PASS / 1 REVIEW, **identical case by case** to the same mutations on the old wording. The 6 passes are the Amigurumi Egg's oval foundation, whose `Ch N` is not cross-checked under either wording.
 
 New tests in `test_stitch_parser.py`: the number-less form folds exactly as "the first 1 chain" does; it keeps the counting convention; "the first chains" is not read; and end to end, a correct chain passes while a chain one too long is still an error. Full suite passes (444 tests, 1 skip).
+
+## Rows that state their numbers are held to them (2026-09-27)
+
+Mutation testing of correct loopdreams output (change one number, see whether the gate notices) found three places where a row stated everything needed to check it. A wrong number there still reached only REVIEW, or passed.
+
+1. **A stated skip, then too few chains.** The "only account for 41 of the 42 foundation chains, with no ordinal clause" warning was written for rows that never say how many chains they skip, such as the old shawl. It also fired on rows that do say ("Skip the first chain … With Colour 2, 4 sc in next 4 chs; …"), so a colour run one stitch short passed the gate as REVIEW. `_states_skip` now keeps that warning for rows with no stated skip only. A row that states its skip and still falls short is an error, and completeness no longer says the skip is unstated.
+2. **A run that contradicts itself.** `5 sc in next 4 chs` was "two different numbers, no precedent" (unverifiable). If N is not a whole multiple of M, neither reading works: the stitches can't go one per chain, and they can't go the same number into each. That is knowable without choosing which number is right, so it is now `StitchClause.contradiction` and an error ("Row 1 contradicts itself: …"). A clean multiple (`6 sc in next 3 sts`) can be a real increase and stays unverifiable.
+3. **The oval foundation.** The Amigurumi Egg's round 1 ("Ch 5. Skip the first chain … Sc in the next chain and each of next 2 chs, 3 sc in last ch, working on the opposite side …: sc in each of next 3 chs, 3 sc in next ch") totals 12 whatever the `Ch` says, so `Ch 4` and `Ch 6` both passed. `_check_oval_foundation` checks both sides of the chain: skipped + worked + end chain must equal the foundation, and the second side must work back what the first left. It runs only when the whole shape is present, in order.
+
+**Measured** (qa main → this branch):
+- Real output: 79 live-matrix cases, 84 generated cases and 8 forced-design dry runs gave **identical statuses and identical finding text**.
+- Mutants:
+
+| mutant | main | branch |
+|---|---|---|
+| a first-row run one stitch short (118) | 12 FAIL / 106 REVIEW | **118 FAIL** |
+| a run's two numbers disagreeing (148) | 148 REVIEW | **148 FAIL** |
+| foundation chain ±1 on 35 live cases (70) | 63 FAIL / 6 PASS / 1 REVIEW | **70 FAIL** |
+| Egg chain ±1 (6) | 6 PASS | **6 FAIL** |
+
+- No mutant scores weaker on the branch than on main.
+
+New `tests/test_stated_counts.py` (10 tests, including controls: the unstated-skip warning and the clean-multiple increase are unchanged). Full suite passes (454 tests, 1 skip).
