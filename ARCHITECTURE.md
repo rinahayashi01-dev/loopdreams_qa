@@ -4333,3 +4333,51 @@ share one route.
 9 new tests, using real generator fixtures in `tests/data/neckline_edge_fronts.json`;
 7 of them fail on `main`. The rule is the same in both repos: change them
 together.
+
+## Garment stripes: `design_panels` (2026-09-27)
+
+loopdreams now offers horizontal and vertical stripes on sweaters and cardigans
+from its Set Parameters page. Before this, the extra colours were silently
+dropped: a live 3-colour cardigan named no colour in any row. Each body panel is
+coloured from its **own** stripe grid at its exact stitch × row size
+(`garmentStripePanels`):
+- Horizontal stripes count from the first worked row, so they meet at the side
+  seams.
+- Vertical stripes count from each side seam: the Fronts mirror each other, and
+  the Back and a sweater Front are symmetric.
+
+Slicing one grid in half would have stretched the Fronts' stripes, so the
+pattern JSON carries the grids as `design_panels` (section → grid). A panel
+listed there is compared against its own grid instead of a slice of
+`design_grid`.
+
+**Two fixes the stripes exposed.** Vertical stripes change colour nearly every
+stitch, which exercises row shapes a photo rarely produces:
+
+1. **A moss/linen row with no `rep from *`.** When the colour changes every
+   unit, each `ch 1, sc` unit is written out once. The chain-counting
+   convention was only tried for rows that have a repeat, so these rows read
+   one short per unit (15 of a correct 29). `_check_flat_sequence` now tries the
+   same convention before reporting a mismatch.
+   - An exact match is required: adding or dropping one unit still FAILs, 48/48.
+   - A declared count equal to the plain reading was already accepted before
+     this change, and still is.
+2. **`_COLOUR_MENTION_RE` read loopdreams#592's own wording as a colour
+   name.** "(…in Colour 1 — pick up Colour 2 for the next st)" became a colour
+   called "Pick" with two identifiers, warning on every striped tall-stitch
+   cardigan. The name must now start with a capital letter, as a proper noun
+   does. The mittens case this check exists for ("Colour 2 — Moss" /
+   "Colour B — Moss") still warns.
+
+**Measured.**
+- 2 garments × 8 stitches (sc/hdc/hhdc/dc/tr/sedge/moss/linen) × 2 directions ×
+  2 and 3 colours × 2 sizes: **128/128 PASS**, 0 errors and 0 warnings. Before
+  the two fixes, 12 of them failed.
+- Mutations:
+  - wrong colour: **64/64 FAIL**;
+  - swapped Fronts: **12/12 FAIL** (4 more were no-ops, where the Fronts are
+    identical);
+  - +1 on a repeat count: FAIL or REVIEW, never PASS.
+- The earlier sweeps are unchanged: 140/140 PASS.
+
+8 new tests; 3 of them fail on `main`.

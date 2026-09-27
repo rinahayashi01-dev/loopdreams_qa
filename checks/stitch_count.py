@@ -1372,6 +1372,17 @@ def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_f
             ),
         )]
     if row.declared_count is not None and p != row.declared_count:
+        # The moss/linen convention (chain-1 spaces count toward the row
+        # total), tried before calling it a mismatch -- the same fallback the
+        # repeat path takes. A coloured moss row whose colour changes every
+        # repeat has no "rep from *" left at all: each run is written out once
+        # ("ch 1, skip 1 st, sc in next st, changing to Colour 2 ..."), so it
+        # arrives here and used to read short by one per run (vertical stripes
+        # on a moss cardigan, loopdreams 2026-09-27: 15 of a correct 29).
+        alt_p, _, alt_r = _zone_sum(_without_turning_chain(clauses), count_chains=True,
+                                    ratio_overrides=ratio_overrides)
+        if not alt_r and alt_p == row.declared_count:
+            return []
         return [Issue(
             category="stitch_count", severity="error", location=row.label,
             message=(

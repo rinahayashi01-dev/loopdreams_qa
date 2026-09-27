@@ -104,6 +104,11 @@ class Pattern:
     # tidyNeckEdge), "keep" leaves the cut design as it is. None (an older
     # pattern, or one with no V) means keep -- what every earlier pattern did.
     neckline_edge: Optional[str] = None
+    # Stripes on a sweater or cardigan: each body panel's own design at its
+    # exact stitch x row size (loopdreams garmentStripePanels), keyed by
+    # section. When a panel is here it is compared against this, not against a
+    # slice of design_grid. None for every photo design.
+    design_panels: Optional[dict] = None
     design_rows: Optional[list] = None      # verbatim {stitch_count, instructions}
 
 
