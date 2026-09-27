@@ -99,6 +99,11 @@ class Pattern:
     # attaches it when the caller supplies one. None for an ordinary pattern.
     design_grid: Optional[list] = None
     design_palette: Optional[list] = None
+    # How a V-neck Front's neckline edge treats a design cut down to a sliver:
+    # "tidy" folds a too-narrow edge run into its neighbour (loopdreams
+    # tidyNeckEdge), "keep" leaves the cut design as it is. None (an older
+    # pattern, or one with no V) means keep -- what every earlier pattern did.
+    neckline_edge: Optional[str] = None
     design_rows: Optional[list] = None      # verbatim {stitch_count, instructions}
 
 

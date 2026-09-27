@@ -4295,3 +4295,41 @@ here.
   compound garments, blankets and a sweater.
 
 4 new tests, all failing on `main`.
+
+## Tidied V-neck edge: `neckline_edge` (2026-09-27)
+
+Where a cardigan's V-neck cuts a Front's design down to a sliver at the
+centre-front edge, loopdreams now folds that sliver into its neighbour by
+default. The maker can choose "keep the design to the edge" instead. A reviewer
+found the sliver on a live sedge Left Front: 1–2 stitches of Colour 1
+zigzagging along the edge the button band is picked up from.
+
+**The rule** (`_tidy_neck_edge`, a mirror of loopdreams `tidyNeckEdge`):
+- It applies on each narrowed row, at the row's **own colour resolution**.
+- If the neck-end colour run is shorter than 3 positions (plain stitches, one
+  per stitch) or 2 (textured: a lone sedge opener or closer, or a lone moss/linen
+  sc), it takes its inward neighbour's colour.
+- A row that is all one run is left alone.
+- The neck end in working order is the same as `_shape_expectation`'s.
+- The tidy runs after every resample, so it doesn't matter which order the
+  resampling happened in. Both sides apply the rule to the same cells.
+
+**The flag.** The pattern JSON carries `neckline_edge: "tidy" | "keep"`.
+generate-pattern echoes the value it applied, and loopdreams' batch-test
+forwards it. If the flag is absent, the check behaves as `keep`, which is what
+every earlier pattern is. A tidied row's expectation is written into the
+per-resolution grid and read from there, so plain, moss and sedge rows all
+share one route.
+
+**Measured.**
+- sedge, moss and linen × chest 46/36/20 × 3 placements, plus sc, hdc, hhdc, dc
+  and tr × 3 placements: **84/84 PASS**, each setting against its own output
+  (42 tidy, 42 keep).
+- Tidy changed rows in 28 of the 42 cases. None of them were back-only
+  placements, which have no V to cut.
+- **Cross-checks: 56/56 FAIL.** Tidy output judged as keep, and keep output
+  judged as tidy, both fail, so the flag really is checked.
+
+9 new tests, using real generator fixtures in `tests/data/neckline_edge_fronts.json`;
+7 of them fail on `main`. The rule is the same in both repos: change them
+together.

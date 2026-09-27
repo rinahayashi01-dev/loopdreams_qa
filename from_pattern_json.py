@@ -404,6 +404,7 @@ def main():
     # for a plain pattern, and that check then does nothing.
     pattern.design_grid = payload.get("design_grid")
     pattern.design_palette = payload.get("palette")
+    pattern.neckline_edge = payload.get("neckline_edge")
     # The instructions VERBATIM. The parser deliberately strips a row's leading
     # "With Colour N," (it is not a stitch clause), which is exactly the token
     # colourwork_orientation needs, so that check reads the original text rather
