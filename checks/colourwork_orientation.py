@@ -557,7 +557,8 @@ def check(pattern) -> list:
             if not _carries_design(rows):
                 continue
             carried.append(section)
-            for issue in _check_panel(pattern, _panel_design(design, section), rows):
+            own = (getattr(pattern, "design_panels", None) or {}).get(section)
+            for issue in _check_panel(pattern, own or _panel_design(design, section), rows):
                 # "Back — Row 12" reads; "Back — Pattern" does not. A
                 # panel-wide finding is located by the panel itself.
                 if section:

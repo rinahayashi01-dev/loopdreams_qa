@@ -776,7 +776,11 @@ def _check_paired_item(pattern) -> list:
 # never stated anywhere, risking a tester wondering whether a third colour
 # is needed. Detected purely from the pattern's own text (which colour
 # identifiers get paired with which names), not an external naming rule.
-_COLOUR_MENTION_RE = re.compile(r"colour\s+([\w]+)\s*[—-]\s*([\w']+)", re.I)
+# The name is a proper noun and so starts with a capital: loopdreams' own
+# "(the chain already 'fills' that slot in Colour 1 — pick up Colour 2 for the
+# next st)" (#592) is an instruction, not a name, and used to read as a colour
+# called "Pick" with two identifiers on every striped tall-stitch cardigan.
+_COLOUR_MENTION_RE = re.compile(r"(?i:colour)\s+([\w]+)\s*[—-]\s*([A-Z][\w']*)")
 
 
 def _check_colour_naming_consistency(pattern) -> list:
