@@ -196,7 +196,12 @@ _SEDGE_TOKENS = re.compile(
     r"|(?P<opener>hdc in first st,\s*dc in next st"
     r"|hdc in the next chain,\s*dc in the same chain)"
     r"|(?P<cluster>\(sc,\s*hdc,\s*dc\)\s*in next (?:st|chain)\s*\(sedge made\))"
-    r"|(?P<closer>sc in last (?:st|chain))",
+    # A V-neck step row closes on the last WORKED st -- "sc in next st, leaving
+    # the last 3 sts unworked" (the leaving clause is stripped before this) --
+    # rather than the row's last st. Nothing else in a sedge row reads
+    # "sc in next st": the opener is "dc in next st" and a cluster is
+    # "(sc, hdc, dc) in next st".
+    r"|(?P<closer>sc in (?:last|next) (?:st|chain))",
     re.I,
 )
 
@@ -299,6 +304,11 @@ def _row_colours(text, width, carried):
     # names stitch motions, not stitches of the row; read as runs it would add
     # phantom stitches.
     body = re.sub(r"\((?:sc|hdc|dc|tr)2tog:[^)]*\)", "", body, flags=re.I)
+    # A stepped (textured) V-neck row stops short -- ", leaving the last 3 sts
+    # unworked" -- and the row after names where it starts; neither is a stitch
+    # of the row, and both would break the texture grammars below.
+    body = re.sub(r",?\s*leaving the last \d+ sts? unworked", "", body, flags=re.I)
+    body = re.sub(r"\s*\(the sc you just made[^)]*\)", "", body, flags=re.I)
 
     # Resolution first: it decides how long a SOLID row is too, so it has to be
     # settled before the shortcut below and not just before the tokenizer.
@@ -646,6 +656,9 @@ def _check_panel(pattern, design, source) -> list:
             carried = None
             continue
         actual.append(colours)
+        # A narrowed row of a V-neck Front is the design laid out at the
+        # panel's full width, cut, and only THEN resampled to this row's own
+        # colour columns (see _compare for how each kind of row is matched).
         directs.append(bool(_RE_SEDGE_ROW.search(text) or _RE_SHELL_ROW.search(text)))
         drops.append(width - count)
         carried = ending
@@ -841,6 +854,28 @@ def _compare(pattern, design, actual, width, folded, unread=(), directs=None, dr
     # Only the single-resample rows need their own expectation grid.
     resolutions = {len(a) for a, d in zip(actual, directs) if a is not None and d}
     per_res = {res: dict(_candidate_expectations(labelled, res, rows, folded)) for res in resolutions}
+
+    # A narrowed direct row (sedge, shell) of a V-neck Front. The generator lays
+    # the design out at the panel's FULL width, cuts the V's cells from the
+    # centre-front side in DESIGN orientation, resamples that to the row's
+    # cluster columns, and only then reverses odd rows into working order. A
+    # nearest-neighbour resample does not commute with that reversal, so this
+    # row is built in the same order rather than cut from the working-order
+    # expectation (which is how moss/linen, resampled after reversal, match).
+    if drops and any(d > 0 for d in drops):
+        design_order = _resize_nn(labelled, width, rows)
+        for i, (a, d) in enumerate(zip(actual, directs)):
+            drop = drops[i] if i < len(drops) else 0
+            if a is None or not d or drop <= 0:
+                continue
+            row = design_order[rows - 1 - i]
+            cut = row[:width - drop] if section == "Right Front" else row[drop:]
+            expected = _resize_nn([cut], len(a), 1)[0]
+            if i % 2 == 1:
+                expected = list(reversed(expected))
+            grid = [list(r) for r in per_res[len(a)][names[0]]]
+            grid[i] = expected
+            per_res[len(a)][names[0]] = grid
 
     correct_name = names[0]
     if _agrees_per_row(base, per_res, correct_name, actual, directs):
