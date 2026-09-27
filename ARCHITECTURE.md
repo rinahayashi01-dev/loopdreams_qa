@@ -4381,3 +4381,21 @@ stitch, which exercises row shapes a photo rarely produces:
 - The earlier sweeps are unchanged: 140/140 PASS.
 
 8 new tests; 3 of them fail on `main`.
+
+## Striped sleeves and stripe widths (2026-09-27)
+
+loopdreams garment stripes now have a real width: vertical stripes are at least 3 sts, and horizontal stripes are an even number of rows. Horizontal stripes also go round the sleeves, counted from the cuff. That makes the sleeve the first labelled, widening piece this check compares, and exposed two gaps:
+
+1. **A labelled foundation wasn't a chain.** "Sleeve 1: With Colour 1, Ch 13." missed `_RE_CHAIN_ONLY`, took a row slot, and shifted every sleeve row by one. That read as "upside down" plus a batch of rows naming no colour. The regex now takes the `Sleeve N:` / `Sleeves (make 2):` labels.
+2. **One-colour rows outside the colour grammar.** A sleeve's increase row ("2 sc in first st, sc in each st to last st, 2 sc in last st") and a sedge row whose colour changes after its closing sc can't be read stitch by stitch. `carried` then reset, and every following row looked colourless.
+   - `_one_colour_row` reads such a row as one colour across, used **only on a row-striped panel**, and only for the two shapes that are knowable: an optional leading "With Colour N," and an optional change on the last stitch before "Ch N, turn.".
+   - Any other colour mention returns None, so a real mid-row change is still read properly.
+   - A row-striped panel (every design row one colour) is also compared at every width, since a sleeve widens as it goes.
+
+**Measured.**
+- 2 garments × 8 stitches × 2 directions × 2/3 colours × 1 in / 2 in widths × 2 sizes: **256/256 PASS**, 0 errors, 0 warnings. Before these fixes, all 128 horizontal cases failed on their sleeves.
+- Mutations:
+  - wrong colour on a sleeve row: **64/64 FAIL**;
+  - a sleeve stripe boundary moved one row: **49/49 FAIL**;
+  - wrong colour on a body panel: **128/128 FAIL**.
+- Earlier sweeps: 140/140 unchanged.
