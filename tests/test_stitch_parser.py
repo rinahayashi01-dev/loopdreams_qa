@@ -195,6 +195,46 @@ class TestSkipFirstChainsFoundationClause(unittest.TestCase):
         self.assertEqual(stitch_clause.stitch, "sc")
         self.assertEqual(stitch_clause.explicit_count, 2)  # skip 1 -> starts in the 2nd ch from hook
 
+    def test_number_less_singular_form_reads_as_one(self):
+        # loopdreams writes one skipped chain as "Skip the first chain from the
+        # hook" since 2026-09-27 (it used to be "the first 1 chain", which read
+        # as a typo; the app's Stitch Guide already said "the first chain").
+        # It must fold exactly as the numbered form does.
+        for text in ("Skip the first chain from the hook (it doesn't count as a stitch). ",
+                     "Skip the first 1 chain from the hook (it doesn't count as a stitch). "):
+            clauses = tokenize_round(text + "Sc in the next chain and in each ch across")
+            self.assertEqual(len(clauses), 2, text)
+            skip_clause, stitch_clause = clauses
+            self.assertEqual(skip_clause.clause_type, "skip_first_chains_from_hook", text)
+            self.assertEqual(skip_clause.explicit_count, 1, text)
+            self.assertEqual(skip_clause.produces, 0, text)
+            self.assertEqual(stitch_clause.clause_type, "foundation_into_chain", text)
+            self.assertEqual(stitch_clause.explicit_count, 2, text)
+
+    def test_number_less_singular_form_keeps_the_counting_convention(self):
+        # The counts / doesn't-count phrase still decides the convention on the
+        # number-less form -- the two differ by one stitch per row.
+        clauses = tokenize_round(
+            "Skip the first chain from the hook (it counts as this row's first stitch). "
+            "Hdc in the next chain and in each ch across"
+        )
+        self.assertEqual(clauses[0].clause_type, "skip_first_chains_from_hook")
+        self.assertEqual(clauses[0].explicit_count, 1)
+        self.assertEqual(clauses[0].produces, 1)
+        folded = [c for c in clauses if c.clause_type == "foundation_into_chain"]
+        self.assertEqual(len(folded), 1)
+        self.assertTrue(folded[0].chain_counts_as_stitch)
+
+    def test_number_less_plural_states_no_count_and_is_not_read(self):
+        # "the first chains" says how many nowhere; guessing would be exactly
+        # the silent wrong answer this parser refuses to give.
+        clauses = tokenize_round(
+            "Skip the first chains from the hook (they don't count as a stitch). "
+            "Sc in the next chain and in each ch across"
+        )
+        self.assertNotIn("skip_first_chains_from_hook", [c.clause_type for c in clauses])
+        self.assertNotIn("foundation_into_chain", [c.clause_type for c in clauses])
+
     def test_plural_chains_form_dc(self):
         clauses = tokenize_round(
             "Skip the first 3 chains from the hook (they don't count as a stitch). "
@@ -258,6 +298,22 @@ class TestSkipFirstChainsFoundationClause(unittest.TestCase):
         issues = stitch_count.check(pattern)
         row1_issues = [i for i in issues if i.location == "Row 1"]
         self.assertEqual(row1_issues, [])
+
+    def test_number_less_form_verifies_end_to_end_and_still_catches_a_wrong_chain(self):
+        def row1_issues(chain):
+            raw = (
+                "Test Scarf\nMATERIALS\nGauge: 14 sc x 16 rows = 4 in [10 cm]\nTerminology: US\n"
+                "Yarn: Test yarn\nHook: 5.0 mm\nABBREVIATIONS\nch = chain, sc = single crochet\n"
+                f"PATTERN STEPS\nFoundation: Ch {chain}, turn.\n"
+                "Row 1: Skip the first chain from the hook (it doesn't count as a stitch). "
+                "Sc in the next chain and in each ch across. Ch 1, turn. (21 sts)\n"
+                "Row 2: Sc in each st across. Ch 1, turn. (21 sts)\n"
+                "Finishing\nBorder: Fasten off. (21 sts)\n"
+            )
+            return [i for i in stitch_count.check(parse(raw)) if i.location == "Row 1"]
+        self.assertEqual(row1_issues(22), [])
+        self.assertTrue(any(i.severity == "error" for i in row1_issues(23)),
+                        "a foundation one chain too long must still be an error")
 
 
 class TestCornerClause(unittest.TestCase):

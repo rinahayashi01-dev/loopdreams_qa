@@ -4399,3 +4399,16 @@ loopdreams garment stripes now have a real width: vertical stripes are at least 
   - a sleeve stripe boundary moved one row: **49/49 FAIL**;
   - wrong colour on a body panel: **128/128 FAIL**.
 - Earlier sweeps: 140/140 unchanged.
+
+## "Skip the first chain" with no number (2026-09-27)
+
+loopdreams is dropping the "1" from its one-chain skip clause: "Skip the first chain from the hook (it doesn't count as a stitch)." used to read "Skip the first 1 chain …". A bare 1 read as a typo, and the app's own Stitch Guide already wrote it the number-less way.
+
+Both skip regexes (`skip_first_chains_from_hook`, `skip_first_chains_counting`) required a digit. With the new generator text, every flat pattern's first worked row became an unrecognized clause, and 46 of 84 generated cases dropped from PASS to REVIEW. The count is now `_SKIP_FIRST_COUNT`: either "N chain(s)" or the bare singular "chain", which reads as 1 (`_skip_first_count`). A bare plural ("the first chains") states no count and is still refused. The counts / doesn't-count phrase is unchanged, so the one-stitch difference between the two conventions still decides which regex matches.
+
+**Measured.**
+- 84 generated cases (flat, tote, compound, sweater and cardigan photo designs, garment stripes), current and new generator text: **84/84 PASS on both** with this branch. qa main passes the current text 84/84 and the new text only 38 PASS / 46 REVIEW. This branch changes nothing on the current text.
+- The 79-case live matrix with its 35 skip clauses rewritten: 76 PASS / 3 REVIEW, the same as today (the known Granny Square cluster reviews).
+- Foundation chain ±1 on each of those 35 cases (70 mutants): 63 FAIL / 6 PASS / 1 REVIEW, **identical case by case** to the same mutations on the old wording. The 6 passes are the Amigurumi Egg's oval foundation, whose `Ch N` is not cross-checked under either wording.
+
+New tests in `test_stitch_parser.py`: the number-less form folds exactly as "the first 1 chain" does; it keeps the counting convention; "the first chains" is not read; and end to end, a correct chain passes while a chain one too long is still an error. Full suite passes (444 tests, 1 skip).

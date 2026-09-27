@@ -377,6 +377,16 @@ _MULTIPLIER_WORDS = {
 }
 
 
+# The chain count in "Skip the first N chains / the first chain from the hook".
+_SKIP_FIRST_COUNT = r"(?:(\d+)\s+chains?|chain)"
+
+
+def _skip_first_count(m) -> int:
+    """Group 1 of a skip_first_chains_* match: the stated count, or 1 for the
+    number-less singular 'the first chain'."""
+    return int(m.group(1)) if m.group(1) else 1
+
+
 class _Patterns:
     """Container for the subset of regexes whose alternation depends on the
     set of recognized stitch words for one particular pattern (built fresh
@@ -441,8 +451,14 @@ class _Patterns:
         # so the rest of the pipeline (checks/stitch_count.py's dedicated
         # foundation check, checks/completeness.py's foundation-ambiguity
         # check) sees exactly the same shape it already knows how to verify.
+        # "the first 2 chains" or, for one, "the first chain" -- loopdreams
+        # dropped "the first 1 chain" (2026-09-27; its own Stitch Guide already
+        # wrote it this way). A bare number-less form must be the singular
+        # "chain": "the first chains" states no count and is not accepted.
+        # Group 1 is the count when written, absent for the singular form;
+        # read it through _skip_first_count.
         self.skip_first_chains_from_hook = re.compile(
-            rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
+            rf"^skip\s+the\s+first\s+{_SKIP_FIRST_COUNT}\s+from\s+the\s+hook\s*"
             rf"\((?:it|they)\s+(?:doesn't|don't)\s+count\s+as\s+a\s+stitch"
             rf"(?:,[^)]*)?\)$", re.I
         )
@@ -464,7 +480,7 @@ class _Patterns:
         # counts/doesn't-count phrase itself, since the two differ by one
         # stitch; anything after it is prose for the human.
         self.skip_first_chains_counting = re.compile(
-            rf"^skip\s+the\s+first\s+(\d+)\s+chains?\s+from\s+the\s+hook\s*"
+            rf"^skip\s+the\s+first\s+{_SKIP_FIRST_COUNT}\s+from\s+the\s+hook\s*"
             rf"\((?:it\s+counts|they\s+count)\s+as\s+this\s+row's\s+first\s+stitch"
             rf"(?:,[^)]*)?\)$", re.I
         )
@@ -1283,7 +1299,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     m = patterns.skip_first_chains_from_hook.match(p)
     if m:
         return StitchClause(raw=raw_part, clause_type="skip_first_chains_from_hook",
-                             explicit_count=int(m.group(1)), consumes=0, produces=0)
+                             explicit_count=_skip_first_count(m), consumes=0, produces=0)
 
     # Same clause, opposite convention -- the skipped chains ARE the row's
     # first stitch, so this one produces 1 where the above produces 0. Folded
@@ -1292,7 +1308,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     m = patterns.skip_first_chains_counting.match(p)
     if m:
         return StitchClause(raw=raw_part, clause_type="skip_first_chains_from_hook",
-                             explicit_count=int(m.group(1)), consumes=0, produces=1,
+                             explicit_count=_skip_first_count(m), consumes=0, produces=1,
                              chain_counts_as_stitch=True)
 
     # See patterns.foundation_stitch_in_next_chain's own comment: the second
