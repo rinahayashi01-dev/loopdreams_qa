@@ -3,9 +3,10 @@ coloured from its OWN stripe grid at its exact stitch x row size
 (garmentStripePanels), sent as `design_panels` and used here in place of a
 slice of design_grid.
 
-The fixtures are real generator output with 3-colour vertical stripes, which
-change colour nearly every stitch: a moss cardigan (V-neck, tidied edge) and a
-dc sweater. Grids are stored as palette-index strings to keep the file small."""
+The fixtures are real generator output, stripes 1 in wide in 3 colours: a moss
+cardigan and a dc sweater with vertical stripes, and an sc sweater with
+horizontal stripes, which run round the sleeves too. Grids are stored as
+palette-index strings to keep the file small."""
 import copy
 import json
 import os
@@ -40,28 +41,55 @@ def issues(case, panels=None, rows=None, check=co.check):
 
 class GarmentStripes(unittest.TestCase):
     def test_each_panel_matches_its_own_stripes(self):
-        for case in ("cardigan_moss", "sweater_dc"):
+        for case in ("cardigan_moss_vertical", "sweater_dc_vertical", "sweater_sc_horizontal"):
             with self.subTest(case=case):
                 self.assertEqual(issues(case), [])
 
     def test_panels_are_not_a_slice_of_the_back(self):
         # Without design_panels the Fronts would be judged against halves of
         # the Back's stripes, which start from a different seam.
-        case = "cardigan_moss"
+        case = "cardigan_moss_vertical"
         pattern_panels = _panels(case)
         self.assertNotEqual(pattern_panels["Right Front"], [r[:len(r) // 2] for r in pattern_panels["Back"]])
 
     def test_swapped_fronts_fail(self):
-        panels = _panels("cardigan_moss")
+        panels = _panels("cardigan_moss_vertical")
         self.assertNotEqual(panels["Right Front"], panels["Left Front"])
         panels["Right Front"], panels["Left Front"] = panels["Left Front"], panels["Right Front"]
-        self.assertTrue(any(i.severity == "error" for i in issues("cardigan_moss", panels=panels)))
+        self.assertTrue(any(i.severity == "error" for i in issues("cardigan_moss_vertical", panels=panels)))
 
     def test_a_wrong_colour_fails(self):
-        rows = copy.deepcopy(FX["sweater_dc"]["rows"])
+        rows = copy.deepcopy(FX["sweater_dc_vertical"]["rows"])
         i = next(k for k, r in enumerate(rows) if r["section"] == "Front" and "changing to Colour 2" in r["instructions"])
         rows[i]["instructions"] = rows[i]["instructions"].replace("changing to Colour 2", "changing to Colour 3", 1)
-        self.assertTrue(any(i.severity == "error" for i in issues("sweater_dc", rows=rows)))
+        self.assertTrue(any(i.severity == "error" for i in issues("sweater_dc_vertical", rows=rows)))
+
+
+class StripedSleeves(unittest.TestCase):
+    """Horizontal stripes go round the sleeves, which widen as they go and
+    open on a labelled foundation ("Sleeve 1: With Colour 1, Ch 13.")."""
+
+    def test_the_sleeves_are_compared_not_skipped(self):
+        rows = copy.deepcopy(FX["sweater_sc_horizontal"]["rows"])
+        i = next(k for k, r in enumerate(rows) if r["section"] == "Sleeve 1"
+                 and r["instructions"].startswith("Increase row: With Colour"))
+        t = rows[i]["instructions"]
+        wrong = "Colour 3" if "With Colour 2" in t else "Colour 2"
+        rows[i]["instructions"] = co._RE_LEAD_WITH.sub(lambda m: m.group(0).replace(m.group(1), wrong), t, count=1)
+        self.assertTrue(any(i.severity == "error" for i in issues("sweater_sc_horizontal", rows=rows)))
+
+    def test_a_labelled_sleeve_foundation_is_a_chain(self):
+        self.assertTrue(co._RE_CHAIN_ONLY.match("Sleeve 1: With Colour 1, Ch 13."))
+        self.assertTrue(co._RE_CHAIN_ONLY.match("Sleeves (make 2): With Colour 2, Ch 20."))
+        self.assertFalse(co._RE_CHAIN_ONLY.match("Sleeve 1: Sc in each st across. Ch 1, turn."))
+
+    def test_one_colour_row_shapes(self):
+        inc = "Increase row: With Colour 2, 2 sc in first st, sc in each st to last st, 2 sc in last st. Ch 1, turn."
+        self.assertEqual(co._one_colour_row(inc, 5, "Colour 1"), (["Colour 2"] * 5, "Colour 2"))
+        end = "2 sc in first st, sc in each st to last st, 2 sc in last st, changing to Colour 3 in the last st. Ch 1, turn."
+        self.assertEqual(co._one_colour_row(end, 4, "Colour 1"), (["Colour 1"] * 4, "Colour 3"))
+        mid = "With Colour 1, 3 sc in next 3 sts, changing to Colour 2 in the last st; 2 sc in next 2 sts. Ch 1, turn."
+        self.assertIsNone(co._one_colour_row(mid, 5, None), "a mid-row change must be read properly")
 
 
 class MossRowWithoutARepeat(unittest.TestCase):

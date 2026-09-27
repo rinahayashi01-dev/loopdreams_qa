@@ -54,7 +54,12 @@ _RE_RUN_1 = re.compile(r"\b[\w ]+?\s+in (?:the )?(?:next (?:chain|st)\b|top of (
 # Whole-row shorthand for a solid row: "dc in each st across"
 _RE_EACH = re.compile(r"\bin each (?:st|ch) across\b", re.I)
 
-_RE_CHAIN_ONLY = re.compile(r"^(?:Foundation:\s*)?(?:With\s+(?:Colour\s+\w+|White),\s*)?Ch \d+[,.]", re.I)
+# A garment piece's foundation leads with its own label instead of
+# "Foundation:" -- "Sleeve 1: With Colour 1, Ch 36." -- and a striped sleeve is
+# the first such piece this check compares (loopdreams, 2026-09-27). Missed,
+# that chain took a row slot and shifted every row after it by one.
+_RE_CHAIN_ONLY = re.compile(
+    r"^(?:Foundation:\s*|(?:Sleeves \(make 2\)|Sleeve \d+):\s*)?(?:With\s+(?:Colour\s+\w+|White),\s*)?Ch \d+[,.]", re.I)
 # Rows that are not part of the fabric the design lives on. "Fasten off" is
 # deliberately NOT here: the last body row fastens off and is still a design
 # row -- dropping it shortens the panel and silently misaligns every
@@ -587,6 +592,10 @@ def _check_panel(pattern, design, source) -> list:
     # _shape_expectation). `drops` is how many cells each row lost.
     section = next((r.get("section") for r in source if r.get("section")), None)
     shaped_front = section in ("Right Front", "Left Front")
+    # A panel whose every design row is one colour (horizontal stripes) reads
+    # the same at any width, so a sleeve that widens as it goes is compared
+    # row for row rather than skipped as "a finishing row of a different width".
+    row_striped = bool(design) and all(len(set(r)) == 1 for r in design)
     drops = []
     # Parallel to `actual`: True where the generator resampled the design
     # straight to the row's own colour resolution (sedge, shell) rather than
@@ -601,7 +610,7 @@ def _check_panel(pattern, design, source) -> list:
             continue
         if width is None:
             width = count
-        if count != width and not (shaped_front and count < width):
+        if count != width and not (shaped_front and count < width) and not row_striped:
             continue          # a finishing row of a different width
         if carried is None:
             # The colour is read BEFORE the row is judged to be a foundation
@@ -639,6 +648,8 @@ def _check_panel(pattern, design, source) -> list:
                 blind.append(row.get("row_number"))
                 continue
         colours, ending = _row_colours(text, count, carried)
+        if colours is None and row_striped:
+            colours, ending = _one_colour_row(text, count, carried) or (None, ending)
         if colours is None:
             # Unreadable rows are HOLES, not a reason to abandon the pattern.
             # A compound colourwork row states its texture as well as its
@@ -690,6 +701,30 @@ def _check_panel(pattern, design, source) -> list:
         return _blind_rows(blind) + _coverage(actual, unread)
     return _blind_rows(blind) + _compare(pattern, design, actual, width, folded, unread, directs,
                                          drops=drops, section=section)
+
+
+_RE_LEAD_WITH = re.compile(r"^(?:(?:Increase|Decrease) row:\s*)?With\s+(Colour\s+\w+|White),", re.I)
+_RE_END_CHANGE = re.compile(r"changing to\s+(Colour\s+\w+|White)\s+in the last st\.\s+Ch \d+, turn\.", re.I)
+
+
+def _one_colour_row(text, count, carried):
+    """A row of a horizontally striped panel that is one colour all the way
+    across, read without its stitch grammar: it may lead with "With Colour N,"
+    and may change colour on its LAST stitch (so the turning chain is the next
+    stripe's), and names no other colour. Only those two shapes, so a row that
+    changes mid-row still has to be read properly. A striped sleeve's increase
+    rows ("2 sc in first st, sc in each st to last st, 2 sc in last st") and a
+    sedge row's closing change are outside the colour grammar, and without
+    this every row after them read as naming no colour at all."""
+    lead = _RE_LEAD_WITH.match(text.strip())
+    mentions = _RE_WITH.findall(text) + _RE_CHANGE.findall(text)
+    end = _RE_END_CHANGE.search(text)
+    if len(mentions) > (1 if lead else 0) + (1 if end else 0):
+        return None
+    colour = lead.group(1).title() if lead else carried
+    if colour is None or not count:
+        return None
+    return [colour] * count, (end.group(1).title() if end else colour)
 
 
 def _blind_rows(blind):
