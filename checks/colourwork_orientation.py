@@ -826,6 +826,31 @@ def _shape_expectation(grid, drops, section):
     return out
 
 
+def _tidy_neck_edge(row, at_end, min_run):
+    """loopdreams tidyNeckEdge, mirrored exactly: where a V-neck Front's
+    neckline cuts the design down to a sliver, the edge run takes its inward
+    neighbour's colour. A run is a sliver when it is shorter than `min_run`
+    colour positions at the row's own resolution: 3 for a plain stitch (one
+    position per stitch), 2 for a textured one -- a single sedge opener (2 sts)
+    or closer (1 st), or a single moss/linen sc. A row that is all one run has
+    no neighbour and is left alone."""
+    row = list(row)
+    n = len(row)
+    order = range(n - 1, -1, -1) if at_end else range(n)
+    edge = row[n - 1] if at_end else row[0]
+    run = 0
+    for k in order:
+        if row[k] != edge:
+            break
+        run += 1
+    if run >= min_run or run >= n:
+        return row
+    fill = row[n - 1 - run] if at_end else row[run]
+    for k in (range(n - run, n) if at_end else range(run)):
+        row[k] = fill
+    return row
+
+
 def _compare(pattern, design, actual, width, folded, unread=(), directs=None, drops=None, section=None) -> list:
     """Compare the fabric the instructions make against the design.
 
@@ -876,6 +901,25 @@ def _compare(pattern, design, actual, width, folded, unread=(), directs=None, dr
             grid = [list(r) for r in per_res[len(a)][names[0]]]
             grid[i] = expected
             per_res[len(a)][names[0]] = grid
+
+    # A tidied neckline edge (see _tidy_neck_edge): every narrowed row's
+    # expectation, at the row's own resolution, loses its edge sliver the same
+    # way. Written into the per-resolution grid so both kinds of row read it.
+    if drops and getattr(pattern, "neckline_edge", None) == "tidy":
+        for i, (a, d) in enumerate(zip(actual, directs)):
+            drop = drops[i] if i < len(drops) else 0
+            if a is None or drop <= 0:
+                continue
+            textured = d or len(a) != width - drop
+            expected = _expected_row(base, per_res, names[0], i, a, d)
+            at_end = (section == "Right Front") == (i % 2 == 0)
+            tidied = _tidy_neck_edge(expected, at_end, 2 if textured else 3)
+            if len(a) not in per_res:
+                per_res[len(a)] = dict(_candidate_expectations(labelled, len(a), rows, folded))
+            grid = [list(r) for r in per_res[len(a)][names[0]]]
+            grid[i] = tidied
+            per_res[len(a)][names[0]] = grid
+            directs[i] = True
 
     correct_name = names[0]
     if _agrees_per_row(base, per_res, correct_name, actual, directs):
