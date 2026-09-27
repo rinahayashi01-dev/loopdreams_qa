@@ -184,7 +184,68 @@ def check(pattern) -> list:
         if row.declared_count is not None:
             body_width = row.declared_count
 
+    for row in pattern.rows:
+        issues.extend(_check_oval_foundation(row))
+
     return _dedupe_repeated_warnings(issues)
+
+
+# An oval worked round both sides of its own foundation chain (loopdreams
+# buildOvalRoundRows, the Amigurumi Egg):
+#   "Ch 5. Skip the first chain from the hook (...). Sc in the next chain and
+#    each of next 2 chs, 3 sc in last ch, working on the opposite side of the
+#    foundation chain: sc in each of next 3 chs, 3 sc in next ch."
+# Its stitches are counted elsewhere, but nothing tied the chain to its two
+# sides, so "Ch 4" or "Ch 6" above correct sides still passed (found by
+# mutation testing, loopdreams 2026-09-27). Every number is stated, so the
+# geometry is knowable:
+#   side 1: skipped + worked along it + the end chain = the whole chain
+#   side 2: worked back along it + the far end = side 1's chains + skipped
+# Runs only when the whole shape is present in this order, and says nothing
+# otherwise -- a partial match is not enough to know which chain is which.
+_OVAL_CHAIN = re.compile(r"^ch\s+(\d+)$", re.I)
+_OVAL_SIDE1 = re.compile(r"^\w+\s+in\s+the\s+next\s+chain\s+and\s+(?:in\s+)?each\s+of\s+next\s+(\d+)\s+chs?$", re.I)
+_OVAL_END1 = re.compile(r"^\d+\s+\w+\s+in\s+last\s+ch$", re.I)
+_OVAL_TURN = re.compile(r"opposite\s+side\s+of\s+the\s+foundation\s+chain", re.I)
+_OVAL_SIDE2 = re.compile(r"^\w+\s+in\s+each\s+of\s+next\s+(\d+)\s+chs?$", re.I)
+_OVAL_END2 = re.compile(r"^\d+\s+\w+\s+in\s+next\s+ch$", re.I)
+
+
+def _check_oval_foundation(row):
+    raws = [c.raw.strip().rstrip(".:") for c in row.clauses]
+    skip = next((c for c in row.clauses if c.clause_type == "skip_first_chains_from_hook"), None)
+    steps = [_OVAL_CHAIN, None, _OVAL_SIDE1, _OVAL_END1, _OVAL_TURN, _OVAL_SIDE2, _OVAL_END2]
+    found, i = [], 0
+    for rx in steps:
+        if rx is None:  # the skip clause, located by type
+            if skip is None or skip.explicit_count is None or skip not in row.clauses[i:]:
+                return []
+            i = row.clauses.index(skip, i) + 1
+            found.append(None)
+            continue
+        while i < len(raws) and not (rx.search(raws[i]) if rx is _OVAL_TURN else rx.match(raws[i])):
+            i += 1
+        if i == len(raws):
+            return []
+        found.append((rx.search(raws[i]) if rx is _OVAL_TURN else rx.match(raws[i])))
+        i += 1
+    chain = int(found[0].group(1))
+    skipped = skip.explicit_count
+    side1 = 1 + int(found[2].group(1))
+    side2 = int(found[5].group(1))
+    problems = []
+    if skipped + side1 + 1 != chain:
+        problems.append(
+            f"the first side skips {skipped}, works {side1} and turns in the last chain, which is "
+            f"{skipped + side1 + 1} chains, but the foundation is Ch {chain}")
+    if side2 + 1 != side1 + skipped:
+        problems.append(
+            f"the second side works back along {side2} chains and turns in the next, which is "
+            f"{side2 + 1} chains, but the first side left {side1 + skipped} ({side1} worked + {skipped} skipped)")
+    if not problems:
+        return []
+    return [Issue(category="stitch_count", severity="error", location=row.label,
+                  message=f"{row.label}'s oval foundation does not add up: {'; '.join(problems)}.")]
 
 
 # ----------------------------------------------------------------------
@@ -397,6 +458,14 @@ def _solve_compound_ratios(pattern):
 
 def _check_row(row, in_count, in_label, is_foundation_transition, ratio_overrides):
     clauses = row.clauses
+
+    # A clause that contradicts itself is wrong whatever the row's other maths
+    # says, so it is reported first and alone (see StitchClause.contradiction).
+    contradictions = [c.contradiction for c in clauses if c.contradiction] + [
+        s.contradiction for c in clauses for s in (c.sub_clauses or []) if s.contradiction]
+    if contradictions:
+        return [Issue(category="stitch_count", severity="error", location=row.label,
+                      message=f"{row.label} contradicts itself: {'; '.join(contradictions)}.")]
 
     foundation_clause = next((c for c in clauses if c.clause_type == "foundation_into_chain"), None)
     if foundation_clause is not None:
@@ -1335,6 +1404,16 @@ def _check_each_st(row, each_st, in_count, in_label, is_foundation_transition, r
     return []
 
 
+def _states_skip(clauses) -> bool:
+    """The row says outright how many foundation chains it skips ("Skip the
+    first chain / the first 2 chains from the hook (...)"). stitch_parser has
+    already added that count to the clause's consumes when it isn't folded
+    into a foundation_into_chain, so a row that states it and still accounts
+    for too few chains is short, not ambiguous."""
+    return any(c.clause_type == "skip_first_chains_from_hook" and c.explicit_count is not None
+               for c in clauses)
+
+
 def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_foundation_transition=False):
     p, c, reasons = _zone_sum(clauses, ratio_overrides=ratio_overrides)
     if reasons:
@@ -1343,7 +1422,12 @@ def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_f
             message=f"Cannot verify stitch-count math for {row.label}: {'; '.join(reasons)}.",
         )]
     if in_count is not None and c != in_count:
-        if is_foundation_transition and c < in_count:
+        # Only when the row does NOT state its skip. A colourwork first row
+        # ("Skip the first chain ... With Colour 2, 5 sc in next 5 chs; ...")
+        # states it, so a shortfall there is a stitch missing from a run --
+        # before this it came back as this warning, and a run one stitch
+        # short passed the batch gate as REVIEW (loopdreams, 2026-09-27).
+        if is_foundation_transition and c < in_count and not _states_skip(clauses):
             # Ambiguous, not wrong: this row's clauses consume fewer
             # stitches than the raw foundation chain, with no ordinal
             # "in Nth ch from hook" clause stating how many chains were
@@ -1364,11 +1448,12 @@ def _check_flat_sequence(row, clauses, in_count, in_label, ratio_overrides, is_f
                     f"{row.declared_count} sts."
                 ),
             )]
+        stated = " (including the chains it says to skip)" if _states_skip(clauses) else ""
         return [Issue(
             category="stitch_count", severity="error", location=row.label,
             message=(
-                f"Stitch-count mismatch at {row.label}: {in_label} has {in_count} sts, but the row's stitches "
-                f"only account for {c} of them."
+                f"Stitch-count mismatch at {row.label}: {in_label} has {in_count} sts, but the row's stitches"
+                f"{stated} only account for {c} of them."
             ),
         )]
     if row.declared_count is not None and p != row.declared_count:

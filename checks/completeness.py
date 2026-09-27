@@ -377,7 +377,10 @@ def _check_foundation_row_ambiguity(pattern) -> list:
         )
         if not has_repeat_group:
             _, consumed, reasons = stitch_count_module._zone_sum(first.clauses)
-            if not reasons and consumed < pattern.foundation_chain:
+            # A row that states its skip is not ambiguous; stitch_count reports
+            # the shortfall as the error it is.
+            if (not reasons and consumed < pattern.foundation_chain
+                    and not stitch_count_module._states_skip(first.clauses)):
                 return [Issue(
                     category="completeness", severity="warning", location=first.label,
                     message=(

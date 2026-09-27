@@ -23,6 +23,11 @@ class StitchClause:
     # purely a height-up and produce nothing.
     chain_counts_as_stitch: bool = False
     unverifiable_reason: Optional[str] = None
+    # Set when the clause's own text contradicts itself whatever it was meant
+    # to say -- "5 sc in next 4 chs" can be neither one per chain nor the same
+    # number in each. Reported as an error; unlike unverifiable_reason it is
+    # not a gap in what the tool knows.
+    contradiction: Optional[str] = None
     sub_clauses: list = field(default_factory=list)   # for clause_type == "bracket_group"
     # Set when the clause names a position INSIDE a group the previous row
     # made, rather than naming its own target ("sc in centre dc of next
