@@ -1,5 +1,6 @@
 import unittest
 
+from loopdreams_qa.from_pattern_json import build_raw_text
 from loopdreams_qa.pattern_parser import parse
 from loopdreams_qa.checks import stitch_count, completeness
 from loopdreams_qa.stitch_parser import tokenize_round
@@ -154,6 +155,51 @@ class TestRibbingOpeningRowMergedScPass(unittest.TestCase):
         raw = self._raw("With RS facing, join yarn to the first stitch of the sc row. Ch 6, turn. (5 sts)")
         pattern = parse(raw)
         self.assertEqual(pattern.component_foundations["RIBBING"], (6, False))
+
+
+class TestLabelledPanelOpeningThroughPayload(unittest.TestCase):
+    """The generator labels each panel's opening row "Ribbing (Panel N): ..."
+    and from_pattern_json writes every row as "Row N: ...". Neither the label
+    nor the colon matched _RE_ROW_AS_EDGE_FOUNDATION, so the panel's chain-up
+    was never read as the strip's foundation. Its first row was checked
+    against the scarf body's foundation chain instead, and every ribbed scarf
+    FAILed ("on a 32-chain foundation should produce 29 sts, but the pattern
+    declares 10 sts"). Built through build_raw_text, the path batch-test uses."""
+
+    def _payload(self, chain_up: int, first_row_count: int):
+        body = [{"row_number": 1, "stitch_count": 8, "instructions": "Ch 10, turn.", "section": None}]
+        body += [{"row_number": i, "stitch_count": 8, "section": None, "instructions":
+                  "Skip first st (the chain already \u2018fills\u2019 that slot), dc in each st across, "
+                  "at the end of the row, dc in top of the ch-3. Ch 3, turn."} for i in range(2, 5)]
+        body[1]["instructions"] = ("Skip the first 3 chains from the hook (they count as this row's first stitch, "
+                                   "so the foundation chain is one shorter than this row's stitch count). "
+                                   "Dc in the next chain and in each ch across. Ch 3, turn.")
+        body[-1]["instructions"] = body[-1]["instructions"].replace("Ch 3, turn.", "Fasten off, weave in ends.")
+        panel = [
+            {"row_number": 5, "stitch_count": 8, "section": None, "instructions":
+             "Ribbing (Panel 1): With RS facing, join yarn to the first stitch of the foundation chain. "
+             f"Sc in each st evenly across, ending at the opposite corner. Ch {chain_up}, turn."},
+            {"row_number": 6, "stitch_count": first_row_count, "section": None, "instructions":
+             "Skip the first 3 chains from the hook (they don't count as a stitch). Dc in the next chain "
+             "and in each ch across. Sl st in next 2 sts of the sc row. Ch 3, turn."},
+        ]
+        return {"title": "Test Scarf", "gauge_sts_per_in": 4, "gauge_rows_per_in": 2,
+                "yarn_weight_name": "Medium", "hook_label": "5.0 mm",
+                "abbreviations": [{"abbr": "dc", "definition": "Double Crochet"},
+                                  {"abbr": "sc", "definition": "Single Crochet"}],
+                "rows": body + panel}
+
+    def _errors(self, payload):
+        pattern = parse(build_raw_text(payload))
+        return [i for i in stitch_count.check(pattern) if i.severity == "error"]
+
+    def test_panel_row_is_checked_against_its_own_chain_up(self):
+        self.assertEqual(self._errors(self._payload(chain_up=9, first_row_count=6)), [])
+
+    def test_wrong_panel_count_still_caught(self):
+        errors = self._errors(self._payload(chain_up=9, first_row_count=7))
+        self.assertEqual(len(errors), 1)
+        self.assertIn("9-chain foundation", errors[0].message)
 
 
 class TestRibbingSectionLabelContinuation(unittest.TestCase):
