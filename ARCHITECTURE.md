@@ -4435,3 +4435,18 @@ Mutation testing of correct loopdreams output (change one number, see whether th
 - No mutant scores weaker on the branch than on main.
 
 New `tests/test_stated_counts.py` (10 tests, including controls: the unstated-skip warning and the clean-multiple increase are unchanged). Full suite passes (454 tests, 1 skip).
+
+## A labelled turning chain belongs to the next row (2026-09-30)
+
+loopdreams now labels a turning chain that counts as a stitch where the maker makes it: "... hdc in top of the ch-2. Ch 2 (counts as first hdc), turn." Many published patterns use a ch 2 that does *not* count, so the bare "Ch 2, turn." was ambiguous until the next row's "Skip first st" (loopdreams `turningChainClause`).
+
+`counts_as_chain` already read "Ch N (counts as first X)" as a `counted_chain` (produces 1), which is right at the start of a round. At the end of a row it credited the chain to the row it closes, so every row read one stitch too wide. It also switched off the far-edge credit (which refuses to fire on top of an explicit counted chain), so a shaped row would have read one short. Every other wording measured ("… of next row", "… here and throughout", or the label moved into the next row's skip clause) was an unrecognised clause and dropped whole garments to REVIEW. So the parser was taught rather than the wording bent, as with "at the end of the row" (#51).
+
+`tokenize_round` now demotes a `counted_chain` immediately followed by a `turn` clause to a plain chain (produces 0), which is exactly how the unlabelled "Ch 2, turn." has always parsed. The next row keeps its credit from "skip first st" or "in top of the ch-N", as before. A leading "Ch 3 (counts as dc), …" is untouched.
+
+**Measured** (46 generated cases: sc/hdc/hhdc/dc/tr × generic flat, scarf, triangle shawl, sweater, cardigan, coloured sweater and cardigan panels on two placements, waffle):
+- Old wording: identical statuses and finding text on main and this branch (46/46 PASS).
+- New wording: main FAILs every counting-chain case (14–181 errors each); this branch gives 46/46 PASS with findings identical to the old wording on main.
+- Mutants, old wording on main vs new wording on this branch: a stated row count +1 gives 41 FAIL / 5 PASS on both; foundation chain +1 gives 46 FAIL on both. None scores weaker.
+
+New `TestLabelledTrailingTurningChain` in `test_stitch_parser.py`: a labelled trailing chain tokenizes exactly like the plain one; a shaped row keeps its far-edge credit; a leading counted chain is unchanged; and end to end, a labelled row with a wrong stated count is still an error. Full suite passes (458 tests, 1 skip).

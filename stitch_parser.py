@@ -988,6 +988,21 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
             continue
         clauses.append(_classify(part, patterns, custom_compound))
 
+    # A counted chain made just before turning ("... in top of the ch-2. Ch 2
+    # (counts as first hdc), turn.") is the NEXT row's first stitch, not one
+    # of this row's: the maker makes it, turns, and the next row skips its
+    # first st because of it. Credited here it would read every row one
+    # stitch too wide -- and it would also suppress the far-edge credit below
+    # (which refuses to fire on top of an explicit counted chain), so a
+    # shaped row would read one short instead. Demoted to a plain chain,
+    # which is exactly how the unlabelled "Ch 2, turn." has always parsed.
+    # Scoped to a counted chain immediately followed by "turn", so a leading
+    # "Ch 3 (counts as dc), ..." at the START of a row or round is untouched.
+    # (loopdreams builders.ts turningChainClause.)
+    for i in range(len(clauses) - 1):
+        if clauses[i].clause_type == "counted_chain" and clauses[i + 1].clause_type == "turn":
+            clauses[i] = replace(clauses[i], clause_type="chain", produces=0)
+
     # A row's very first clause being a bare "skip first st" (consumes=1,
     # produces=0, no counted_chain clause ahead of it -- it IS clause 0) is
     # the modern, more concise phrasing for a turning-chain-replaces-the-
