@@ -4435,3 +4435,18 @@ Mutation testing of correct loopdreams output (change one number, see whether th
 - No mutant scores weaker on the branch than on main.
 
 New `tests/test_stated_counts.py` (10 tests, including controls: the unstated-skip warning and the clean-multiple increase are unchanged). Full suite passes (454 tests, 1 skip).
+
+## A scarf's finishing is not part of its design (2026-09-30)
+
+loopdreams now keeps a striped scarf's stripes when it also has ribbing, fringe, tassels or a border (before, the wizard dropped the stripes). The body comes from the stitch's colour builder, and the one-colour scarf's finishing rows follow it, naming the colour they are worked in ("join Colour 1").
+
+`colourwork_orientation` read those finishing rows as more of the design. A row-striped design is compared at any width, so the width filter that normally skips "a finishing row of a different width" was off. Every border round, ribbing row and fringe row became one more stripe, and a ribbed scarf failed from row 3.
+
+`_RE_FINISHING_START` (`Border:`, `Ribbing (Panel N):`, `Fringe:`, `Tassels:`) now ends the body. It stops at the first one rather than skipping each labelled row, because a ribbing panel's rows after its opening carry no label. Finishing always follows the body in every builder that writes these labels, so nothing after one is a design row.
+
+**Measured.**
+- 36 generated striped scarves (dc, sc, moss, waffle, sedge and shell × straight with sc border, crab-stitch border with rounded corners, 1x1 ribbing with a border, front/back-post ribbing without one, fringe, tassels). On main, 12 had a `colourwork_orientation` error, and 28 FAIL overall. On this branch, every case grades exactly as the same scarf in one colour does: same status, same errors.
+- Body rows alone (no finishing): 36/36 match the design on both main and this branch, so the stripes themselves were right.
+- The ribbing, fringe and tassels cases still FAIL on both, as their one-colour versions already did. The stitch-count check reads a ribbing panel's chain-up against the body's foundation. Completeness finds no finishing section in a fringe or tassels scarf. Both are separate from this change.
+
+New `tests/test_scarf_colour_finishing.py`, with real generator output (a ribbed scarf with a border and a fringed one). Controls: a body row in the wrong colour, and a dropped body row, are still errors. Without the fix the two real-output tests fail. Full suite passes (458 tests, 1 skip).
