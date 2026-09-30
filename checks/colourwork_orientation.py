@@ -65,6 +65,14 @@ _RE_CHAIN_ONLY = re.compile(
 # row -- dropping it shortens the panel and silently misaligns every
 # expected row against the resampled design.
 _SKIP_ROW = re.compile(r"Assembly|Handles?:|Pocket:|Liner|Zipper|Block the pieces|Seam|Repeat Row", re.I)
+# A scarf's finishing: its ribbing panels, border round, and the sc rows and
+# knots of a fringe or tassels. They follow the body, name the colour they are
+# worked in ("join Colour 1"), and none of them is a row of the design. A
+# ribbing panel's own rows after its opening carry no label at all, so the body
+# ends at the FIRST of these labels rather than each one being skipped.
+# Striped designs made this matter: a row-striped design is compared at any
+# width, so every finishing row was read as another stripe (scarf stripes with an end finish or border, 2026-09-30).
+_RE_FINISHING_START = re.compile(r"^(?:Border|Ribbing \(Panel \d+\)|Fringe|Tassels):", re.I)
 
 
 def _resize_nn(grid, cols, rows):
@@ -604,6 +612,8 @@ def _check_panel(pattern, design, source) -> list:
     for row in source:
         text = row.get("instructions") or ""
         count = row.get("stitch_count")
+        if _RE_FINISHING_START.match(text.strip()):
+            break
         if _SKIP_ROW.search(text) and not _RE_WITH.search(text):
             continue
         if not count:
