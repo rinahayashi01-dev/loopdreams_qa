@@ -315,7 +315,18 @@ _RE_ROW_AS_FOUNDATION = re.compile(
 # a second ribbing strip later in the same "RIBBING" section) -- see the
 # loop below that applies both patterns repeatedly, not just once.
 _RE_ROW_AS_EDGE_FOUNDATION = re.compile(
-    r"Row\s*(\d+)\.?\s+With\s+RS\s+facing,?\s+join\s+yarn\s+to\s+the\s+(?:first|last)\s+stitch\s+of\s+the\s+"
+    r"Row\s*(\d+)[.:]?\s+"
+    # Optional "Ribbing (Panel N):" label -- the generator has prefixed each
+    # panel's opening row with it since the panels were numbered. Without it
+    # this regex never matched, so the panel's own chain-up was never read as
+    # the strip's foundation and its first row was checked against the
+    # scarf body's foundation chain instead (a false FAIL on every ribbed
+    # scarf: "on a 32-chain foundation should produce 30 sts, but the
+    # pattern declares 10 sts"). The colon after the row number is how
+    # from_pattern_json writes every row ("Row 111: ..."), so it is accepted
+    # here too; the older badge form ("Row 136 With RS ...") still matches.
+    r"(?:Ribbing\s*\(Panel\s*\d+\)\s*:\s*)?"
+    r"With\s+RS\s+facing,?\s+join\s+yarn\s+to\s+the\s+(?:first|last)\s+stitch\s+of\s+the\s+"
     r"(?:sc\s+row|foundation\s+chain|final\s+row)\.?"
     # Current phrasing (loopdreams, same-day follow-up to PR #333): the
     # preliminary sc pass across the raw edge is now folded directly into

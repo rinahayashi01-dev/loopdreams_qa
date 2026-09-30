@@ -4516,3 +4516,18 @@ New `tests/test_travel_sl_st.py` (9 tests) with the live 1-colour dry-run as its
 - Round 5 verifies, a wrong count on it is an error, and Round 3 is unverifiable for the Cluster only.
 
 5 of the 9 fail on main. Full suite passes (477 tests, 1 skip).
+
+## A ribbing panel's labelled opening row sets its own foundation (2026-09-30)
+
+Every ribbed scarf FAILed. loopdreams labels each applied ribbing panel's opening row `Ribbing (Panel N): With RS facing, join yarn to … Sc in each st evenly across, ending at the opposite corner. Ch 12, turn.`, and `from_pattern_json` writes it as `Row 111: Ribbing (Panel 1): …`. `_RE_ROW_AS_EDGE_FOUNDATION` wanted `Row 111 With RS facing` (no colon, no label), so the panel's chain-up was never read as the strip's foundation. The strip's first row ("Skip the first 2 chains from the hook … Hdc in the next chain and in each ch across") was then checked against the scarf body's foundation chain: "on a 32-chain foundation should produce 30 sts, but the pattern declares 10 sts", on both panels.
+
+The regex now accepts a colon after the row number and an optional `Ribbing (Panel N):` label. The rest of the phrase is unchanged, so nothing new can match it.
+
+**Measured** on 35 locally built scarf variants (4 ribbing types × 3 borders × 2 corner styles on a dc body, sc bodies, moss/sedge/waffle, plus unribbed controls), found while fixing the ribbed scarf's border (loopdreams, fix/scarf-ribbing-border-perimeter):
+- qa main: 33 FAIL / 2 PASS (the 2 are the unribbed controls).
+- This branch: 16 PASS / 19 REVIEW / 0 FAIL. The REVIEWs are all 1x1/2x2 ribbing and compound bodies: `Fphdc`/`bphdc` is not in the stitch vocabulary, a separate gap.
+- Mutants: the strip's first row declared 11 instead of 10, or the chain-up made `Ch 14`: both FAIL.
+
+Still unchecked: the scarf's border round (`_check_border` returns nothing for this shape, see #71). A +7 miscount on it PASSes.
+
+New `TestLabelledPanelOpeningThroughPayload` in `tests/test_scarf_ribbing.py` goes through `build_raw_text`, the path batch-test uses. Both tests fail on main.
