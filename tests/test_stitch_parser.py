@@ -196,6 +196,26 @@ class TestLabelledTrailingTurningChain(unittest.TestCase):
         self.assertEqual(self._net(labelled), self._net(plain))
         self.assertEqual(sum(c.produces for c in tokenize_round(labelled)), sum(c.produces for c in tokenize_round(plain)))
 
+    def test_of_next_row_form_parses_like_the_plain_one(self):
+        # Written where an inline "(N sts)" follows the chain.
+        plain = "Dc in first st, dc in each of next 3 sts, at the end of the row, 2 dc in top of the ch-3, ch 3, turn."
+        labelled = plain.replace("ch 3, turn.", "ch 3 (counts as first dc of next row), turn.")
+        self.assertEqual(self._net(labelled), self._net(plain))
+
+    def test_same_st_as_the_ch_reads_as_first_st(self):
+        # loopdreams' near-edge increase under the counts-as convention.
+        old = "Dc in first st, dc in each of next 3 sts, at the end of the row, 2 dc in top of the ch-3, ch 3, turn."
+        new = old.replace("Dc in first st", "Dc in same st as the ch-3")
+        self.assertEqual(self._net(new), self._net(old))
+
+    def test_same_st_as_other_things_is_not_rewritten(self):
+        # Only the turning chain's own stitch: "same st as the last dc" names
+        # something else and must keep whatever reading it had.
+        a = tokenize_round("Dc in same st as the last dc, dc in each st across. Ch 3, turn.")
+        self.assertNotEqual(a[0].raw.strip(), "Dc in first st")
+        self.assertNotEqual([(c.clause_type, c.consumes, c.produces) for c in a][0],
+                            [(c.clause_type, c.consumes, c.produces) for c in tokenize_round("Dc in first st, dc in each st across. Ch 3, turn.")][0])
+
     def test_leading_counted_chain_is_untouched(self):
         clauses = tokenize_round("Ch 3 (counts as first dc), 2 dc in same st, dc in each st across. Ch 3, turn.")
         self.assertEqual(clauses[0].clause_type, "counted_chain")

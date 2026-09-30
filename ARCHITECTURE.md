@@ -4449,4 +4449,17 @@ loopdreams now labels a turning chain that counts as a stitch where the maker ma
 - New wording: main FAILs every counting-chain case (14–181 errors each); this branch gives 46/46 PASS with findings identical to the old wording on main.
 - Mutants, old wording on main vs new wording on this branch: a stated row count +1 gives 41 FAIL / 5 PASS on both; foundation chain +1 gives 46 FAIL on both. None scores weaker.
 
-New `TestLabelledTrailingTurningChain` in `test_stitch_parser.py`: a labelled trailing chain tokenizes exactly like the plain one; a shaped row keeps its far-edge credit; a leading counted chain is unchanged; and end to end, a labelled row with a wrong stated count is still an error. Full suite passes (458 tests, 1 skip).
+**Two follow-on phrasings**, from the crochet review of the same change:
+- Where an inline "(N sts)" follows the chain, loopdreams writes "(counts as first dc **of next row**)", so a maker doesn't count the new chain into that total. `counts_as_chain` accepts the optional "of (the) next row". It only ever sits before "turn", so it is demoted like the plain label.
+- The counts-as near-edge increase is now "Dc in same st as the ch-3" rather than "Dc in first st", which next to "counts as first dc" read as the chain itself. `_RE_SAME_ST_AS_TURNING_CH` rewrites exactly that phrase (ending in the turning chain) to "in first st" before classification. It is the same stitch, the one the chain stands on. "Same st as the last dc" and every other "same st" are untouched.
+
+Re-measured with both in place: the same 46 cases give 46/46 PASS with findings identical to the old wording, and the same mutants give the same results (41 FAIL / 5 PASS for count +1, 46 FAIL for foundation +1). None scores weaker.
+
+New `TestLabelledTrailingTurningChain` in `test_stitch_parser.py` (7 tests):
+- a labelled trailing chain, and its "of next row" form, tokenize exactly like the plain one;
+- a shaped row keeps its far-edge credit;
+- "in same st as the ch-3" reads as "in first st", and "same st as the last dc" does not;
+- a leading counted chain is unchanged;
+- end to end, a labelled row with a wrong stated count is still an error.
+
+Full suite passes (461 tests, 1 skip).

@@ -82,6 +82,7 @@ _TARGET = rf"{_POS}\s+{_MODIFIER}{_NOUN}"
 # fix.
 _RE_CHAIN = re.compile(r"^ch\s*(\d+)$", re.I)
 _RE_TURN = re.compile(r"^turn$", re.I)
+_RE_SAME_ST_AS_TURNING_CH = re.compile(r"\bin\s+(?:the\s+)?same\s+st\s+as\s+the\s+(?:turning\s+)?ch[\s-]?\d+$", re.I)
 _RE_FASTEN_OFF = re.compile(r"^fasten off\.?$", re.I)
 _RE_JOIN = re.compile(r"^join\b", re.I)
 _RE_SETUP = re.compile(r"^with (rs|ws) facing\b", re.I)
@@ -414,7 +415,11 @@ class _Patterns:
         # alongside the previously-seen "(counts as dc)" form used
         # elsewhere (e.g. motif rounds) with no "first" at all.
         self.counts_as_chain = re.compile(
-            rf"^ch\s+(\d+)\s*\(counts\s+as\s+(?:first\s+)?({stitch_alt})\)$", re.I
+            # "... of next row": the form loopdreams writes when an inline
+            # "(N sts)" follows a trailing turning chain (turningChainClause),
+            # so the chain isn't counted into that total. It only ever sits
+            # before "turn", where tokenize_round demotes it to a plain chain.
+            rf"^ch\s+(\d+)\s*\(counts\s+as\s+(?:first\s+)?({stitch_alt})(?:\s+of\s+(?:the\s+)?next\s+row)?\)$", re.I
         )
         # Optional parenthetical clarification between the ordinal clause and
         # "and (in) each ch across" -- real phrasing found on a real sample
@@ -1205,6 +1210,12 @@ def _score_group_members(inner: str, patterns: _Patterns, custom_compound: froze
 def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> StitchClause:
     raw_part = part
     p = part.strip()
+    # "<stitch> in same st as the ch-3" is loopdreams' near-edge increase
+    # under the counts-as convention (increaseRowBody): the stitch the turning
+    # chain stands on, which is the previous row's first st. It replaced "in
+    # first st", which read as the chain itself once the chain was labelled
+    # "counts as first dc". Read exactly as that phrase always was.
+    p = _RE_SAME_ST_AS_TURNING_CH.sub("in first st", p)
 
     m = patterns.counts_as_chain.match(p)
     if m:
