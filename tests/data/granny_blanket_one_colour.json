@@ -1,0 +1,103 @@
+{
+ "title": "Granny Square Blanket, 1 colour, 48x60 (live dry-run 2026-09-30)",
+ "gauge_sts_per_in": 5,
+ "gauge_rows_per_in": 5,
+ "yarn_weight_name": "Light",
+ "hook_label": "4 mm",
+ "abbreviations": [
+  {
+   "abbr": "ch",
+   "definition": "chain"
+  },
+  {
+   "abbr": "sl st",
+   "definition": "slip stitch"
+  },
+  {
+   "abbr": "sc",
+   "definition": "single crochet"
+  },
+  {
+   "abbr": "hdc",
+   "definition": "half double crochet"
+  },
+  {
+   "abbr": "dc",
+   "definition": "double crochet"
+  },
+  {
+   "abbr": "cluster",
+   "definition": "cluster (2 dc worked together in the same space: [yo, insert hook, yo and pull up a loop, yo and pull through 2 loops] twice, then yo and pull through all 3 loops)"
+  },
+  {
+   "abbr": "rep",
+   "definition": "repeat"
+  }
+ ],
+ "palette": [
+  "#C9A227"
+ ],
+ "design_grid": null,
+ "rows": [
+  {
+   "row_number": 1,
+   "stitch_count": 8,
+   "instructions": "Magic ring. With Colour 1, 8 sc in ring. Join with sl st to first sc. (8 sc)",
+   "section": null
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 16,
+   "instructions": "Ch 3 (counts as dc), 1 dc in first sc, 2 dc in each remaining st around. Join with sl st to top of ch 3. (16 dc)",
+   "section": null
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 16,
+   "instructions": "Sl st in the sp between the ch 3 and the next dc. Ch 2, 1 dc in the same sp (beginning Cluster made \u2014 the ch 2 stands in for the first dc; a Cluster is 2 dc worked together in the same space: [yo, insert hook in sp, yo and pull up a loop, yo and pull through 2 loops] twice, then yo and pull through all 3 loops on the hook). *Ch 1, Cluster in next sp; rep from * 14 more times, ch 1. Join with sl st to top of ch 2. (16 Clusters, 16 ch-1 sps)",
+   "section": null
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 24,
+   "instructions": "Sl st in next ch-1 sp. Ch 2, 1 dc in the same sp (beginning Cluster made). *Ch 1, [Cluster, ch 1, Cluster] in next ch-1 sp,** ch 1, Cluster in next ch-1 sp; rep from * 6 more times, then * to ** once, ch 1. Join with sl st to top of ch 2. (24 Clusters, 24 ch-1 sps)",
+   "section": null
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 60,
+   "instructions": "Sl st in next ch-1 sp, sl st in next Cluster, sl st in next ch-1 sp (the sp between the 2 Clusters of an increase; in this round, every Cluster and every ch-1 sp counts as 1 st). Ch 3 (counts as dc), [1 dc, ch 2, 2 dc] in the same sp (corner made). *1 dc in each of next 2 sts, 1 hdc in each of next 2 sts, 1 sc in each of next 3 sts, 1 hdc in each of next 2 sts, 1 dc in each of next 2 sts,** [2 dc, ch 2, 2 dc] in next ch-1 sp (corner made); rep from * 2 more times, then * to ** once (the last 2 dc go into the ch-1 sp and the Cluster you slip-stitched across). Join with sl st to top of ch 3. (60 sts, 4 ch-2 corner sps)",
+   "section": null
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 76,
+   "instructions": "Sl st in next dc, sl st in next ch-2 corner sp. Ch 3 (counts as dc), [1 dc, ch 2, 2 dc] in the same sp. *1 dc in each of next 15 sts,** [2 dc, ch 2, 2 dc] in next corner ch-2 sp; rep from * 2 more times, then * to ** once (the last 2 dc go into the top of the ch-3 and the dc you slip-stitched across). Join with sl st to top of ch 3. Fasten off, weave in ends. (76 sts, 4 ch-2 corner sps)",
+   "section": null
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 0,
+   "instructions": "Assembly: Make 20 motifs in total, following Rounds 1\u20136 above. Each motif should measure about 12 in square; if your first one is much larger, use a smaller hook (or a larger hook if it is much smaller) before making the rest, or the blanket will be off by the same amount. Arrange them in 4 columns \u00d7 5 rows.",
+   "section": null
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 0,
+   "instructions": "Assembly: Using a yarn needle and Colour 1, sew motifs together through the back loops (see Seaming Techniques), forming a 4 \u00d7 5 grid. Sew the 5 motifs of each column together into a strip, then sew the 4 strips together side by side.",
+   "section": null
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 396,
+   "instructions": "Border: Join Colour 1 with sl st to any corner ch-2 sp of the assembled blanket. Ch 2 (does not count as hdc). 3 hdc in the same sp (corner made). Working around the outer edge, 1 hdc in each dc. At each join between two motifs, 1 hdc in the corner ch-2 sp of the first motif, 1 hdc in the seam (insert the hook through both motifs' edges), and 1 hdc in the corner ch-2 sp of the next motif. Work 3 hdc in the ch-2 sp at each of the 3 remaining blanket corners. Join with sl st to first hdc. (396 sts)",
+   "section": null
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 404,
+   "instructions": "Border: Ch 2 (does not count as hdc). Starting in the same st as the join, 1 hdc in each hdc around, working 3 hdc in the centre hdc of each of the 4 corner groups. Join with sl st to first hdc. Fasten off, weave in ends. (404 sts)",
+   "section": null
+  }
+ ]
+}

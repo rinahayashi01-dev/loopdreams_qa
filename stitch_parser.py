@@ -357,9 +357,40 @@ _RE_GROUP_INTO_SAME_SPOT = re.compile(
 # as the round-closing "sl st ... to join" already handled by sl_st_join.
 # Real sample: loopdreams builders.ts buildGrannySquareRows opens EVERY round
 # this way, and buildBasicMotifRows Rounds 5-6 do too.
+#
+# Widened 2026-09-30 for loopdreams' 1-colour Granny Square Blanket motif,
+# which slips across instead of joining new yarn (loopdreams #619):
+#   "Sl st in next ch-1 sp, sl st in next Cluster, sl st in next ch-1 sp (the sp
+#    between the 2 Clusters of an increase; in this round, every Cluster and
+#    every ch-1 sp counts as 1 st)."
+#   "Sl st in the sp between the ch 3 and the next dc."
+# A travel sl st still makes no fabric whatever it lands in -- a Cluster, or a
+# space named by what it sits between -- so these stay no-ops. The trailing
+# note is the hard part: _strip_trailing_annotation deliberately KEEPS any
+# parenthetical saying "counts as" (on a chain, "(counts as dc)" is real
+# math), so only a note containing "counts as" ever reaches this regex; any
+# other trailing note was already stripped, as before. Here the note is about
+# the ROUND's stitches, not the sl st, so a travel clause may carry it unless
+# the note (a) opens with the sl st itself claiming to count ("(counts as
+# first sc)") or (b) also contains stitch work ("2 dc", "ch 3") -- either way
+# the clause is left unrecognised.
 _RE_SL_ST_TRAVEL = re.compile(
-    rf"^sl\s*st\s+(?:to|in)\s+(?:{_TARGET}|(?:the\s+)?same\s+{_MODIFIER}{_NOUN}|corner\s+sp(?:ace)?)$", re.I
+    rf"^sl\s*st\s+(?:to|in)\s+(?:{_TARGET}|{_POS}\s+clusters?|(?:the\s+)?same\s+{_MODIFIER}{_NOUN}"
+    rf"|corner\s+sp(?:ace)?|(?:the\s+)?(?:sp|space)\s+between\s+[^()]+?)"
+    rf"(?:\s*\((?P<note>[^()]*)\))?$", re.I
 )
+_RE_NOTE_SELF_COUNT = re.compile(r"^\s*(?:counts?\s+as|does\s+not\s+count|doesn't\s+count)\b", re.I)
+_RE_NOTE_STITCH_WORK = re.compile(
+    r"\b\d+\s*(?:sc|hdc|dc|tr|dtr|ch|sl\s*st)s?\b|\b(?:ch|sc|hdc|dc|tr)\s+\d+\b", re.I
+)
+
+
+def _is_sl_st_travel(p: str) -> bool:
+    m = _RE_SL_ST_TRAVEL.match(p)
+    if not m:
+        return False
+    note = m.group("note")
+    return note is None or not (_RE_NOTE_SELF_COUNT.match(note) or _RE_NOTE_STITCH_WORK.search(note))
 # "Fasten off Colour 1." -- breaking ONE colour part-way through a pattern
 # that carries on in another, as distinct from the pattern-closing bare
 # "Fasten off." already handled by _RE_FASTEN_OFF. Same no-op for stitch-count
@@ -1233,7 +1264,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_FASTEN_OFF.match(p):
         return StitchClause(raw=raw_part, clause_type="fasten_off", consumes=0, produces=0)
 
-    if _RE_FASTEN_OFF_COLOUR.match(p) or _RE_SL_ST_TRAVEL.match(p):
+    if _RE_FASTEN_OFF_COLOUR.match(p) or _is_sl_st_travel(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_JOIN.match(p) or _RE_SETUP.match(p):

@@ -4492,3 +4492,27 @@ The stitch-count check already read that row correctly. `colourwork_orientation`
 - Mutant (the first texture row's opening colour flipped): main REVIEW (the row went unread) → **FAIL** on this branch, on all 3.
 
 New `tests/test_waffle_first_texture_row.py` with a real generated fixture: the row is read and matches, and a wrong colour on it is an error. Both fail on main. Full suite passes.
+
+## A travel sl st makes no fabric, whatever it lands in (2026-09-30)
+
+loopdreams' Granny Square Blanket now writes its motif in the colours the maker has (loopdreams #619). With a 1-colour palette there is no new yarn to join, so Rounds 3–5 open by slipping across to their start:
+
+- Round 3: "Sl st in the sp between the ch 3 and the next dc."
+- Round 5: "Sl st in next ch-1 sp, sl st in next Cluster, sl st in next ch-1 sp (the sp between the 2 Clusters of an increase; in this round, every Cluster and every ch-1 sp counts as 1 st)."
+
+`_RE_SL_ST_TRAVEL` already made "Sl st in next ch-2 corner sp" a no-op, but three things were unrecognised: a Cluster as the target, a space named by what it sits between, and a trailing note. The note was the hard one. `_strip_trailing_annotation` deliberately keeps any parenthetical containing "counts as", because on a chain "(counts as dc)" is real math. So Round 5 lost its count check at 1 colour, although its body is the same 60-stitch round that verifies at 2 and 3 colours. The only wording the parser accepted dropped the "counts as 1 st" note, which a maker needs to get round all four sides (crochet-pattern-reviewer), so the parser was taught rather than the wording bent.
+
+A travel sl st creates no fabric whatever it lands in, so these stay no-ops. `_RE_SL_ST_TRAVEL` now accepts `next/first/last Cluster(s)` and `the sp between …`, with an optional trailing parenthetical. `_is_sl_st_travel` refuses the note, leaving the clause unrecognised as before, when the note opens with the sl st itself claiming to count ("(counts as first sc)") or contains stitch work ("2 dc", "ch 3"). A note without "counts as" never reaches this check: it was already stripped, as before.
+
+**Measured:**
+- Full live `Batch_Test_Case` matrix (79 active cases, regenerated from the deployed function in dry-run), qa main vs this branch: 76 PASS / 3 REVIEW on both, and **0 cases with any different finding**. No batch case uses a 1-colour Blanket.
+- The live 1-colour 48×60 Blanket: Round 5 goes from unverifiable to **verified (60 sts)**. Round 3 is still unverifiable, now for the Cluster alone (KNOWN_UNVERIFIABLE item 1) rather than also for an unrecognised clause.
+- Mutant (one side's "3 sc" made "4 sc" on that Round 5): **FAIL**, a stitch-count mismatch. On main it was only a warning.
+
+New `tests/test_travel_sl_st.py` (9 tests) with the live 1-colour dry-run as its fixture (`tests/data/granny_blanket_one_colour.json`):
+- the new targets and a "counts as" note about the round's stitches are no-ops;
+- a sl st claiming to count, or a note carrying stitch work, is not guessed;
+- the existing travel forms are unchanged;
+- Round 5 verifies, a wrong count on it is an error, and Round 3 is unverifiable for the Cluster only.
+
+5 of the 9 fail on main. Full suite passes (477 tests, 1 skip).
