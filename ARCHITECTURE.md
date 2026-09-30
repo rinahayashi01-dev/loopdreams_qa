@@ -4450,3 +4450,31 @@ loopdreams now keeps a striped scarf's stripes when it also has ribbing, fringe,
 - The ribbing, fringe and tassels cases still FAIL on both, as their one-colour versions already did. The stitch-count check reads a ribbing panel's chain-up against the body's foundation. Completeness finds no finishing section in a fringe or tassels scarf. Both are separate from this change.
 
 New `tests/test_scarf_colour_finishing.py`, with real generator output (a ribbed scarf with a border and a fringed one). Controls: a body row in the wrong colour, and a dropped body row, are still errors. Without the fix the two real-output tests fail. Full suite passes (458 tests, 1 skip).
+
+## A labelled turning chain belongs to the next row (2026-09-30)
+
+loopdreams now labels a turning chain that counts as a stitch where the maker makes it: "... hdc in top of the ch-2. Ch 2 (counts as first hdc), turn." Many published patterns use a ch 2 that does *not* count, so the bare "Ch 2, turn." was ambiguous until the next row's "Skip first st" (loopdreams `turningChainClause`).
+
+`counts_as_chain` already read "Ch N (counts as first X)" as a `counted_chain` (produces 1), which is right at the start of a round. At the end of a row it credited the chain to the row it closes, so every row read one stitch too wide. It also switched off the far-edge credit (which refuses to fire on top of an explicit counted chain), so a shaped row would have read one short. Every other wording measured ("… of next row", "… here and throughout", or the label moved into the next row's skip clause) was an unrecognised clause and dropped whole garments to REVIEW. So the parser was taught rather than the wording bent, as with "at the end of the row" (#51).
+
+`tokenize_round` now demotes a `counted_chain` immediately followed by a `turn` clause to a plain chain (produces 0), which is exactly how the unlabelled "Ch 2, turn." has always parsed. The next row keeps its credit from "skip first st" or "in top of the ch-N", as before. A leading "Ch 3 (counts as dc), …" is untouched.
+
+**Measured** (46 generated cases: sc/hdc/hhdc/dc/tr × generic flat, scarf, triangle shawl, sweater, cardigan, coloured sweater and cardigan panels on two placements, waffle):
+- Old wording: identical statuses and finding text on main and this branch (46/46 PASS).
+- New wording: main FAILs every counting-chain case (14–181 errors each); this branch gives 46/46 PASS with findings identical to the old wording on main.
+- Mutants, old wording on main vs new wording on this branch: a stated row count +1 gives 41 FAIL / 5 PASS on both; foundation chain +1 gives 46 FAIL on both. None scores weaker.
+
+**Two follow-on phrasings**, from the crochet review of the same change:
+- Where an inline "(N sts)" follows the chain, loopdreams writes "(counts as first dc **of next row**)", so a maker doesn't count the new chain into that total. `counts_as_chain` accepts the optional "of (the) next row". It only ever sits before "turn", so it is demoted like the plain label.
+- The counts-as near-edge increase is now "Dc in same st as the ch-3" rather than "Dc in first st", which next to "counts as first dc" read as the chain itself. `_RE_SAME_ST_AS_TURNING_CH` rewrites exactly that phrase (ending in the turning chain) to "in first st" before classification. It is the same stitch, the one the chain stands on. "Same st as the last dc" and every other "same st" are untouched.
+
+Re-measured with both in place: the same 46 cases give 46/46 PASS with findings identical to the old wording, and the same mutants give the same results (41 FAIL / 5 PASS for count +1, 46 FAIL for foundation +1). None scores weaker.
+
+New `TestLabelledTrailingTurningChain` in `test_stitch_parser.py` (7 tests):
+- a labelled trailing chain, and its "of next row" form, tokenize exactly like the plain one;
+- a shaped row keeps its far-edge credit;
+- "in same st as the ch-3" reads as "in first st", and "same st as the last dc" does not;
+- a leading counted chain is unchanged;
+- end to end, a labelled row with a wrong stated count is still an error.
+
+Full suite passes (461 tests, 1 skip).

@@ -171,6 +171,72 @@ class TestFoundationIntoChainParenthetical(unittest.TestCase):
         self.assertEqual(clauses[0].explicit_count, 2)
 
 
+class TestLabelledTrailingTurningChain(unittest.TestCase):
+    """A turning chain labelled where it is made ("... Ch 2 (counts as first
+    hdc), turn.", loopdreams turningChainClause) is the NEXT row's first
+    stitch. It must parse exactly as the unlabelled "Ch 2, turn." does."""
+
+    PLAIN = ("Skip first st (the chain already \u2018fills\u2019 that slot), hdc in each st across, "
+             "at the end of the row, hdc in top of the ch-2. Ch 2, turn.")
+    LABELLED = PLAIN.replace("Ch 2, turn.", "Ch 2 (counts as first hdc), turn.")
+
+    @staticmethod
+    def _net(text):
+        return [(c.clause_type, c.consumes, c.produces) for c in tokenize_round(text)]
+
+    def test_labelled_trailing_chain_parses_like_the_plain_one(self):
+        self.assertEqual(self._net(self.LABELLED), self._net(self.PLAIN))
+
+    def test_shaped_row_keeps_its_far_edge_credit(self):
+        # No "skip first st": the chain's credit comes from "in top of the
+        # ch-3". A trailing counted chain left as counted_chain would have
+        # suppressed that credit and read the row one short.
+        plain = "Dc in first st, dc in each st across, at the end of the row, 2 dc in top of the ch-3. Ch 3, turn."
+        labelled = plain.replace("Ch 3, turn.", "Ch 3 (counts as first dc), turn.")
+        self.assertEqual(self._net(labelled), self._net(plain))
+        self.assertEqual(sum(c.produces for c in tokenize_round(labelled)), sum(c.produces for c in tokenize_round(plain)))
+
+    def test_of_next_row_form_parses_like_the_plain_one(self):
+        # Written where an inline "(N sts)" follows the chain.
+        plain = "Dc in first st, dc in each of next 3 sts, at the end of the row, 2 dc in top of the ch-3, ch 3, turn."
+        labelled = plain.replace("ch 3, turn.", "ch 3 (counts as first dc of next row), turn.")
+        self.assertEqual(self._net(labelled), self._net(plain))
+
+    def test_same_st_as_the_ch_reads_as_first_st(self):
+        # loopdreams' near-edge increase under the counts-as convention.
+        old = "Dc in first st, dc in each of next 3 sts, at the end of the row, 2 dc in top of the ch-3, ch 3, turn."
+        new = old.replace("Dc in first st", "Dc in same st as the ch-3")
+        self.assertEqual(self._net(new), self._net(old))
+
+    def test_same_st_as_other_things_is_not_rewritten(self):
+        # Only the turning chain's own stitch: "same st as the last dc" names
+        # something else and must keep whatever reading it had.
+        a = tokenize_round("Dc in same st as the last dc, dc in each st across. Ch 3, turn.")
+        self.assertNotEqual(a[0].raw.strip(), "Dc in first st")
+        self.assertNotEqual([(c.clause_type, c.consumes, c.produces) for c in a][0],
+                            [(c.clause_type, c.consumes, c.produces) for c in tokenize_round("Dc in first st, dc in each st across. Ch 3, turn.")][0])
+
+    def test_leading_counted_chain_is_untouched(self):
+        clauses = tokenize_round("Ch 3 (counts as first dc), 2 dc in same st, dc in each st across. Ch 3, turn.")
+        self.assertEqual(clauses[0].clause_type, "counted_chain")
+        self.assertEqual(clauses[0].produces, 1)
+
+    def test_a_wrong_count_is_still_caught(self):
+        raw = (
+            "ABBREVIATIONS\n"
+            "ch = chain, hdc = half double crochet\n"
+            "PATTERN STEPS\n"
+            "Foundation: Ch 11, turn.\n"
+            "Row 1: Skip the first 2 chains from the hook (they count as this row's first stitch). "
+            "Hdc in the next chain and in each ch across. Ch 2 (counts as first hdc), turn. (10 sts)\n"
+            "Row 2: " + self.PLAIN.replace("Ch 2, turn.", "Ch 2 (counts as first hdc), turn.") + " (10 sts)\n"
+            # Works 10 but states 11: the label must not paper over it.
+            "Row 3: " + self.PLAIN.replace("Ch 2, turn.", "Ch 2 (counts as first hdc), turn.") + " (11 sts)\n"
+        )
+        issues = [i for i in stitch_count.check(parse(raw)) if i.severity == "error"]
+        self.assertEqual([i.location for i in issues], ["Row 3"])
+
+
 class TestSkipFirstChainsFoundationClause(unittest.TestCase):
     def test_singular_chain_form_sc(self):
         # Real, current, widely-used generator output (loopdreams generate-
