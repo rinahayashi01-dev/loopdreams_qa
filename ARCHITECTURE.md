@@ -4478,3 +4478,17 @@ New `TestLabelledTrailingTurningChain` in `test_stitch_parser.py` (7 tests):
 - end to end, a labelled row with a wrong stated count is still an error.
 
 Full suite passes (461 tests, 1 skip).
+
+## A waffle's first texture row closes in its last st (2026-09-30)
+
+loopdreams' waffle setup row starts from skipped foundation chains that don't count ("Skip the first 2 chains from the hook (they don't count as a stitch). Dc in the next chain …"). The first texture row above it used to close "at the end of the row, dc in top of the ch-2", but there is no ch-2 at that edge, only a dc in the 3rd chain (crochet-pattern-reviewer). It now closes "dc in last st" (loopdreams `waffleFarEdge`). Every later texture row still closes in the ch-2.
+
+The stitch-count check already read that row correctly. `colourwork_orientation` did not, so a coloured waffle's first texture row dropped to "could not be read" (REVIEW):
+- `_TOKENS`' single-stitch alternative (`one`) knew "first st" and "top of ch" but not "last st". It now accepts "last st". A colour change's own "in the last st" is still matched first, by `change`.
+- `_RE_CHAIN_COUNTS` recognised a counting chain only by "counts as this row's first stitch" or "in top of ch". That row has neither, but it opens with loopdreams' "skip first st (the chain already 'fills' that slot)", which is only written when the chain counts. That phrase is now a third signal.
+
+**Measured** (qa main → this branch, 86 generated payloads: the 46 turning-chain cases, 8 coloured scarves, and 16 waffle/tote/sleeve cases with both the current and the new wording):
+- Only 3 differ: the coloured waffle and coloured tote waffle with the new wording, which go from REVIEW to PASS.
+- Mutant (the first texture row's opening colour flipped): main REVIEW (the row went unread) → **FAIL** on this branch, on all 3.
+
+New `tests/test_waffle_first_texture_row.py` with a real generated fixture: the row is read and matches, and a wrong colour on it is an error. Both fail on main. Full suite passes.

@@ -120,9 +120,12 @@ _TOKENS = re.compile(
     r"|(?P<dec>\b(?:sc|hdc|dc|tr)2tog\b)"
     # "Sc in first st" opens every moss/linen row; "sc in next ch-1 sp" is the
     # one real stitch inside their offset repeat. Neither appears in the plain
-    # grammar, and both are single stitches.
+    # grammar, and both are single stitches. "dc in last st" closes a waffle's
+    # first texture row, whose far edge is the setup row's last dc rather than
+    # a ch-2 (loopdreams waffleFarEdge). A colour change's own "in the last
+    # st" is matched first, by `change` above.
     r"|(?P<one>[A-Za-z][\w ]*?\s+(?:in|around) (?:the )?"
-    r"(?:next (?:chain|st)|next ch-1 sp|first st|top of (?:the )?ch)\b)",
+    r"(?:next (?:chain|st)|next ch-1 sp|first st|last st|top of (?:the )?ch)\b)",
     re.I,
 )
 _RE_COLOUR_NAME = re.compile(r"(Colour\s+\w+|White)", re.I)
@@ -295,8 +298,16 @@ def _colour_positions(body, width):
         return width - 1
     return width
 # The foundation row says so outright; a later row shows it by skipping the
-# stitch under the chain and closing into the chain's top.
-_RE_CHAIN_COUNTS = re.compile(r"count(?:s)? as this row's first stitch|in top of (?:the )?ch\b", re.I)
+# stitch under the chain and closing into the chain's top. A waffle's first
+# texture row has no chain's top to close into (the setup row below it starts
+# from foundation chains that don't count), so it closes "dc in last st"; its
+# own chain still counts, which its opener says ("skip first st (the chain
+# already 'fills' that slot)", loopdreams SKIP_FIRST_ST).
+_RE_CHAIN_COUNTS = re.compile(
+    r"count(?:s)? as this row's first stitch|in top of (?:the )?ch\b"
+    r"|skip first st \(the chain already",
+    re.I,
+)
 
 
 def _row_colours(text, width, carried):
