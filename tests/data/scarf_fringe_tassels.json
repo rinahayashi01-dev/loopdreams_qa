@@ -1,0 +1,228 @@
+{
+ "fringe_sc_border": [
+  {
+   "row_number": 1,
+   "stitch_count": 8,
+   "instructions": "Ch 10, turn."
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 8,
+   "instructions": "Skip the first 3 chains from the hook (they count as this row's first stitch, so the foundation chain is one shorter than this row's stitch count). Dc in the next chain and in each ch across. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 11,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Fasten off, weave in ends. Body measures approximately 5 in."
+  },
+  {
+   "row_number": 12,
+   "stitch_count": 8,
+   "instructions": "Fringe: Prepare this end for the fringe, which is knotted on last. With RS facing, join yarn to the first stitch of the foundation chain. Sc in each st evenly across, ending at the opposite corner. Fasten off."
+  },
+  {
+   "row_number": 13,
+   "stitch_count": 8,
+   "instructions": "Fringe: Prepare this end for the fringe, which is knotted on last. With RS facing, join yarn to the last stitch of the final row. Sc in each st evenly across, ending at the opposite corner. Fasten off."
+  },
+  {
+   "row_number": 14,
+   "stitch_count": 44,
+   "instructions": "Border: With RS facing, join yarn at either end of the row you just finished — that row is the stitch edge, not row-ends. Ch 1, 2 sc in same corner st (first corner begun), sc in each st across flat edge, 3 sc in corner, working 1 sc per row-end along side edge, 3 sc in corner, sc in each st across flat edge, 3 sc in corner, working 1 sc per row-end along side edge, sc in same corner st as the beginning (first corner completed). Join with sl st to first sc. Fasten off, weave in ends. (44 sts)"
+  },
+  {
+   "row_number": 15,
+   "stitch_count": 8,
+   "instructions": "Fringe: Cut strands of yarn twice your desired fringe length plus 1 in for knotting. Holding 3-4 strands together, fold in half and pull the folded loop through a stitch of the sc row with your hook; pull the loose ends through the loop and tighten. Repeat every 2-3 sts across both sc rows. Trim ends even."
+  }
+ ],
+ "fringe_no_border": [
+  {
+   "row_number": 1,
+   "stitch_count": 8,
+   "instructions": "Ch 10, turn."
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 8,
+   "instructions": "Skip the first 3 chains from the hook (they count as this row's first stitch, so the foundation chain is one shorter than this row's stitch count). Dc in the next chain and in each ch across. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 11,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Fasten off, weave in ends. Body measures approximately 5 in."
+  },
+  {
+   "row_number": 12,
+   "stitch_count": 8,
+   "instructions": "Fringe: Prepare this end for the fringe, which is knotted on last. With RS facing, join yarn to the first stitch of the foundation chain. Sc in each st evenly across, ending at the opposite corner. Fasten off."
+  },
+  {
+   "row_number": 13,
+   "stitch_count": 8,
+   "instructions": "Fringe: Prepare this end for the fringe, which is knotted on last. With RS facing, join yarn to the last stitch of the final row. Sc in each st evenly across, ending at the opposite corner. Fasten off."
+  },
+  {
+   "row_number": 14,
+   "stitch_count": 8,
+   "instructions": "Fringe: Cut strands of yarn twice your desired fringe length plus 1 in for knotting. Holding 3-4 strands together, fold in half and pull the folded loop through a stitch of the sc row with your hook; pull the loose ends through the loop and tighten. Repeat every 2-3 sts across both sc rows. Trim ends even."
+  }
+ ],
+ "tassels_crab_rounded": [
+  {
+   "row_number": 1,
+   "stitch_count": 8,
+   "instructions": "Ch 10, turn."
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 8,
+   "instructions": "Skip the first 3 chains from the hook (they count as this row's first stitch, so the foundation chain is one shorter than this row's stitch count). Dc in the next chain and in each ch across. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 11,
+   "stitch_count": 8,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Fasten off, weave in ends. Body measures approximately 5 in."
+  },
+  {
+   "row_number": 12,
+   "stitch_count": 8,
+   "instructions": "Tassels: Prepare this end for the tassels, which are attached last. With RS facing, join yarn to the first stitch of the foundation chain. Sc in each st evenly across, ending at the opposite corner. Fasten off."
+  },
+  {
+   "row_number": 13,
+   "stitch_count": 8,
+   "instructions": "Tassels: Prepare this end for the tassels, which are attached last. With RS facing, join yarn to the last stitch of the final row. Sc in each st evenly across, ending at the opposite corner. Fasten off."
+  },
+  {
+   "row_number": 14,
+   "stitch_count": 52,
+   "instructions": "Border: With RS facing, rejoin yarn at either end of the row you just finished — that row is the stitch edge, not row-ends. Working left to right (do not turn), work reverse sc (crab st) in each st around — (reverse sc, reverse hdc, reverse dc) in same corner st (first corner begun), reverse sc in each st across flat edge, (reverse sc, reverse hdc, reverse dc, reverse hdc, reverse sc) in corner st, working 1 reverse sc per row-end along side edge, (reverse sc, reverse hdc, reverse dc, reverse hdc, reverse sc) in corner st, reverse sc in each st across flat edge, (reverse sc, reverse hdc, reverse dc, reverse hdc, reverse sc) in corner st, working 1 reverse sc per row-end along side edge, (reverse hdc, reverse sc) in same corner st as the beginning (first corner completed). Join with sl st to first reverse sc. Fasten off, weave in ends. (52 sts)"
+  },
+  {
+   "row_number": 15,
+   "stitch_count": 8,
+   "instructions": "Tassels: Wrap yarn around a 4-5 in piece of cardboard 30-40 times. Tie off one end tightly, cut the loop at the other end, and wrap-and-tie a smaller strand around the top to form the tassel head. Attach one tassel to each corner of the scarf. Trim ends even."
+  }
+ ]
+}

@@ -4531,3 +4531,21 @@ The regex now accepts a colon after the row number and an optional `Ribbing (Pan
 Still unchecked: the scarf's border round (`_check_border` returns nothing for this shape, see #71). A +7 miscount on it PASSes.
 
 New `TestLabelledPanelOpeningThroughPayload` in `tests/test_scarf_ribbing.py` goes through `build_raw_text`, the path batch-test uses. Both tests fail on main.
+
+## A scarf's fringe and tassel rows are finishing (2026-10-01)
+
+Every fringed or tasselled scarf FAILed "No Finishing/assembly section found." loopdreams labels three rows at the end of such a scarf `Fringe: …` or `Tassels: …`: an sc row across each short end, and the fringe/tassel step itself. When there is a border, it comes between them (loopdreams fix/scarf-fringe-before-border moved the sc rows ahead of the border). `_FINISHING_ROW_RE` knew neither label. The backward walk that collects the trailing finishing rows therefore stopped at the very last row. Nothing was collected, and a Border round in the middle was left as a numbered row with no recognisable stitch instruction.
+
+`_FINISHING_ROW_RE` now accepts `Fringe:` and `Tassels:`. The two sc rows are finishing, so their counts are not checked. They were unverifiable before too ("unrecognized clause: 'Fringe'").
+
+**Measured** on 63 locally built scarf variants (fringe/tassels/straight × 4 borders × 2 corner styles × dc/sc/hdc), with the sc rows both before and after the border:
+- qa main: 42 FAIL / 21 PASS. All 42 fringe/tassel variants fail.
+- This branch: 42 REVIEW / 21 PASS / 0 FAIL. The REVIEW is the sc rows' and the border's counts, which can't be verified. The straight-end variants are unchanged.
+- Mutant (one body row's count +1): still FAIL.
+
+New `tests/test_scarf_fringe_tassels_finishing.py` with real generator output (`tests/data/scarf_fringe_tassels.json`). It checks:
+- no missing-finishing error and no stranded Border round;
+- a miscounted body row still FAILs;
+- an unlabelled closing row still needs finishing.
+
+2 of the 4 tests fail on main. Full suite passes.

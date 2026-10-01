@@ -161,8 +161,12 @@ _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
 # -- observed as the tote's Assembly row becoming an ordinary numbered row with
 # a declared stitch count and no recognisable stitch instruction, two warnings
 # against a pattern that had been clean.
+# "Fringe:"/"Tassels:" label a scarf's sc rows across each end and its last
+# fringe/tassel step (loopdreams, 2026-10-01). Without them every fringed or
+# tasselled scarf reported "No Finishing/assembly section found", and a Border
+# round before the fringe step was stranded as a numbered row.
 _FINISHING_ROW_RE = re.compile(
-    r"^\s*(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"^\s*(?:Border|Fringe|Tassels|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
     r"|^\s*Attaching\s+Handle\s+\d+\s*:"
     r"|^\s*Handles\s*\("
     r"|^\s*Handle\s+\d+\s*[:(]",
