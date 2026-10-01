@@ -22,7 +22,10 @@ Decisions (see ARCHITECTURE.md):
 """
 
 # Unambiguous US-only abbreviations (proof of US convention if present)
-US_ONLY = {"sc", "hdc", "sc2tog", "hdc2tog"}
+# fphdc/bphdc are hdc worked around a post. "hdc" is a US-only name (UK: htr),
+# so its post forms are too (UK: fphtr/bphtr). fpdc/bpdc are not: they spell
+# a different stitch height in each system, like bare dc.
+US_ONLY = {"sc", "hdc", "sc2tog", "hdc2tog", "fphdc", "bphdc"}
 
 # Unambiguous UK-only abbreviations (proof of UK convention if present)
 UK_ONLY = {"htr", "ttr", "htr2tog", "dtr2tog"}
@@ -58,6 +61,12 @@ STITCH_MATH = {
     "ttr": (1, 1),
     "fpdc": (1, 1),
     "bpdc": (1, 1),
+    # Same 1:1 as fpdc/bpdc, one post per stitch. loopdreams' 1x1 and 2x2
+    # scarf ribbing is written in them ("*Fphdc around next st, bphdc around
+    # next st; rep from * across."), and without these entries every ribbing
+    # row was "unrecognized clause" -- 60 rows unverified per ribbed scarf.
+    "fphdc": (1, 1),
+    "bphdc": (1, 1),
     "inc": (1, 2),
     "dec": (2, 1),
     "sc2tog": (2, 1),

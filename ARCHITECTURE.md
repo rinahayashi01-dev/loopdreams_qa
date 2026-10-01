@@ -4561,3 +4561,18 @@ New `tests/test_scarf_fringe_tassels_finishing.py` with real generator output (`
 - an unlabelled closing row still needs finishing.
 
 2 of the 4 tests fail on main. Full suite passes.
+
+## Post hdc (fphdc/bphdc) is a 1:1 stitch (2026-10-01)
+
+loopdreams writes 1x1 and 2x2 scarf ribbing in post hdc: `*Fphdc around next st, bphdc around next st; rep from * across.` (2x2: `around next 2 sts`). Neither word was in the stitch vocabulary, so every ribbing row was "unrecognized clause": about 60 rows per ribbed scarf went unchecked, and a wrong count on any of them hid inside the REVIEW.
+
+`STITCH_MATH` now has `fphdc` and `bphdc` at (1, 1), the same as `fpdc`/`bpdc`. The existing `around_post` clause shape already reads `around next N sts`, so no parser change was needed. They are also in `US_ONLY`: `hdc` is a US-only name (UK: htr), so its post forms are too (UK: fphtr/bphtr). `fpdc`/`bpdc` stay out of it, because they name a different height in each system, like bare dc.
+
+Only the ribbing generates these words (loopdreams `ribbingAlternatingRow`), so no other pattern's parse can change.
+
+**Measured:**
+- Live dry-runs of the deployed generator (2026-10-01): two 1x1-ribbed scarves go from REVIEW (61 warnings) to **PASS**. Six others (front-back-post, slip-stitch ribbing, square coasters) are unchanged.
+- Locally built 1x1 and 2x2 ribbing on dc, sc (odd width), sedge and waffle bodies: 8 cases go from REVIEW (57–65 warnings) to **PASS**.
+- Mutants (a ribbing row declaring one stitch too many, for both 1x1 and 2x2; a 2x2 repeat changed to `bphdc around next 3 sts`): **FAIL** on this branch. On main all three were REVIEW, because the wrong row was not read at all.
+
+New `TestPostHdcRibbing` in `tests/test_scarf_ribbing.py` (5 tests, all fail on main): the clause is 1:1, 1x1 and 2x2 rows verify, a wrong count and a wrong repeat are errors, and a UK-declared pattern using fphdc is a terminology error.

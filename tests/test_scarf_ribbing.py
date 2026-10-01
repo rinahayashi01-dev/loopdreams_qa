@@ -202,6 +202,72 @@ class TestLabelledPanelOpeningThroughPayload(unittest.TestCase):
         self.assertIn("9-chain foundation", errors[0].message)
 
 
+class TestPostHdcRibbing(unittest.TestCase):
+    """loopdreams writes 1x1 and 2x2 scarf ribbing in post hdc
+    ("*Fphdc around next st, bphdc around next st; rep from * across.").
+    fphdc/bphdc were not in the stitch vocabulary, so every ribbing row was
+    "unrecognized clause": 60 rows per ribbed scarf with nothing checking
+    them, and a wrong count on any of them hid inside the REVIEW."""
+
+    def _payload(self, unit: int, counts: list, posts: int = None):
+        posts = posts if posts is not None else unit
+        body = [{"row_number": 1, "stitch_count": 8, "instructions": "Ch 9, turn.", "section": None}]
+        body += [{"row_number": i, "stitch_count": 8, "section": None,
+                  "instructions": "Sc in each st across, ch 1, turn."} for i in range(2, 4)]
+        body[1]["instructions"] = "Skip the first chain from the hook (it doesn't count as a stitch). Sc in the next chain and in each ch across. Ch 1, turn."
+        body[-1]["instructions"] = "Sc in each st across. Fasten off, weave in ends."
+        sts = "st" if unit == 1 else f"{unit} sts"
+        bp = "st" if posts == 1 else f"{posts} sts"
+        rib = [
+            {"row_number": 4, "stitch_count": 8, "section": None, "instructions":
+             "Ribbing (Panel 1): With RS facing, join yarn to the first stitch of the foundation chain. "
+             "Sc in each st evenly across, ending at the opposite corner. Ch 10, turn."},
+            {"row_number": 5, "stitch_count": 8, "section": None, "instructions":
+             "Skip the first 2 chains from the hook (they don't count as a stitch). Hdc in the next chain "
+             "and in each ch across. Sl st in next 2 sts of the sc row. Ch 2, turn."},
+        ]
+        for i, c in enumerate(counts):
+            rib.append({"row_number": 6 + i, "stitch_count": c, "section": None, "instructions":
+                        f"*Fphdc around next {sts}, bphdc around next {bp}; rep from * across. Ch 2, turn."})
+        return {"title": "Test Scarf", "gauge_sts_per_in": 4, "gauge_rows_per_in": 4,
+                "yarn_weight_name": "Medium", "hook_label": "5.0 mm",
+                "abbreviations": [{"abbr": a, "definition": d} for a, d in
+                                  [("sc", "single crochet"), ("hdc", "half double crochet"),
+                                   ("fphdc", "front post half double crochet"),
+                                   ("bphdc", "back post half double crochet"), ("ch", "chain")]],
+                "rows": body + rib}
+
+    def _issues(self, payload, severity):
+        pattern = parse(build_raw_text(payload))
+        return [i for i in stitch_count.check(pattern) if i.severity == severity]
+
+    def test_post_hdc_is_a_one_to_one_stitch(self):
+        clauses = tokenize_round("fphdc around next 2 sts")
+        self.assertEqual(len(clauses), 1)
+        self.assertEqual((clauses[0].stitch, clauses[0].consumes, clauses[0].produces), ("fphdc", 2, 2))
+        self.assertIsNone(clauses[0].unverifiable_reason)
+
+    def test_1x1_and_2x2_ribbing_rows_verify(self):
+        for unit in (1, 2):
+            p = self._payload(unit, [8, 8, 8])
+            self.assertEqual(self._issues(p, "error"), [], unit)
+            self.assertEqual(self._issues(p, "warning"), [], unit)
+
+    def test_wrong_count_is_caught(self):
+        for unit in (1, 2):
+            self.assertTrue(self._issues(self._payload(unit, [8, 9, 8]), "error"), unit)
+
+    def test_wrong_repeat_is_caught(self):
+        # 2 + 3 sts per repeat does not divide an 8-st row.
+        self.assertTrue(self._issues(self._payload(2, [8, 8], posts=3), "error"))
+
+    def test_post_hdc_is_us_only(self):
+        from loopdreams_qa.checks import terminology
+        raw = build_raw_text(self._payload(1, [8])).replace("Terminology: US", "Terminology: UK")
+        errors = [i for i in terminology.check(parse(raw)) if i.severity == "error"]
+        self.assertTrue(any("fphdc" in i.message for i in errors), errors)
+
+
 class TestRibbingSectionLabelContinuation(unittest.TestCase):
     """Mirrors the real scarf-mossribbed construction: a moss-stitch main
     panel ("FORMING THE BODY") followed by a "RIBBING" section that (a)
