@@ -4531,3 +4531,15 @@ The regex now accepts a colon after the row number and an optional `Ribbing (Pan
 Still unchecked: the scarf's border round (`_check_border` returns nothing for this shape, see #71). A +7 miscount on it PASSes.
 
 New `TestLabelledPanelOpeningThroughPayload` in `tests/test_scarf_ribbing.py` goes through `build_raw_text`, the path batch-test uses. Both tests fail on main.
+
+## "Do not fasten off" is a no-op, not a finish (2026-10-01)
+
+loopdreams' new double-layer potholder writes two identical squares. Square 2's last row ends `Sc in each st across. Do not fasten off.`, because its loop starts the joining round worked through both layers. That clause was unrecognised, so the row's stitch count was unverifiable: REVIEW on an otherwise clean pattern.
+
+`_RE_DO_NOT_FASTEN_OFF` in `stitch_parser.py` types it as a `note` that consumes and produces nothing. Not `fasten_off`: it says the opposite, and `_check_finishing_present` must not take it as proof the piece is finished.
+
+**Measured** on locally built 8 in potholders (sc and wc st, worsted, through `from_pattern_json`): main REVIEW (1 warning each, Row 30 / Row 34); this branch PASS, 0 warnings.
+
+Still unchecked: the joining round. It is costed and its arithmetic tested in loopdreams' `builders.test.ts`, but here a +2 on its total or on one side's run PASSes, the same blind spot as the scarf border (#71).
+
+New `tests/test_do_not_fasten_off.py` (2 tests). Full suite passes (481 tests, 1 skip).
