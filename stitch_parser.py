@@ -403,6 +403,13 @@ _RE_FASTEN_OFF_COLOUR = re.compile(
     r"^(?:fasten\s+off|break)\s+(?:colour|color)\s+\S+\.?$", re.I
 )
 
+# "Do not fasten off." -- the piece's loop carries straight on into the next
+# step (the double-layer potholder's second square keeps its loop for the
+# joining round). A no-op for stitch counts, and typed "note", not
+# "fasten_off": it says the opposite, so it must not satisfy
+# _check_finishing_present.
+_RE_DO_NOT_FASTEN_OFF = re.compile(r"^do\s+not\s+fasten\s+off\.?$", re.I)
+
 _MULTIPLIER_WORDS = {
     "once": 1, "twice": 2, "two times": 2, "three times": 3, "four times": 4,
     "five times": 5, "six times": 6, "seven times": 7, "eight times": 8,
@@ -1264,7 +1271,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_FASTEN_OFF.match(p):
         return StitchClause(raw=raw_part, clause_type="fasten_off", consumes=0, produces=0)
 
-    if _RE_FASTEN_OFF_COLOUR.match(p) or _is_sl_st_travel(p):
+    if _RE_FASTEN_OFF_COLOUR.match(p) or _RE_DO_NOT_FASTEN_OFF.match(p) or _is_sl_st_travel(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if _RE_JOIN.match(p) or _RE_SETUP.match(p):
