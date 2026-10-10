@@ -157,7 +157,16 @@ _RE_RS_DESIGNATION = re.compile(
 # aside N sts from the active round (they're picked back up later, in a
 # separate row/round -- see held_gusset_resume below). Removes N from
 # THIS row's produced total but doesn't destroy them.
-_RE_HELD_ASIDE = re.compile(r"^place\s+the\s+next\s+(\d+)\s+sts\s+on\s+a\s+holder\s+or\s+scrap\s+yarn\b", re.I)
+#
+# Also the crochet wording (loopdreams fix/mitten-cuff-thumb, 2026-10-10):
+# "Skip the next 10 sts and leave them unworked (thumb gusset)". A crochet
+# stitch has no live loop to hold, so the generator stopped borrowing
+# knitting's holder; the clause means exactly the same thing here (N sts out
+# of this round, worked later by held_gusset_resume). The holder form stays
+# for patterns saved before the change.
+_RE_HELD_ASIDE = re.compile(
+    r"^(?:place\s+the\s+next\s+(\d+)\s+sts\s+on\s+a\s+holder\s+or\s+scrap\s+yarn"
+    r"|skip\s+the\s+next\s+(\d+)\s+sts\s+and\s+leave\s+them\s+unworked)\b", re.I)
 # "Ch 2 to bridge the gap" -- a chain worked to bridge over the gap left by
 # stitches just set aside (held_aside above), later folded into real
 # stitches by a "working the last N sts ... into the N ch just made"
@@ -232,6 +241,11 @@ _RE_MAGIC_RING = re.compile(r"^magic\s+ring$", re.I)
 # same class of no-op as _RE_PLACE_MARKER just before it in the same
 # sentence (real samples: Amigurumi Ball/Cone/Limb, Mittens, Amigurumi Egg).
 _RE_DO_NOT_JOIN_OR_TURN = re.compile(r"^do\s+not\s+join\s+or\s+turn$", re.I)
+# "taking care not to twist the chain" -- a warning on joining a long chain
+# into a ring (a twisted ring makes a Mobius tube). No stitches; a no-op like
+# "do not join or turn". Real phrasing: loopdreams' mitten cuff ring, "Ch 30,
+# join with sl st to form ring, taking care not to twist the chain."
+_RE_DO_NOT_TWIST = re.compile(r"^(?:taking\s+care|being\s+careful)\s+not\s+to\s+twist(?:\s+the\s+chain)?$", re.I)
 # "at the end of the row" -- a positional phrase saying WHERE the clause after
 # it is worked, not an instruction of its own. Ordinary pattern prose, and it
 # arrives as its own comma-delimited clause: "Skip first st (...), hhdc in each
@@ -567,8 +581,14 @@ class _Patterns:
             rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
             rf"each\s+(?:remaining\s+)?(?:{stitch_alt}|sts?)\s+across\b\s*(.*)$", re.I
         )
+        # Optional "same ch as join and in" (loopdreams' mitten cuff, worked
+        # into a joined chain ring: "Ch 1, sc in same ch as join and in each
+        # ch around"). It names where the round STARTS, not an extra stitch:
+        # the ch the join went into is the first of "each", so the count is
+        # the same as plain "sc in each ch around".
         self.each_st_around = re.compile(
-            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
+            rf"^\*?(\d*)\s*({stitch_alt})\s+in\s*(?:same\s+(?:ch|st)\s+as\s+(?:the\s+)?join\s+and\s+in\s+)?"
+            rf"(?:(?:the\s+)?(?:back|front)\s+loop\s+only\s+of\s+)?"
             rf"each\s+(?:remaining\s+)?(?:{stitch_alt}|sts?)\s+around\b\s*(.*)$", re.I
         )
         self.corner = re.compile(rf"^\*?(\d*)\s*({stitch_alt})\s+in\s+corner$", re.I)
@@ -623,7 +643,9 @@ class _Patterns:
         # _RE_HELD_ASIDE), a plain 1:1 pickup. Real phrasing (mittens,
         # Jul 7 batch, thumb round 1).
         self.held_gusset_resume = re.compile(
-            rf"^({stitch_alt})\s+in\s+each\s+of\s+the\s+(\d+)\s+held\s+gusset\s+sts$", re.I
+            # "skipped" is the crochet wording that replaced "held" (see
+            # _RE_HELD_ASIDE); same 1:1 pickup.
+            rf"^({stitch_alt})\s+in\s+each\s+of\s+the\s+(\d+)\s+(?:held|skipped)\s+gusset\s+sts$", re.I
         )
         # "then sc N sts evenly across the bridge chain" -- picking up N new
         # stitches from the bridge chain made earlier (module-level
@@ -1284,6 +1306,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
             or _RE_INLINE_COLOUR_CHANGE.match(p) or _RE_COLOUR_DESIGNATOR.match(p)
             or _RE_WORKING_LAST_INTO_CH.match(p)
             or _RE_BODY_LENGTH_CHECKPOINT.match(p) or _RE_DO_NOT_JOIN_OR_TURN.match(p)
+            or _RE_DO_NOT_TWIST.match(p)
             or _RE_OPPOSITE_SIDE_CHAIN.match(p) or _RE_STUFF_NOTE.match(p)
             or _RE_ROW_END_POSITION.match(p)):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
@@ -1312,8 +1335,9 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
 
     m = _RE_HELD_ASIDE.match(p)
     if m:
+        n = int(m.group(1) or m.group(2))
         return StitchClause(raw=raw_part, clause_type="held_aside",
-                             explicit_count=int(m.group(1)), consumes=int(m.group(1)), produces=0)
+                             explicit_count=n, consumes=n, produces=0)
 
     m = _RE_BRIDGE_CHAIN.match(p)
     if m:
