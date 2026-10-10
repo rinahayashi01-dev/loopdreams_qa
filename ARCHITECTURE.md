@@ -4576,3 +4576,25 @@ Only the ribbing generates these words (loopdreams `ribbingAlternatingRow`), so 
 - Mutants (a ribbing row declaring one stitch too many, for both 1x1 and 2x2; a 2x2 repeat changed to `bphdc around next 3 sts`): **FAIL** on this branch. On main all three were REVIEW, because the wrong row was not read at all.
 
 New `TestPostHdcRibbing` in `tests/test_scarf_ribbing.py` (5 tests, all fail on main): the clause is 1:1, 1x1 and 2x2 rows verify, a wrong count and a wrong repeat are errors, and a UK-declared pattern using fphdc is a terminology error.
+
+## Mitten chain-ring cuff and skipped thumb stitches (2026-10-10)
+
+loopdreams fix/mitten-cuff-thumb rewrites three mitten rows that were wrong as crochet:
+- The cuff opened on "Magic ring. 30 sc in ring". The mitten is worked cuff-up, and a magic ring is pulled shut, so it can't make an open cuff.
+- The thumb stitches went "on a holder or scrap yarn". That is knitting; a crochet stitch has no live loop to hold.
+- The thumb gathered 12 sts shut with no decrease.
+
+The cuff is now its own foundation row, "Ch 30, join with sl st to form ring, taking care not to twist the chain.", the same shape as the Granny Square's ring. Round 1 follows: "Ch 1, sc in same ch as join and in each ch around." The thumb sts are "Skip the next 10 sts and leave them unworked", and later "the 10 skipped gusset sts".
+
+Three parser changes, none of which changes what any existing wording means:
+- `_RE_DO_NOT_TWIST`: "taking/being careful not to twist (the chain)" is a no-op note, like "do not join or turn".
+- `_RE_HELD_ASIDE` also accepts "Skip the next N sts and leave them unworked". The holder form stays, for saved patterns.
+- `held_gusset_resume` accepts "skipped" as well as "held".
+- `each_st_around` takes an optional "same ch/st as join and in" prefix. It names where the round starts, not an extra stitch: the join's ch is the first of "each".
+
+**Measured**, on the three Mittens batch cases rebuilt locally with the branch builder:
+- qa main: REVIEW (unrecognised clauses on the ring, skip and pickup rows).
+- This branch: PASS. The old wording, from the live dry-run, stays PASS.
+- Mutants (first round +1, skip count −1, pickup +1, thumb decrease +1): all FAIL.
+
+New `tests/test_mitten_chain_ring_cuff.py`, using real generator output (`tests/data/mitten_chain_ring_cuff.json`). 5 of its 7 tests fail on main. The full suite passes.
