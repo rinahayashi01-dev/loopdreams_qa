@@ -165,8 +165,16 @@ _TRAILING_COUNT_RE = re.compile(r"\(\s*~?\s*\d+\s*sts?\s*\)\.?\s*$", re.I)
 # fringe/tassel step (loopdreams, 2026-10-01). Without them every fringed or
 # tasselled scarf reported "No Finishing/assembly section found", and a Border
 # round before the fringe step was stranded as a numbered row.
+# A tote's top finish (loopdreams buildToteTopFinishRows, 2026-10-11): joined
+# rounds worked on the assembled bag's rim -- a border, built-in handles, a
+# band -- each labelled, and each checked on its own in _parse_finishing.
+_TOTE_TOP_FINISH_LABELS = (
+    r"Border\s+Round\s+\d+|Top\s+Band\s+Round\s+\d+|Strap\s+Round\s+\d+|Handle\s+Round"
+    r"|Edging\s+Round|Handle\s+\d+\s+Edging|Reinforcing\s+the\s+Straps"
+)
 _FINISHING_ROW_RE = re.compile(
-    r"^\s*(?:Border|Fringe|Tassels|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"^\s*(?:" + _TOTE_TOP_FINISH_LABELS + r")\s*:"
+    r"|^\s*(?:Border|Fringe|Tassels|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
     r"|^\s*Attaching\s+Handle\s+\d+\s*:"
     r"|^\s*Handles\s*\("
     r"|^\s*Handle\s+\d+\s*[:(]",

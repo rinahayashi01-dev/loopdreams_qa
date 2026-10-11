@@ -4615,3 +4615,35 @@ Four additions, none of which changes what any existing wording means:
 - 78 non-Celtic scarf payloads (plain, compound and coloured, every ribbing type): identical summaries and findings on main and this branch.
 
 New `tests/test_celtic_weave.py` (6 tests). The full suite passes.
+
+## A tote's top finish: built-in handles and a top band (2026-10-11)
+
+loopdreams added two Tote Bag options, worked in joined rounds on the assembled bag's rim (buildToteTopFinishRows):
+- Built-in handles: Border Rounds 1-3, a Handle Round (sc, ch C, skip S on each half), Strap Rounds into the chains, and a Handle N Edging round per handle.
+- A top band: Top Band Rounds in sc, hdc or bl sc.
+
+Either can end with a crab-stitch Edging Round, and either can be in an accent colour. Every round states its count outright ("sc in same st and in each of next 109 sts"), with its guidance in sentences of its own, so each round can be checked.
+
+All of it came back "cannot verify". After sewn handle strips, the rounds were also filed under the last strip as a false "no instructions for Rows 2-65" error. And an accent band's colour-naming first round was read as part of the design.
+
+**Changes:**
+- The labels join `_FINISHING_ROW_RE` and `_RE_FINISHING_LABEL_START`, so the rounds are finishing chunks, each parsed with its declared count. A Handle Round's "(60 sts, 112 ch)" keeps the chains in `declared_chains`. "Reinforcing the Straps" (sewing) starts a chunk but isn't counted.
+- `stitch_count.check` gives each round what it works into:
+  - Border/Top Band Round 1: the whole rim, twice the body's last row.
+  - The round after the Handle Round: its sts plus its chains, with "sc in each of next N ch" using up N there.
+  - A Handle Edging: its own opening and strap.
+- New clauses:
+  - "<st> in same st and in each of next N sts" (N + 1).
+  - "<st> in the free loop of each of the N ch".
+  - "work reverse sc (crab st) in each of next N sts".
+  - "ch N loosely".
+  - "in each of next N ch".
+  - The guidance sentences, matched exactly as notes.
+- The colourwork check stops at the first top-finish round.
+
+**Measured:**
+- Six builder-output totes (sc, hdc, bobble with built-in handles; dc and linen bands; a striped tote with an accent band): REVIEW/FAIL on main, PASS on this branch.
+- Mutants (one fewer pick-up increase, a border st short, one more skipped st, a strap chain short, a dropped sc2tog, an edging chain short, a wrong crab count): all FAIL.
+- 96 payloads without a top finish (plain, compound, coloured and ribbed scarves, Celtic weave, bobble, existing totes): identical summaries and findings on main and this branch.
+
+New `tests/test_tote_top_finish.py` (6 tests, fixtures in `tests/data/tote_top_finish.json`).

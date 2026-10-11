@@ -80,7 +80,8 @@ _TARGET = rf"{_POS}\s+{_MODIFIER}{_NOUN}"
 # sample: scarf-mossribbed, Jul 15 batch -- "Ch1" alongside a normally-
 # spaced "Ch 1" elsewhere in the same file), same as the earlier "Row1"
 # fix.
-_RE_CHAIN = re.compile(r"^ch\s*(\d+)$", re.I)
+# "ch 56 loosely" (a tote strap's chain) is the same chain, worked loosely.
+_RE_CHAIN = re.compile(r"^ch\s*(\d+)(?:\s+loosely)?$", re.I)
 _RE_TURN = re.compile(r"^turn$", re.I)
 _RE_SAME_ST_AS_TURNING_CH = re.compile(r"\bin\s+(?:the\s+)?same\s+st\s+as\s+the\s+(?:turning\s+)?ch[\s-]?\d+$", re.I)
 _RE_FASTEN_OFF = re.compile(r"^fasten off\.?$", re.I)
@@ -254,6 +255,24 @@ _RE_DO_NOT_JOIN_OR_TURN = re.compile(r"^do\s+not\s+join\s+or\s+turn$", re.I)
 # into a ring (a twisted ring makes a Mobius tube). No stitches; a no-op like
 # "do not join or turn". Real phrasing: loopdreams' mitten cuff ring, "Ch 30,
 # join with sl st to form ring, taking care not to twist the chain."
+# A tote's top-finish guidance (loopdreams buildToteTopFinishRows): each is
+# its own sentence, saying where to work or how to hold the bag, and makes no
+# stitch. Matched exactly so a real stitch clause can't slip through as one.
+_RE_TOTE_FINISH_NOTE = re.compile(
+    r"^(?:hold\s+the\s+bag\s+right\s+side\s+out\s+with\s+the\s+top\s+opening\s+toward\s+you"
+    r"|work\s+in\s+rounds\s+without\s+turning"
+    r"|the\s+turning\s+chain\s+at\s+the\s+corner\s+of\s+the\s+last\s+row\s+counts\s+as\s+a\s+st"
+    r"|working\s+along\s+the\s+foundation\s+edge\s+into\s+the\s+base\s+of\s+each\s+st\s+of\s+the\s+first\s+row"
+    r"|each\s+ch\s+\d+\s+below\s+is\s+a\s+strap"
+    r"|the\s+\d+\s+sts\s+skipped\s+after\s+each\s+strap\s+are\s+its\s+handle\s+opening"
+    r"|each\s+strap\s+chain\s+should\s+measure\s+about\s+[\d.]+\s+in\s+flat"
+    r"|chain\s+loosely\s+or\s+go\s+up\s+a\s+hook\s+size\s+if\s+your\s+chains\s+run\s+tight"
+    r"|work\s+1\s+sc\s+in\s+each\s+ch\s+of\s+the\s+straps"
+    r"|each\s+sc2tog\s+joins\s+a\s+strap's\s+end\s+ch\s+to\s+the\s+rim\s+st\s+beside\s+it"
+    r"|work\s+along\s+the\s+\d+\s+skipped\s+sts\s+of\s+the\s+opening\s+and\s+then\s+along\s+the\s+underside\s+of\s+the\s+strap"
+    r"|working\s+left\s+to\s+right\s+\(do\s+not\s+turn\)"
+    r"|starting\s+in\s+the\s+same\s+st\s+as\s+the\s+join)$",
+    re.I)
 _RE_DO_NOT_TWIST = re.compile(r"^(?:taking\s+care|being\s+careful)\s+not\s+to\s+twist(?:\s+the\s+chain)?$", re.I)
 # "at the end of the row" -- a positional phrase saying WHERE the clause after
 # it is worked, not an instruction of its own. Ordinary pattern prose, and it
@@ -467,7 +486,7 @@ class _Patterns:
         "foundation_stitch_in_next_chain",
         "foundation_next_chain_and_next_chs", "counted_next_chain_and_next_chs",
         "sl_st_join", "trailing_count_restatement", "count_in_same_spot",
-        "around_skipped",
+        "around_skipped", "same_and_each_of_next", "free_loop_of_each_ch", "crab_each_of_next",
     )
 
     def __init__(self, stitch_alt: str):
@@ -637,7 +656,7 @@ class _Patterns:
         # stitches this way ("SC in each of first 2 sts ... SC in each of
         # last 2 sts"), which no prior clause shape matched.
         self.each_of_position = re.compile(
-            rf"^({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(first|last|next)\s+(\d+)\s*(?:sts?)?$", re.I
+            rf"^({stitch_alt})\s+in\s+each\s+of\s+(?:the\s+)?(first|last|next)\s+(\d+)\s*(?:sts?|chs?)?$", re.I
         )
         # "<N> <stitch> in each of (first|next|last) M sts" -- an increase:
         # N copies worked into EACH of the next M previous-row stitches
@@ -766,6 +785,22 @@ class _Patterns:
         # next 2 sts" earlier in the same repeat, so this consumes nothing and
         # makes one stitch per post. A wrong count here can't hide: the row's
         # declared total still has to come out.
+        # "sc in same st and in each of next 109 sts" -- a joined round's
+        # first st (in the st the join sits in) plus a stated run: N + 1, each
+        # 1:1. How a tote's top-finish rounds state their whole count.
+        self.same_and_each_of_next = re.compile(
+            rf"^(?P<stitch>{stitch_alt})\s+in\s+same\s+st\s+and\s+in\s+each\s+of\s+next\s+(?P<count>\d+)\s+sts?$", re.I
+        )
+        # "sc in the free loop of each of the 56 ch" -- the underside of a
+        # chain already worked into on its other side (a tote strap's edging).
+        # "work reverse sc (crab st) in each of next 168 sts" -- a crab-stitch
+        # round with its count stated: 1 reverse sc per st.
+        self.crab_each_of_next = re.compile(
+            r"^work\s+reverse\s+sc\s+\(crab\s+st\)\s+in\s+each\s+of\s+next\s+(?P<count>\d+)\s+sts?$", re.I
+        )
+        self.free_loop_of_each_ch = re.compile(
+            rf"^(?P<stitch>{stitch_alt})\s+in\s+the\s+free\s+loop\s+of\s+each\s+of\s+the\s+(?P<count>\d+)\s+ch$", re.I
+        )
         self.around_skipped = re.compile(
             rf"^(?P<stitch>{stitch_alt})\s+around\s+(?:each\s+of\s+)?the\s+(?P<count>\d+)\s+skipped\s+sts?$", re.I
         )
@@ -1317,7 +1352,8 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_JOIN.match(p) or _RE_SETUP.match(p):
         return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
 
-    if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p) or _RE_WORKING_IN_FRONT_OR_BEHIND.match(p):
+    if (_RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p) or _RE_WORKING_IN_FRONT_OR_BEHIND.match(p)
+            or _RE_TOTE_FINISH_NOTE.match(p)):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if (_RE_PLACE_MARKER.match(p) or _RE_RS_DESIGNATION.match(p)
@@ -1777,6 +1813,27 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                                  f"previous-row stitches this passes over depends on that group's width, which "
                                  f"can't be reliably inferred from the text alone"
                              ))
+
+    m = patterns.crab_each_of_next.match(p)
+    if m:
+        n = int(m.group("count"))
+        # No stitch token: "reverse sc" is defined inline by the row itself,
+        # and naming one here would demand an abbreviation-key entry for it.
+        return StitchClause(raw=raw_part, stitch=None, clause_type="positional_single",
+                             explicit_count=n, consumes=n, produces=n)
+
+    for pat_name in ("same_and_each_of_next", "free_loop_of_each_ch"):
+        m = getattr(patterns, pat_name).match(p)
+        if m:
+            canon, is_compound, c, prod = _stitch_lookup(m.group("stitch"), custom_compound)
+            n = int(m.group("count")) + (1 if pat_name == "same_and_each_of_next" else 0)
+            return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
+                                 explicit_count=n,
+                                 consumes=(c * n) if c is not None else None,
+                                 produces=(prod * n) if prod is not None else None,
+                                 is_compound=is_compound,
+                                 unverifiable_reason=None if prod is not None else
+                                 f"'{canon}' has no fixed consumes/produces ratio")
 
     m = patterns.around_skipped.match(p)
     if m:
