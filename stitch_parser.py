@@ -100,6 +100,15 @@ _RE_REP_FROM = re.compile(r"^rep(?:eat)? from \*\s*(.*)$", re.I)
 _RE_MORE_TIMES = re.compile(r"^(\d+)\s+more\s+times?$", re.I)
 _RE_SKIP = re.compile(r"^sk(?:ip)?\s+(\d+)", re.I)
 _RE_SKIP_POSITIONAL = re.compile(rf"^skip\s+{_POS}\s+{_NOUN}$", re.I)
+# "skip next 2 sts" -- a stated number of stitches passed over, consumed and
+# producing nothing, exactly like "skip 2 sts". Celtic weave opens every cross
+# with it (loopdreams buildCelticWeaveRows, 2026-10-11).
+_RE_SKIP_NEXT_N = re.compile(r"^skip\s+(?:the\s+)?next\s+(\d+)\s+(?:sts?|stitches)$", re.I)
+# "working in front of the 2 sts just made" / "working behind the 2 sts just
+# made" -- where the hook goes for the next clause of a crossed pair. A
+# direction, not a stitch.
+_RE_WORKING_IN_FRONT_OR_BEHIND = re.compile(
+    r"^working\s+(?:in\s+front\s+of|behind)\s+the\s+(?:\d+\s+)?sts?\s+just\s+made$", re.I)
 # A row's OWN opening clause reading exactly "skip first st" (not "skip
 # next st" or "skip last st" -- those aren't this convention, see
 # tokenize_round's use of this below).
@@ -458,6 +467,7 @@ class _Patterns:
         "foundation_stitch_in_next_chain",
         "foundation_next_chain_and_next_chs", "counted_next_chain_and_next_chs",
         "sl_st_join", "trailing_count_restatement", "count_in_same_spot",
+        "around_skipped",
     )
 
     def __init__(self, stitch_alt: str):
@@ -750,6 +760,14 @@ class _Patterns:
         self.around_post = re.compile(
             rf"^(?:(?P<lead>\d+)\s+)?(?P<stitch>{stitch_alt})\s+around\s+(?:the\s+)?"
             rf"(?:posts?\s+of\s+)?{_POS}\s*(?P<count>\d+)?\s*{_NOUN}$", re.I
+        )
+        # "fptr around the 2 skipped sts" -- the second half of a crossed pair
+        # (Celtic weave). Those stitches were already consumed by the "skip
+        # next 2 sts" earlier in the same repeat, so this consumes nothing and
+        # makes one stitch per post. A wrong count here can't hide: the row's
+        # declared total still has to come out.
+        self.around_skipped = re.compile(
+            rf"^(?P<stitch>{stitch_alt})\s+around\s+(?:each\s+of\s+)?the\s+(?P<count>\d+)\s+skipped\s+sts?$", re.I
         )
         # "dc in top of ch" / "dc in top of ch-2", and the shaped-row form
         # "2 dc in top of ch" -- an increase worked into the turning chain,
@@ -1299,7 +1317,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if _RE_JOIN.match(p) or _RE_SETUP.match(p):
         return StitchClause(raw=raw_part, clause_type="join", consumes=0, produces=0)
 
-    if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p):
+    if _RE_NOTE.match(p) or _RE_ROW_TYPE_LABEL.match(p) or _RE_WORKING_IN_FRONT_OR_BEHIND.match(p):
         return StitchClause(raw=raw_part, clause_type="note", consumes=0, produces=0)
 
     if (_RE_PLACE_MARKER.match(p) or _RE_RS_DESIGNATION.match(p)
@@ -1760,6 +1778,16 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
                                  f"can't be reliably inferred from the text alone"
                              ))
 
+    m = patterns.around_skipped.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group("stitch"), custom_compound)
+        n = int(m.group("count"))
+        produces = (prod * n) if prod is not None else None
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="positional_single",
+                             explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
     m = patterns.around_post.match(p)
     if m:
         canon, is_compound, c, prod = _stitch_lookup(m.group("stitch"), custom_compound)
@@ -1919,6 +1947,11 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     if m:
         return StitchClause(raw=raw_part, clause_type="skip", explicit_count=int(m.group(1)),
                              consumes=int(m.group(1)), produces=0)
+
+    m = _RE_SKIP_NEXT_N.match(p)
+    if m:
+        n = int(m.group(1))
+        return StitchClause(raw=raw_part, clause_type="skip", explicit_count=n, consumes=n, produces=0)
 
     m = _RE_SKIP_POSITIONAL.match(p)
     if m:

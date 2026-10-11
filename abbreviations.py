@@ -35,7 +35,7 @@ AMBIGUOUS_BOTH_SYSTEMS = {"dc", "tr", "dtr", "dc2tog", "tr2tog"}
 
 # Neutral abbreviations -- same meaning/spelling in both systems, never
 # diagnostic of US vs UK either way.
-NEUTRAL = {"ch", "sl st", "rep", "rs", "ws", "fo", "mr", "fpdc", "bpdc", "inc", "dec", "st", "sts"}
+NEUTRAL = {"ch", "sl st", "rep", "rs", "ws", "fo", "mr", "fpdc", "bpdc", "fptr", "bptr", "inc", "dec", "st", "sts"}
 
 # Simple stitches: (stitches consumed from previous row, stitches produced
 # in current row) for ONE instance of the stitch worked into ONE previous
@@ -67,6 +67,11 @@ STITCH_MATH = {
     # row was "unrecognized clause" -- 60 rows unverified per ribbed scarf.
     "fphdc": (1, 1),
     "bphdc": (1, 1),
+    # Celtic weave's post trebles (loopdreams buildCelticWeaveRows, 2026-10-11):
+    # "fptr around next 2 sts", "bptr around the 2 skipped sts". One post per
+    # stitch, the same 1:1 as fpdc/bpdc.
+    "fptr": (1, 1),
+    "bptr": (1, 1),
     "inc": (1, 2),
     "dec": (2, 1),
     "sc2tog": (2, 1),

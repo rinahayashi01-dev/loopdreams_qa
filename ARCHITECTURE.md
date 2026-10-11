@@ -4598,3 +4598,20 @@ Three parser changes, none of which changes what any existing wording means:
 - Mutants (first round +1, skip count −1, pickup +1, thumb decrease +1): all FAIL.
 
 New `tests/test_mitten_chain_ring_cuff.py`, using real generator output (`tests/data/mitten_chain_ring_cuff.json`). 5 of its 7 tests fail on main. The full suite passes.
+
+## Celtic weave's crossed post trebles (2026-10-11)
+
+loopdreams added Celtic weave (#694, #695), the first stitch whose rows cross pairs of post trebles: "Dc in first st, *skip next 2 sts, fptr around next 2 sts, working in front of the 2 sts just made, fptr around the 2 skipped sts; rep from * N more times, dc in last st." The back row is the same with bptr, "working behind", and a bpdc pair at each end. Every texture row came back "cannot verify stitch-count math", so a Celtic pattern could never FAIL.
+
+Four additions, none of which changes what any existing wording means:
+- `fptr` and `bptr` are 1:1 stitches in `STITCH_MATH`, like fpdc/bpdc, and neutral for US/UK detection like them.
+- `_RE_SKIP_NEXT_N`: "skip next N sts" consumes N, like "skip N sts".
+- `_RE_WORKING_IN_FRONT_OR_BEHIND`: "working in front of / behind the N sts just made" is a direction, a no-op note.
+- `around_skipped`: "<stitch> around the N skipped sts" consumes 0 and makes N. Those stitches were consumed by the skip earlier in the same repeat. A wrong N can't hide: the row's declared total still has to come out.
+
+**Measured:**
+- Celtic rows from the live dry-run (scarf straight and ribbed, blanket) and locally built ones (blanket 36x48 and 4x4, scarf with border and ribbing): REVIEW on main, PASS on this branch. A fringe scarf stays REVIEW only for the fringe rows, the same as every stitch.
+- Mutants on the live scarf (bpdc pair dropped, "3 skipped sts", "skip next 3 sts"): all FAIL. A wrong "rep from * N more times" still passes: the repeat count is solved from the row's total, as for every stitch (module docstring).
+- 78 non-Celtic scarf payloads (plain, compound and coloured, every ribbing type): identical summaries and findings on main and this branch.
+
+New `tests/test_celtic_weave.py` (6 tests). The full suite passes.
