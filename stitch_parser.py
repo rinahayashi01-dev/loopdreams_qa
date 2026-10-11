@@ -259,19 +259,21 @@ _RE_DO_NOT_JOIN_OR_TURN = re.compile(r"^do\s+not\s+join\s+or\s+turn$", re.I)
 # its own sentence, saying where to work or how to hold the bag, and makes no
 # stitch. Matched exactly so a real stitch clause can't slip through as one.
 _RE_TOTE_FINISH_NOTE = re.compile(
-    r"^(?:hold\s+the\s+bag\s+right\s+side\s+out\s+with\s+the\s+top\s+opening\s+toward\s+you"
-    r"|work\s+in\s+rounds\s+without\s+turning"
+    r"^(?:hold\s+the\s+bag\s+right\s+side\s+out\s+with\s+the\s+opening\s+at\s+the\s+top\s+and\s+the\s+outside\s+facing\s+you"
+    r"|work\s+in\s+rounds\s+from\s+right\s+to\s+left\s+\(left\s+to\s+right\s+if\s+you\s+crochet\s+left-handed\)\s+without\s+turning"
     r"|the\s+turning\s+chain\s+at\s+the\s+corner\s+of\s+the\s+last\s+row\s+counts\s+as\s+a\s+st"
+    r"|on\s+the\s+foundation\s+edge\s+the\s+skipped\s+chains\s+at\s+the\s+start\s+of\s+the\s+first\s+row\s+count\s+as\s+its\s+first\s+st\s+and\s+their\s+base\s+is\s+the\s+free\s+loop\s+below\s+them"
     r"|working\s+along\s+the\s+foundation\s+edge\s+into\s+the\s+base\s+of\s+each\s+st\s+of\s+the\s+first\s+row"
     r"|each\s+ch\s+\d+\s+below\s+is\s+a\s+strap"
     r"|the\s+\d+\s+sts\s+skipped\s+after\s+each\s+strap\s+are\s+its\s+handle\s+opening"
-    r"|each\s+strap\s+chain\s+should\s+measure\s+about\s+[\d.]+\s+in\s+flat"
-    r"|chain\s+loosely\s+or\s+go\s+up\s+a\s+hook\s+size\s+if\s+your\s+chains\s+run\s+tight"
-    r"|work\s+1\s+sc\s+in\s+each\s+ch\s+of\s+the\s+straps"
-    r"|each\s+sc2tog\s+joins\s+a\s+strap's\s+end\s+ch\s+to\s+the\s+rim\s+st\s+beside\s+it"
-    r"|work\s+along\s+the\s+\d+\s+skipped\s+sts\s+of\s+the\s+opening\s+and\s+then\s+along\s+the\s+underside\s+of\s+the\s+strap"
+    r"|keep\s+the\s+count\s+at\s+\d+\s+ch"
+    r"|if\s+a\s+strap\s+chain\s+measures\s+well\s+short\s+of\s+[\d.]+\s+in\s+flat\s+then\s+rework\s+it\s+more\s+loosely\s+or\s+with\s+a\s+larger\s+hook"
+    r"|this\s+round\s+puts\s+1\s+sc\s+in\s+each\s+ch\s+of\s+the\s+straps"
+    r"|each\s+sc2tog\s+joins\s+the\s+first\s+or\s+last\s+ch\s+of\s+a\s+strap\s+to\s+the\s+rim\s+st\s+beside\s+it"
+    r"|this\s+round\s+goes\s+along\s+the\s+\d+\s+skipped\s+sts\s+of\s+the\s+opening\s+and\s+then\s+along\s+the\s+underside\s+of\s+the\s+strap"
+    r"|left-handed\s+makers\s+work\s+right\s+to\s+left"
     r"|working\s+left\s+to\s+right\s+\(do\s+not\s+turn\)"
-    r"|starting\s+in\s+the\s+same\s+st\s+as\s+the\s+join)$",
+    r"|starting\s+in\s+the\s+same\s+st\s+as\s+the\s+join\s+\(count\s+it\s+as\s+the\s+first\))$",
     re.I)
 _RE_DO_NOT_TWIST = re.compile(r"^(?:taking\s+care|being\s+careful)\s+not\s+to\s+twist(?:\s+the\s+chain)?$", re.I)
 # "at the end of the row" -- a positional phrase saying WHERE the clause after
@@ -487,6 +489,7 @@ class _Patterns:
         "foundation_next_chain_and_next_chs", "counted_next_chain_and_next_chs",
         "sl_st_join", "trailing_count_restatement", "count_in_same_spot",
         "around_skipped", "same_and_each_of_next", "free_loop_of_each_ch", "crab_each_of_next",
+        "each_of_next_sts_and_spaces",
     )
 
     def __init__(self, stitch_alt: str):
@@ -795,6 +798,11 @@ class _Patterns:
         # chain already worked into on its other side (a tote strap's edging).
         # "work reverse sc (crab st) in each of next 168 sts" -- a crab-stitch
         # round with its count stated: 1 reverse sc per st.
+        # "sc in each of next 57 sc and ch-1 sps" -- picking up across a linen
+        # or moss row, whose positions are sc and ch-1 spaces: 1 per position.
+        self.each_of_next_sts_and_spaces = re.compile(
+            rf"^(?P<stitch>{stitch_alt})\s+in\s+each\s+of\s+next\s+(?P<count>\d+)\s+sc\s+and\s+ch-1\s+sps$", re.I
+        )
         self.crab_each_of_next = re.compile(
             r"^work\s+reverse\s+sc\s+\(crab\s+st\)\s+in\s+each\s+of\s+next\s+(?P<count>\d+)\s+sts?$", re.I
         )
@@ -1822,7 +1830,7 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         return StitchClause(raw=raw_part, stitch=None, clause_type="positional_single",
                              explicit_count=n, consumes=n, produces=n)
 
-    for pat_name in ("same_and_each_of_next", "free_loop_of_each_ch"):
+    for pat_name in ("same_and_each_of_next", "free_loop_of_each_ch", "each_of_next_sts_and_spaces"):
         m = getattr(patterns, pat_name).match(p)
         if m:
             canon, is_compound, c, prod = _stitch_lookup(m.group("stitch"), custom_compound)

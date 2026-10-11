@@ -78,3 +78,14 @@ class TestToteTopFinish(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestToteTopFinishLinen(unittest.TestCase):
+    # A linen body's last row is sc and ch-1 sps; the pick-up names both and
+    # counts 1 per position (loopdreams, crochet-pattern-reviewer 2026-10-11).
+    def test_linen_pick_up_counts_sc_and_spaces(self):
+        report = _report(_FIXTURES["linen-band-blsc-crab-leather"])
+        self.assertEqual(report["summary"]["status"], "PASS", report["issues"])
+        p = _mutated("linen-band-blsc-crab-leather", "Top Band Round 1",
+                     lambda t: re.sub(r"next (\d+) sc and ch-1 sps", lambda m: f"next {int(m.group(1)) - 1} sc and ch-1 sps", t, 1))
+        self.assertEqual(_report(p)["summary"]["status"], "FAIL")

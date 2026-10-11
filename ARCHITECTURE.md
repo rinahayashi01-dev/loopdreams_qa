@@ -4647,3 +4647,22 @@ All of it came back "cannot verify". After sewn handle strips, the rounds were a
 - 96 payloads without a top finish (plain, compound, coloured and ribbed scarves, Celtic weave, bobble, existing totes): identical summaries and findings on main and this branch.
 
 New `tests/test_tote_top_finish.py` (6 tests, fixtures in `tests/data/tote_top_finish.json`).
+
+## Tote top finish: review wording (2026-10-11)
+
+The tote top-finish rows were reworded after crochet review (loopdreams feat/tote-continuous-handles), before any of them shipped. The changes:
+- How to hold the bag and which way to work now come before the join.
+- A foundation-edge note covers bodies whose turning chain counts.
+- "Starting in the same st as the join (count it as the first)".
+- "Keep the count at N ch" plus a rework sentence replace "should measure about".
+- The guidance sentences are descriptive ("This round puts…", "This round goes…").
+- A left-handed note sits on the crab round.
+- A linen/moss pick-up now reads "sc in each of next N sc and ch-1 sps".
+
+`_RE_TOTE_FINISH_NOTE` matches the new sentences exactly (the old ones never reached a saved pattern). A new clause, `each_of_next_sts_and_spaces`, counts the linen pick-up as 1 per position.
+
+**Measured:**
+- Seven builder-output totes (now including a tr tote with a liner): PASS.
+- A linen pick-up one position short: FAIL.
+- 96 payloads without a top finish: identical to main.
+- The fixture is refreshed with the new wording; the suite passes (510).
