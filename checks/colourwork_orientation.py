@@ -64,7 +64,11 @@ _RE_CHAIN_ONLY = re.compile(
 # deliberately NOT here: the last body row fastens off and is still a design
 # row -- dropping it shortens the panel and silently misaligns every
 # expected row against the resampled design.
-_SKIP_ROW = re.compile(r"Assembly|Handles?:|Pocket:|Liner|Zipper|Block the pieces|Seam|Repeat Row", re.I)
+_SKIP_ROW = re.compile(
+    r"Assembly|Handles?:|Pocket:|Liner|Zipper|Block the pieces|Seam|Repeat Row"
+    # A tote's top-finish rounds are worked on the rim, not the design.
+    r"|Border Round|Top Band Round|Strap Round|Handle Round|Edging Round|Handle \d+ Edging|Reinforcing the Straps",
+    re.I)
 # A scarf's finishing: its ribbing panels, border round, and the sc rows and
 # knots of a fringe or tassels. They follow the body, name the colour they are
 # worked in ("join Colour 1"), and none of them is a row of the design. A
@@ -72,7 +76,12 @@ _SKIP_ROW = re.compile(r"Assembly|Handles?:|Pocket:|Liner|Zipper|Block the piece
 # ends at the FIRST of these labels rather than each one being skipped.
 # Striped designs made this matter: a row-striped design is compared at any
 # width, so every finishing row was read as another stripe (scarf stripes with an end finish or border, 2026-09-30).
-_RE_FINISHING_START = re.compile(r"^(?:Border|Ribbing \(Panel \d+\)|Fringe|Tassels):", re.I)
+# A tote's top-finish rounds (loopdreams buildToteTopFinishRows) are worked on
+# the rim after assembly, so the design is over by the first of them -- even
+# one that names a colour, which _SKIP_ROW lets through.
+_RE_FINISHING_START = re.compile(
+    r"^(?:Border|Ribbing \(Panel \d+\)|Fringe|Tassels"
+    r"|Border Round \d+|Top Band Round \d+|Strap Round \d+|Handle Round|Edging Round|Handle \d+ Edging):", re.I)
 
 
 def _resize_nn(grid, cols, rows):

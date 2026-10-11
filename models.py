@@ -48,6 +48,9 @@ class RoundRow:
     clauses: list = field(default_factory=list)
     declared_count: Optional[int] = None
     declared_count_is_approx: bool = False
+    # Chains a row leaves to be worked into, beyond its sts: a tote's Handle
+    # Round states "(60 sts, 112 ch)", and the next round works into both.
+    declared_chains: Optional[int] = None
     referenced_rows: list = field(default_factory=list)   # e.g. [2, 3] for "Repeat Rows 2-3"
     # Which independently-numbered piece this row belongs to (e.g. "BACK
     # PANEL", "SLEEVES (MAKE 2)"), None for single-piece patterns (every

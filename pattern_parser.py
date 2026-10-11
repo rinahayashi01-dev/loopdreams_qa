@@ -569,9 +569,14 @@ def _parse_instructions_chunk(raw_text: str, pattern: Pattern, custom_compound, 
 # that matters. Tolerates an optional leading "Row N: " badge -- the
 # from_pattern_json.py adapter's own _row_line() always prepends one, even
 # to lines it's routed into the Finishing section.
+# A tote's top-finish rounds (see from_pattern_json._TOTE_TOP_FINISH_LABELS).
+_TOTE_TOP_FINISH_LABELS = (
+    r"Border\s+Round\s+\d+|Top\s+Band\s+Round\s+\d+|Strap\s+Round\s+\d+|Handle\s+Round"
+    r"|Edging\s+Round|Handle\s+\d+\s+Edging|Reinforcing\s+the\s+Straps"
+)
 _RE_FINISHING_LABEL_START = re.compile(
     r"^\s*(?:Row\s*\d+\s*:\s*)?"
-    r"(?:(?:Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"(?:(?:" + _TOTE_TOP_FINISH_LABELS + r"|Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
     r"|[A-Z][a-z]+\s*\(make\s+\d+\)\s*:"
     r"|Handles\s*\()",
     re.I,
@@ -607,14 +612,19 @@ def _parse_finishing(section: Section, pattern: Pattern):
         # content, a trailing "(N sts)", no "(make N)") -- real sample
         # (Tote Bag with a pocket add-on): "Pocket: Ch 19. Sc in 2nd ch...
         # (18 sts)".
-        m = re.search(r"(Border|Pocket)\s*:\s*(.*?)\(\s*(~?)\s*(\d+)\s*sts?\s*\)\.?", blob, re.I)
+        # A tote's Handle Round states its chains too, "(60 sts, 112 ch)":
+        # chains are not stitches, so only the sts are the declared count.
+        # The tote's "Reinforcing the Straps" is sewing, not stitches: it starts
+        # a chunk (above) but isn't checked as a counted piece.
+        m = re.search(r"(" + _TOTE_TOP_FINISH_LABELS.replace("|Reinforcing\\s+the\\s+Straps", "") + r"|Border|Pocket)\s*:\s*(.*?)\(\s*(~?)\s*(\d+)\s*sts?(?:\s*,\s*(\d+)\s*ch)?\s*\)\.?", blob, re.I)
         if m:
-            label = m.group(1)
+            label = re.sub(r"\s+", " ", m.group(1))
             instr_text = m.group(2).strip().rstrip(".")
             is_approx = m.group(3) == "~"
             declared = int(m.group(4))
             rr = RoundRow(label=label, row_start=-1, row_end=-1, raw_text=instr_text,
-                          declared_count=declared, declared_count_is_approx=is_approx)
+                          declared_count=declared, declared_count_is_approx=is_approx,
+                          declared_chains=int(m.group(5)) if m.group(5) else None)
             rr.clauses = tokenize_round(instr_text, custom_compound)
             pattern.rows.append(rr)
             continue

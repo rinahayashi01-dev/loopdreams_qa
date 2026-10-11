@@ -60,6 +60,16 @@ _DEDUPE_THRESHOLD = 3
 _DEDUPE_PREFIX = "Cannot verify stitch-count math for "
 
 
+# A tote's top finish is worked on the assembled bag (loopdreams
+# buildToteTopFinishRows). Its first round picks up the whole rim -- both
+# halves of the folded panel, so twice the body's last row; a Handle Edging is
+# worked around one handle's opening, not into the round before it; and the
+# round after the Handle Round works into its chains as well as its sts.
+_TOTE_PICKUP_ROUND = re.compile(r"^(?:Border|Top Band) Round 1$")
+_TOTE_HANDLE_EDGING = re.compile(r"^Handle \d+ Edging$")
+_TOTE_FINISH_LABEL = re.compile(r"^(?:(?:Border|Top Band|Strap) Round \d+|Handle Round|Edging Round|Handle \d+ Edging)$")
+
+
 def check(pattern) -> list:
     ratio_overrides, solve_issues = _solve_compound_ratios(pattern)
     issues = list(solve_issues)
@@ -68,13 +78,43 @@ def check(pattern) -> list:
     prev_label = "Foundation chain"
     prev_groups = None
     prev_component = _UNSET
+    prev_chains = None
     body_width = None
     total_rows = 0
 
+    rim_width, rim_label = None, None
     for row in pattern.rows:
         if row.label == "Border":
             issues.extend(_check_border(row, body_width, total_rows, ratio_overrides))
             continue
+
+        if _TOTE_FINISH_LABEL.match(row.label):
+            if _TOTE_HANDLE_EDGING.match(row.label):
+                # Self-contained: what it works into is what it states.
+                in_count, in_label = row.declared_count, f"{row.label}'s own opening and strap"
+            elif _TOTE_PICKUP_ROUND.match(row.label):
+                if rim_width is None:
+                    continue
+                in_count, in_label = 2 * rim_width, f"the bag's rim (both halves of {rim_label})"
+            else:
+                in_count = (prev_count or 0) + (prev_chains or 0) if prev_count is not None else None
+                in_label = prev_label
+            if in_count is None:
+                continue
+            if prev_chains and not _TOTE_HANDLE_EDGING.match(row.label):
+                # The Handle Round's chains are real bases here, not spaces:
+                # "sc in each of next 54 ch" uses up 54 of them.
+                for c in row.clauses:
+                    if c.clause_type == "literal_count" and re.search(r"\bch$", c.raw.strip(), re.I) and not c.consumes:
+                        c.consumes = c.produces
+            issues.extend(_check_row(row, in_count, in_label, False, ratio_overrides))
+            if not _TOTE_HANDLE_EDGING.match(row.label):
+                prev_count, prev_label, prev_chains = row.declared_count, row.label, row.declared_chains
+            prev_groups, prev_component = None, row.component
+            continue
+        if row.component is None and row.declared_count is not None:
+            rim_width, rim_label = row.declared_count, row.label
+        prev_chains = None
 
         # Real sample (sweater, Jul 12 batch): Back Panel/Front Panel/
         # Sleeves are each independently numbered ("component" on
