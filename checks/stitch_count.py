@@ -45,6 +45,7 @@ from ..models import Issue
 _RE_WORKED_INTO_RING = re.compile(r"\bin(?:to)?\s+(?:the\s+)?(?:magic\s+)?ring\b", re.I)
 
 _NO_OP_TYPES = {"chain", "turn", "join", "note", "fasten_off"}
+_RE_CHAIN_NOT_A_ST = re.compile(r"\(\s*does\s+not\s+count\b", re.I)
 
 # Sentinel distinct from a legitimate component value of None (the
 # single-piece case), so the very first row always triggers the
@@ -708,7 +709,11 @@ def _zone_sum(clauses, count_chains=False, ratio_overrides=None):
     reasons = []
     for c in clauses:
         if c.clause_type == "chain" and count_chains:
-            produces += c.explicit_count or 0
+            # A chain the pattern itself says is not a stitch -- "ch 1 (does
+            # not count as a st)" after a Left Front V step's slip sts -- stays
+            # out of the moss/linen count of ch-1 spaces.
+            if not _RE_CHAIN_NOT_A_ST.search(c.raw or ""):
+                produces += c.explicit_count or 0
             continue
         if c.clause_type in _NO_OP_TYPES or c.clause_type == "repeat_close":
             continue

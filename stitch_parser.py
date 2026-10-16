@@ -131,6 +131,14 @@ _RE_SKIP_CHAIN_SPACE = re.compile(r"^skip\s+(?:the\s+)?ch-?1\s+sp(?:ace)?$", re.
 # first real use: loopdreams' cardigan V-neck in a compound stitch (2026-09-26).
 _RE_LEAVE_UNWORKED = re.compile(
     r"^(?:and\s+)?leav(?:e|ing)\s+(?:the\s+)?last\s+(\d+)\s+sts?\s+unworked$", re.I)
+# "Sl st in each of the first 3 sts" -- the same whole-repeat step as
+# _RE_LEAVE_UNWORKED, taken at the START of the row instead: the Left Front of
+# a textured (sedge, moss/linen) V-neck cardigan, whose neck edge starts the
+# rows the Right Front steps on (loopdreams, 2026-10-16). The slip sts sit on
+# the ledge and are not stitches of the row, so the N sts are consumed and
+# produce nothing -- scored exactly as a skip. The count is stated, so it is
+# knowable from the clause alone.
+_RE_SL_ST_FIRST_N = re.compile(r"^sl\s*st\s+in\s+each\s+of\s+the\s+first\s+(\d+)\s+sts?$", re.I)
 _RE_NOTE = re.compile(r"^at (?:the )?end of this row$", re.I)
 # "Increase row: 2 DC in first st, ..." -- a leading row-type label, real
 # phrasing (sweater, Jul 12 batch, sleeve shaping rows). Purely descriptive
@@ -1337,6 +1345,12 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
     # first st", which read as the chain itself once the chain was labelled
     # "counts as first dc". Read exactly as that phrase always was.
     p = _RE_SAME_ST_AS_TURNING_CH.sub("in first st", p)
+    # Ahead of every counted shape: "sl st in each of the first 3 sts" would
+    # otherwise read as three slip STITCHES produced (see _RE_SL_ST_FIRST_N).
+    m = _RE_SL_ST_FIRST_N.match(p)
+    if m:
+        n = int(m.group(1))
+        return StitchClause(raw=raw_part, clause_type="skip", explicit_count=n, consumes=n, produces=0)
 
     m = patterns.counts_as_chain.match(p)
     if m:
@@ -1422,7 +1436,10 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         # own _RE_MORE_TIMES clause and is already handled; any OTHER tail
         # ("to last 2 sts", "around") is a stop condition this does not try to
         # resolve, and still carries its reason.
-        tail = m.group(1).strip()
+        # A descriptive note after the count -- "16 more times (the last st it
+        # skips is the sc you made after the slip sts ...)" -- says where the
+        # repeat ends, not how often; drop it like any other trailing note.
+        tail = _strip_trailing_annotation(m.group(1).strip())
         m_times = _RE_MORE_TIMES.match(tail)
         if m_times:
             return StitchClause(raw=raw_part, clause_type="repeat_close",
