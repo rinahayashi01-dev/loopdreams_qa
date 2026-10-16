@@ -4702,3 +4702,32 @@ Known blind spot found while probing, NOT fixed here: an extra repeat on a
 moss/linen row ("rep from * 22 more times" for 21) still PASSes on main, on
 ordinary rows too. The moss count path appears to fall back to the
 chains-count convention without checking the stated count.
+
+## The stated repeat count is checked (2026-10-16)
+
+Closes the blind spot noted in the entry above. On a row with ONE repeat
+group, `_check_row_with_repeat` solves how many times the group runs from the
+previous row's count (`r = remainder // unit_c`) and checks the row's total.
+Its own comment said a solved count that disagrees with the stated one "is
+itself the finding", but nothing compared them. A pattern that printed the
+wrong "rep from * N more times" passed whenever the declared total was right,
+and that number is the one a maker follows. Shown on main with a sedge and a
+moss cardigan Back row: "24 more times" bumped to 25 still PASSed.
+
+Now, when the row states its count (`_split_repeat_groups`; "N more times" =
+N+1 in all) and that differs from the solved `r`, it is an error naming both:
+"Repeat-count mismatch at Row 20: the row says to work the repeat 26 time(s)
+in all ('25 more'), but starting from Row 19 (78 sts) it fits exactly 25
+time(s) ('24 more')." The total check after it is unchanged, moss/linen
+chains-count fallback included.
+
+The other paths already used the stated count: `_check_multi_repeat_groups`
+works each group the stated number of times, and the no-usable-in-count path
+uses the stated count because it has nothing to solve from.
+
+Swept before adding it to the gate: all 91 active loopdreams batch cases,
+payloads captured once (dry run, nothing recorded) and replayed through main
+and this branch. Statuses and finding text were identical (85 PASS, 6 REVIEW
+on both), so there were no false FAILs. Then one stated count per case was
+bumped +1 in the 32 cases that state one: main FAILed 11, this branch FAILs
+all 32. Coverage: tests/test_stated_repeat_count.py (fails on main).

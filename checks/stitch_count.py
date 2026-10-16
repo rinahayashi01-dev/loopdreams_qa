@@ -1373,6 +1373,23 @@ def _check_repeat_group(row, clauses, opener_idx, closer_idx, in_count, in_label
         )]
 
     r = remainder // unit_c
+    # The count the row STATES ("rep from * 9 more times" = 10 in all) is what
+    # a maker follows, so a solved count that disagrees with it is a finding
+    # even when the row's total still comes out right (the total is checked
+    # below, separately). Until 2026-10-16 the stated count was never read on
+    # this path: "24 more times" bumped to 25 on a sedge row still PASSed.
+    stated_zones, _ = _split_repeat_groups(clauses)
+    stated_groups = [z for z in (stated_zones or []) if z[0] == "group"]
+    if len(stated_groups) == 1 and stated_groups[0][2] != r:
+        stated_times = stated_groups[0][2]
+        return [Issue(
+            category="stitch_count", severity="error", location=row.label,
+            message=(
+                f"Repeat-count mismatch at {row.label}: the row says to work the repeat {stated_times} time(s) "
+                f"in all ('{stated_times - 1} more'), but starting from {in_label} ({in_count} sts) it fits "
+                f"exactly {r} time(s) ('{r - 1} more')."
+            ),
+        )]
     produced_total = pre_p + r * unit_p + post_p + partial_p
     if row.declared_count is not None and produced_total != row.declared_count:
         # Some stitches (e.g. moss/linen stitch) conventionally count their
