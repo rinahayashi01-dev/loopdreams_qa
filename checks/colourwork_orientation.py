@@ -342,6 +342,14 @@ def _row_colours(text, width, carried):
     # of the row, and both would break the texture grammars below.
     body = re.sub(r",?\s*leaving the last \d+ sts? unworked", "", body, flags=re.I)
     body = re.sub(r"\s*\(the sc you just made[^)]*\)", "", body, flags=re.I)
+    # The Left Front steps at the START of the row instead: "sl st in each of
+    # the first 3 sts, ch 1 (does not count as a st), hdc in next st". The
+    # slip sts and that chain are not stitches of the row, and what follows is
+    # the row's own first st; the row after closes with a note naming it.
+    body = re.sub(r"sl st in each of the first \d+ sts?, ch \d+ \(does not count as a st\), (hdc|sc) in next st",
+                  r"\1 in first st", body, flags=re.I)
+    body = re.sub(r"\s*\((?:the hdc you made after the slip sts|the row ends with an sc in the last ch-1 sp)[^)]*\)", "",
+                  body, flags=re.I)
 
     # Resolution first: it decides how long a SOLID row is too, so it has to be
     # settled before the shortcut below and not just before the tokenizer.

@@ -4666,3 +4666,39 @@ The tote top-finish rows were reworded after crochet review (loopdreams feat/tot
 - A linen pick-up one position short: FAIL.
 - 96 payloads without a top finish: identical to main.
 - The fixture is refreshed with the new wording; the suite passes (510).
+
+## A V-neck Left Front that steps at the row start (2026-10-16)
+
+loopdreams' textured (sedge, moss/linen) cardigan V narrows in whole-repeat
+steps. A step used to be made only at a row END ("..., leaving the last 3 sts
+unworked", `_RE_LEAVE_UNWORKED`), so the Left Front, whose neck edge ends the
+other parity of rows, stepped one row later than the Right, and Rina's chunky
+cardigan showed the two V's a row apart. Both Fronts now step on the same rows,
+and the Left Front's step opens the row:
+
+`Decrease row: Sl st in each of the first 3 sts, ch 1 (does not count as a st), hdc in next st, ...`
+
+- `_RE_SL_ST_FIRST_N` (stitch_parser.py) reads "sl st in each of the first N
+  sts" as a skip: N consumed, 0 produced. Checked first in `_classify`, because
+  the counted shapes would otherwise read it as N slip STITCHES produced.
+- A chain the text marks "(does not count ...)" stays out of moss/linen's
+  counted ch-1 spaces (`_RE_CHAIN_NOT_A_ST` in checks/stitch_count.py's
+  `_zone_sum`). Unmarked, it is counted, and the row FAILs.
+- A descriptive note after a repeat count, "rep from * 16 more times (the row
+  ends with an sc in the last ch-1 sp; ...)", is stripped before the count is
+  read, like any trailing note (`_strip_trailing_annotation`).
+- colourwork_orientation strips the slip-stitch opening to "<st> in first st"
+  and drops the after-step notes, so the row reads at its own width.
+
+The V-cut side in `_shape_expectation` was already geometric (centre-front
+side by Front), not tied to where the step happens, so it needed no change.
+
+Probed with real generator output: 12 plain (child/M/XXL x sedge/moss/linen,
+two gauges) and 24 coloured cardigans PASS 0/0. Mutations (wrong slip count,
+dropped step clause, unmarked chain, wrong colour on the step) FAIL. Old rows
+still PASS. Coverage: tests/test_left_front_slip_step.py.
+
+Known blind spot found while probing, NOT fixed here: an extra repeat on a
+moss/linen row ("rep from * 22 more times" for 21) still PASSes on main, on
+ordinary rows too. The moss count path appears to fall back to the
+chains-count convention without checking the stated count.
