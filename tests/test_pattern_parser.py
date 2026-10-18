@@ -249,3 +249,23 @@ class TestPlainUnlabeledFinishingContent(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestWrittenForMetadataLine(unittest.TestCase):
+    # loopdreams #768 (2026-10-18) prints the maker's skill level as
+    # "Written for beginners" rather than a bare "Beginner" in the PDF line
+    # under the title. The title heuristic must still find that line.
+    def test_written_for_line_still_locates_title(self):
+        for level in ("Written for beginners", "Written for intermediate makers"):
+            raw = (
+                f"ypDre\no ca\n\nScarf — Oct 18\n\nScarf · {level} · Generated: October 18, 2026\n\n"
+                + MATERIALS_BLOCK
+                + "ABBREVIATIONS\n"
+                "ch = chain, sc = single crochet, rep = repeat\n"
+                "PATTERN STEPS\n"
+                "Foundation:Ch 20, turn.\n"
+                "Row 1: Sc in 2nd ch from hook and in each ch across. Ch 1, turn. (19 sts)\n"
+                "Finishing\n"
+                "Border: Fasten off. (40 sts)\n"
+            )
+            self.assertEqual(parse(raw).title, "Scarf — Oct 18", level)

@@ -4731,3 +4731,24 @@ and this branch. Statuses and finding text were identical (85 PASS, 6 REVIEW
 on both), so there were no false FAILs. Then one stated count per case was
 bumped +1 in the 32 cases that state one: main FAILed 11, this branch FAILs
 all 32. Coverage: tests/test_stated_repeat_count.py (fails on main).
+
+## "Linen/Moss Stitch" heading and "Written for …" meta line (2026-10-18)
+
+loopdreams #768 changed two strings this tool reads on the PDF/OCR path:
+
+- The Stitch Guide heading is now "Linen/Moss Stitch", printed in capitals as
+  `LINEN/MOSS STITCH`. It was "Moss Stitch (aka Linen Stitch)". Neither
+  heading pattern in `_check_stitch_guide_body_mismatch` allowed "/", so the
+  guide's heading wasn't found. That left only strategies (b) and (c), and a
+  miss would name it "(unnamed stitch)". Both patterns now allow "/", and the
+  heading's keywords are split on whitespace and "/", so `linen` and `moss`
+  are each matched against the body.
+- The line under the title now says "Written for beginners" (or
+  "intermediate makers" / "advanced makers") rather than a bare "Beginner".
+  `_RE_TITLE_METADATA_LINE` accepts it, so the title heuristic still finds
+  the line on OCR'd PDFs with logo text above the title.
+
+The batch path (`from_pattern_json.py`) carries neither string, so CI's gate
+is unchanged. Coverage: `TestSlashedGuideHeading` in
+tests/test_stitch_guide_mismatch.py and `TestWrittenForMetadataLine` in
+tests/test_pattern_parser.py. Three of the four fail on main.

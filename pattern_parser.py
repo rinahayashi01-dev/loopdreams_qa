@@ -710,7 +710,9 @@ def _parse_finishing(section: Section, pattern: Pattern):
 # "Generated") since this new export template is expected to recur with
 # possible further label variations.
 _RE_TITLE_METADATA_LINE = re.compile(
-    r"^.+\s*[-·]\s*(Beginner|Intermediate|Advanced|Easy)\s*[-·]\s*(?:[A-Za-z]+:\s*)?"
+    # "Written for beginners" / "Written for intermediate makers": the app's
+    # skill line since loopdreams #768 (2026-10-18). It was a bare "Beginner".
+    r"^.+\s*[-·]\s*(Beginner|Intermediate|Advanced|Easy|Written for [A-Za-z ]+?)\s*[-·]\s*(?:[A-Za-z]+:\s*)?"
     r"[A-Za-z]+\s+\d{1,2},\s*\d{4}$", re.I
 )
 
