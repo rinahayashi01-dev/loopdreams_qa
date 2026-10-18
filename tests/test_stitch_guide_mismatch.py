@@ -203,3 +203,36 @@ class TestStitchGuideBodyMismatch(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSlashedGuideHeading(unittest.TestCase):
+    # loopdreams #768 (2026-10-18) names the stitch "Linen/Moss Stitch", which
+    # the PDF prints in capitals. Both heading patterns must still read it, and
+    # its keywords split on "/".
+    def _raw(self, body_row):
+        return (
+            "Test Scarf\n"
+            + MATERIALS_BLOCK
+            + "STITCH GUIDE\n"
+            "LINEN/MOSS STITCH\n"
+            "An alternating sc and chain-1 pattern that creates a tight, woven texture.\n"
+            "Stitch multiple: Multiple of 2 + 1\n"
+            "Foundation: Sc in 2nd ch from hook, *ch 1, skip 1 ch, sc in next ch; rep from * to end.\n"
+            "ABBREVIATIONS\n"
+            "ch = chain · sc = single crochet · dc = double crochet · rep = repeat\n"
+            "PATTERN STEPS\n"
+            "Foundation:Ch 20, turn.\n"
+            + body_row
+            + "Finishing\n"
+            "Border: Fasten off. (40 sts)\n"
+        )
+
+    def test_heading_found_when_the_stitch_is_named_in_the_body(self):
+        raw = self._raw("Row 1: Dc in 4th ch from hook and in each ch across, in moss stitch style. Ch 3, turn. (17 sts)\n")
+        self.assertEqual(_guide_mismatch_issues(raw), [])
+
+    def test_unused_guide_names_the_slashed_heading(self):
+        raw = self._raw("Row 1: Dc in 4th ch from hook and in each ch across. Ch 3, turn. (17 sts)\n")
+        issues = _guide_mismatch_issues(raw)
+        self.assertEqual(len(issues), 1)
+        self.assertIn("'Linen/Moss Stitch'", issues[0].message)

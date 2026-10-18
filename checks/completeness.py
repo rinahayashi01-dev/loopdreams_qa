@@ -582,7 +582,7 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
     # chain:", not a named stitch to look for in the body.
     structural_labels = {m.rstrip(":") for m in complex_markers} | {"note"}
     heading_re = re.compile(
-        r"^([A-Z][A-Za-z ]{1,40}?)(?:\s*\([^)]+\))?\s*:",
+        r"^([A-Z][A-Za-z /]{1,40}?)(?:\s*\([^)]+\))?\s*:",
         re.M,
     )
     # Real sample (scarf, Jul 15 batch, same "badge label" template family
@@ -595,7 +595,10 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
     # narrower pattern only matches a WHOLE line that's entirely uppercase
     # (with an optional parenthetical, e.g. "DOUBLE CROCHET (DC)") --
     # mirrors pattern_parser.py's _RE_COMPONENT_HEADER for the same reason.
-    all_caps_heading_re = re.compile(r"^([A-Z][A-Z0-9 ]{1,40})(?:\s*\([^)]+\))?$", re.M)
+    # "/" is allowed in both: the app names one stitch "Linen/Moss Stitch"
+    # (loopdreams #768, 2026-10-18; it was "Moss Stitch (aka Linen Stitch)"),
+    # and its keywords are split on "/" below.
+    all_caps_heading_re = re.compile(r"^([A-Z][A-Z0-9 /]{1,40})(?:\s*\([^)]+\))?$", re.M)
 
     def _is_structural(name: str) -> bool:
         key = name.strip().lower()
@@ -619,7 +622,7 @@ def _check_stitch_guide_body_mismatch(pattern) -> list:
 
     for name in headings:
         name_keywords = {
-            w for w in name.split()
+            w for w in re.split(r"[\s/]+", name)
             if w not in skip_words and len(w) > 2
         }
         if name_keywords & (combined | body_words):
