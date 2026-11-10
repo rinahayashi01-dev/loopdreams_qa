@@ -1356,3 +1356,31 @@ class TestFoundationRowCountedRuns(unittest.TestCase):
         self.assertFalse([c for c in clauses if c.clause_type == "unknown"])
         self.assertEqual(sum(c.consumes or 0 for c in clauses), 34)
         self.assertEqual(sum(c.produces or 0 for c in clauses), 33)
+
+
+class TestBodyLengthCheckpointWithCm(unittest.TestCase):
+    # loopdreams gives every length in inches and cm since 2026-11-10
+    # ("one measurement style"), so a scarf body's length checkpoint reads
+    # "Body measures approximately 60 in / 152 cm." Read as a note like the
+    # inch-only form; before, the cm left the clause unrecognized and every
+    # scarf with ribbing, fringe or tassels went to REVIEW.
+    def test_checkpoint_with_cm_is_a_note(self):
+        for text in (
+            "Body measures approximately 60 in / 152 cm.",
+            "Body measures approximately 19.5 in / 49.5 cm.",
+            "Body measures approximately 67 in.",
+        ):
+            self.assertEqual([c.clause_type for c in tokenize_round(text)], ["note"], text)
+
+    def test_checkpoint_on_the_last_body_row(self):
+        clauses = tokenize_round(
+            "Sc in each st across. Fasten off, weave in ends. Body measures approximately 60 in / 152 cm."
+        )
+        self.assertNotIn("unrecognized", [c.clause_type for c in clauses])
+        self.assertEqual(clauses[-1].clause_type, "note")
+
+    def test_other_units_are_not_swallowed(self):
+        # Only "in" then optionally "/ N cm": a stray unit is still a finding.
+        self.assertNotEqual(
+            [c.clause_type for c in tokenize_round("Body measures approximately 60 in / 152 mm.")], ["note"]
+        )

@@ -242,8 +242,10 @@ _RE_COLOUR_DESIGNATOR = re.compile(
 # "Body measures approximately 67 in." -- a length checkpoint appended to a
 # scarf body's own last row before Ribbing/Fringe/Tassels (loopdreams PR
 # #335, Jul 28 batch) -- purely informational, no stitch-count effect.
+# Since loopdreams' one-measurement-style change (2026-11-10) every length
+# also gives cm after a slash: "Body measures approximately 67 in / 170 cm."
 _RE_BODY_LENGTH_CHECKPOINT = re.compile(
-    r"^body\s+measures\s+approximately\s+[\d.]+\s*in\.?$", re.I
+    r"^body\s+measures\s+approximately\s+[\d.]+\s*in(?:\s*/\s*[\d.]+\s*cm)?\.?$", re.I
 )
 # "Magic ring" -- opens a continuous-spiral or joined-round construction
 # (real samples: Amigurumi Ball/Cone/Limb, Coaster, Mittens -- loopdreams
