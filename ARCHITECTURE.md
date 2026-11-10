@@ -4752,3 +4752,37 @@ The batch path (`from_pattern_json.py`) carries neither string, so CI's gate
 is unchanged. Coverage: `TestSlashedGuideHeading` in
 tests/test_stitch_guide_mismatch.py and `TestWrittenForMetadataLine` in
 tests/test_pattern_parser.py. Three of the four fail on main.
+
+## One-colour rows with a bracketed colour note (2026-11-10)
+
+loopdreams #837 added two row shapes, both on rows that are one colour all
+the way across:
+
+- `With Colour 2 (cut Colour 1 — it is not used again on this piece), ...`
+  opens the first solid row after a design's last change.
+- `... changing to Colour 2 in the last st (before you start that st, cut
+  Colour 2 where it hangs, ...). Ch 1, turn.` A far-yarn change now goes on
+  the previous row's last st.
+
+`_row_colours` only short-cut a row naming no colour at all. These rows name
+one, so they fell through to the run grammar, and a waffle or bobble repeat
+is outside it. The row became a hole and cleared `carried`. On the waffle
+throw, every later row then read as naming no colour, which is an error.
+Batch-test on main went Throw Blanket waffle PASS → FAIL and Tote bobble
+PASS → REVIEW.
+
+`_row_colours` now reads a row as solid when its only colour words are a
+leading `With X` and/or a closing `changing to X in the last st`, each
+optionally followed by one unnested bracketed note. This matches the run
+grammar exactly: a counted turning chain is in the colour already on the
+hook, then the row's colour. The ending colour is the closing change's. A
+row with any other colour word is still left to the run grammar.
+`_RE_LEAD_WITH` and `_RE_END_CHANGE` (the striped-panel reader) accept the
+same note. The note names a colour only after "cut", which no colour regex
+reads.
+
+Swept all 19 active colourwork batch cases, generated from loopdreams main
+plus the units branch and replayed through main and this branch. 17 were
+identical. Throw waffle and Tote bobble went from error/warning to clean.
+A throw mutation (row 200 opened in the wrong colour) is still caught.
+Coverage: tests/test_colour_note_rows.py (4 of 5 fail on main).

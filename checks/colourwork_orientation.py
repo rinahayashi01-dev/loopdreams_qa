@@ -367,6 +367,29 @@ def _row_colours(text, width, carried):
     if not _RE_WITH.search(body) and not _RE_CHANGE.search(body):
         return [carried] * (target + (1 if chain_counts else 0)), carried
 
+    # The same row with its colour stated: it opens "With Colour 2," and/or
+    # closes "changing to Colour 2 in the last st", and names no other colour.
+    # Still one colour all the way across (the end change only finishes the
+    # last st's final yarn-over in the next colour), so it is read the same
+    # way. loopdreams #837 made both shapes common on compound rows: the first
+    # solid row after a design's last change opens "With Colour 2 (cut Colour 1
+    # -- it is not used again on this piece), ..." and a far-yarn change moved
+    # to the previous row's last st. Their waffle and bobble repeats are
+    # outside the run grammar, so without this the row was a hole, and on a
+    # waffle throw every row after it read as naming no colour (a FAIL).
+    lead = _RE_LEAD_WITH.match(body)
+    end = _RE_BODY_END_CHANGE.search(body)
+    if (lead or end) and len(_RE_WITH.findall(body)) == (1 if lead else 0) \
+            and len(_RE_CHANGE.findall(body)) == (1 if end else 0):
+        colour = lead.group(1).title() if lead else carried
+        if colour is not None:
+            # As the run grammar below reads it: a counted turning chain was
+            # made before the row's "With", in the colour already on the hook.
+            colours = [colour] * target
+            if chain_counts:
+                colours.insert(0, carried)
+            return colours, (end.group(1).title() if end else colour)
+
     if _RE_SHELL_ROW.search(body):
         return _shell_row_colours(body, target, carried)
 
@@ -741,8 +764,18 @@ def _check_panel(pattern, design, source) -> list:
                                          drops=drops, section=section)
 
 
-_RE_LEAD_WITH = re.compile(r"^(?:(?:Increase|Decrease) row:\s*)?With\s+(Colour\s+\w+|White),", re.I)
-_RE_END_CHANGE = re.compile(r"changing to\s+(Colour\s+\w+|White)\s+in the last st\.\s+Ch \d+, turn\.", re.I)
+# Each may carry ONE bracketed note between the colour and what follows
+# (loopdreams #837): "With Colour 2 (cut Colour 1 — it is not used again on
+# this piece), skip first st, ..." and "changing to Colour 2 in the last st
+# (before you start that st, cut Colour 2 where it hangs, ...). Ch 1, turn."
+# The note names a colour only after "cut", which neither regex nor _RE_WITH /
+# _RE_CHANGE reads as a colour, so the row is still one colour plus at most an
+# end change. Unnested brackets only: a note holding "(" is left unread.
+_NOTE = r"(?:\s*\([^()]*\))?"
+_RE_LEAD_WITH = re.compile(r"^(?:(?:Increase|Decrease) row:\s*)?With\s+(Colour\s+\w+|White)" + _NOTE + r",", re.I)
+_RE_END_CHANGE = re.compile(r"changing to\s+(Colour\s+\w+|White)\s+in the last st" + _NOTE + r"\.\s+Ch \d+, turn\.", re.I)
+# The same closing change with the row's ". Ch 1, turn." already stripped (_row_colours).
+_RE_BODY_END_CHANGE = re.compile(r"changing to\s+(Colour\s+\w+|White)\s+in the last st" + _NOTE + r"\s*$", re.I)
 
 
 def _one_colour_row(text, count, carried):
