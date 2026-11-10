@@ -4753,6 +4753,24 @@ is unchanged. Coverage: `TestSlashedGuideHeading` in
 tests/test_stitch_guide_mismatch.py and `TestWrittenForMetadataLine` in
 tests/test_pattern_parser.py. Three of the four fail on main.
 
+## Lengths in inches and cm (2026-11-10)
+
+loopdreams now writes every length a maker reads in one style, inches then cm
+after a slash: "6 in / 15 cm", "15 × 9.5 in / 38 × 24 cm". Of the row shapes
+this tool parses, only the scarf body's length checkpoint changed in a way it
+noticed: "Body measures approximately 60 in / 152 cm." was an unrecognized
+clause, which sent every scarf with ribbing, fringe or tassels to REVIEW.
+`_RE_BODY_LENGTH_CHECKPOINT` now accepts an optional "/ N cm" after the inches,
+and nothing else (a stray unit is still a finding).
+
+Swept before merging: 11 affected loopdreams templates (scarf fringe, tassels
+and ribbing; three totes with liner, pocket, straps and leather handles; motif
+blanket; cardigan button band; sweater blocking; potholder; cushion), built
+from loopdreams main and from its units branch. Run through this tool's main
+and this branch respectively, every status and finding was identical once the
+cm figures were set aside. Coverage: `TestBodyLengthCheckpointWithCm` in
+tests/test_stitch_parser.py (two of three fail on main).
+
 ## One-colour rows with a bracketed colour note (2026-11-10)
 
 loopdreams #837 added two row shapes, both on rows that are one colour all
