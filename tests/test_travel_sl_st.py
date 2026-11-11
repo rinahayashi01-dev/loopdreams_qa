@@ -71,14 +71,19 @@ class OneColourGrannyMotif(unittest.TestCase):
         self.assertEqual(len(errs), 1, errs)
         self.assertIn("Stitch-count mismatch", errs[0].message)
 
-    def test_round_3_is_unverifiable_for_the_cluster_only(self):
-        # Clusters are still honestly unverifiable (KNOWN_UNVERIFIABLE item 1);
-        # the slip across into Round 2's first space no longer adds a reason.
-        msgs = [i.message for i in row_issues(PAYLOAD, 3)]
-        self.assertEqual(len(msgs), 1, msgs)
-        self.assertIn("'cluster' has no fixed consumes/produces ratio", msgs[0])
-        self.assertNotIn("unrecognized clause", msgs[0])
+    def test_round_3_is_verified(self):
+        # The slip across into Round 2's first space adds no reason, and since
+        # the Cluster's yield is read from the key (KNOWN_UNVERIFIABLE item 1,
+        # test_cluster_yield_from_key.py) the round has none left.
+        self.assertEqual(row_issues(PAYLOAD, 3), [])
 
+    def test_a_wrong_count_on_round_3_is_an_error(self):
+        p = copy.deepcopy(PAYLOAD)
+        row = next(r for r in p["rows"] if r["row_number"] == 3)
+        row["stitch_count"] += 1
+        errs = [i for i in row_issues(p, 3) if i.severity == "error"]
+        self.assertEqual(len(errs), 1, errs)
+        self.assertIn("Stitch-count mismatch", errs[0].message)
 
 if __name__ == "__main__":
     unittest.main()

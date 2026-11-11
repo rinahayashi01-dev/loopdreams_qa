@@ -1022,6 +1022,10 @@ def _stitch_lookup(token: str, custom_compound: frozenset = frozenset()):
     if canon in ab.STITCH_MATH:
         c, p = ab.STITCH_MATH[canon]
         return canon, False, c, p
+    if canon in getattr(custom_compound, "one_stitch", ()):
+        # The pattern's own key says it is worked together in one place
+        # (abbreviations.one_stitch_tokens): one place in, one stitch out.
+        return canon, False, 1, 1
     if canon in custom_compound or canon in ab.COMPOUND_STITCH_WORDS or canon in ("sh st",):
         return canon, True, None, None
     return canon, False, None, None  # totally unrecognized
@@ -1086,7 +1090,8 @@ def tokenize_round(raw_text: str, custom_compound: frozenset = frozenset()) -> l
     abbreviations.custom_compound_tokens. Defaults to empty for callers
     (like tests) that don't have a pattern-specific abbreviation key handy.
     """
-    custom_compound = frozenset(custom_compound)
+    if not isinstance(custom_compound, frozenset):  # keeps a StitchVocab's one_stitch
+        custom_compound = frozenset(custom_compound)
     patterns = _compiled_patterns(custom_compound)
     text = raw_text.strip()
     parts = _split_top_level(text)

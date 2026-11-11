@@ -173,4 +173,44 @@ def custom_compound_tokens(abbr_key: dict) -> frozenset:
             continue
         if _COMPOUND_WORD_RE.search(definition):
             found.add(abbr)
+    return StitchVocab(found, one_stitch=one_stitch_tokens(abbr_key, found))
+
+
+class StitchVocab(frozenset):
+    """The custom compound tokens custom_compound_tokens() finds, which is what
+    every caller already treats this as, plus `one_stitch`: the named
+    stitches this pattern's own key says make exactly one stitch in one place
+    (see one_stitch_tokens). Carried on the same set so the tokenizer's many
+    internal helpers, which already pass it along, see it without a second
+    parameter."""
+
+    def __new__(cls, tokens=(), one_stitch=frozenset()):
+        self = super().__new__(cls, tokens)
+        self.one_stitch = frozenset(one_stitch)
+        return self
+
+
+# "2 dc worked together in the same space": the stitches are closed with one
+# final loop, so however many are worked, the result is one stitch, and it
+# goes into one place. Both halves must be stated. "Worked together" over
+# separate stitches (a decrease) uses up more than one, and a granny "cluster"
+# of 3 separate dc is three stitches, so neither is read as one.
+_RE_JOINED_IN_ONE_PLACE = _re.compile(
+    r"\bworked\s+together\s+in\s+the\s+same\s+(?:st|stitch|sp|space|ch(?:-\d+)?(?:\s+sp)?)\b", _re.I)
+
+
+def one_stitch_tokens(abbr_key: dict, custom_compound=frozenset()) -> frozenset:
+    """Named stitches (cluster, puff and the like) whose definition in THIS
+    pattern's key says they are worked together in one place, so each one
+    makes one stitch and uses one place. loopdreams' Granny Square motif keys
+    "cluster (2 dc worked together in the same space: ...)" and states its
+    rounds as "(16 Clusters, 16 ch-1 sps)". The yield is read from the
+    pattern, never assumed for the word: a key that doesn't say so leaves the
+    stitch with no fixed ratio, as before (KNOWN_UNVERIFIABLE.md §1)."""
+    found = set()
+    for abbr, definition in abbr_key.items():
+        if abbr not in COMPOUND_STITCH_WORDS and abbr not in custom_compound:
+            continue
+        if _RE_JOINED_IN_ONE_PLACE.search(definition):
+            found.add(abbr)
     return frozenset(found)
