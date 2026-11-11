@@ -70,6 +70,20 @@ class TestToteTopFinish(unittest.TestCase):
         p = _mutated("dc-band-hdc", "Top Band Round 2", lambda t: re.sub(r"next (\d+) sts", lambda m: f"next {int(m.group(1)) - 1} sts", t, 1))
         self.assertEqual(_report(p)["summary"]["status"], "FAIL")
 
+    def test_strap_length_may_carry_cm(self):
+        # loopdreams#839 writes every length as "14 in / 36 cm". The strap
+        # check sentence went PASS -> REVIEW in the batch matrix (2026-11-11).
+        p = _mutated("hdc-continuous-accent-crab", "Handle Round",
+                     lambda t: re.sub(r"short of (\d+(?:\.\d+)?) in flat", r"short of \1 in / 36 cm flat", t))
+        self.assertIn("in / 36 cm flat", json.dumps(p))
+        self.assertEqual(_report(p)["summary"]["status"], "PASS", _report(p)["issues"])
+        # The count is still checked with the cm present.
+        p2 = json.loads(json.dumps(p))
+        for r in p2["rows"]:
+            if r["instructions"].startswith("Handle Round"):
+                r["instructions"] = r["instructions"].replace("skip next 25 sts", "skip next 26 sts", 1)
+        self.assertEqual(_report(p2)["summary"]["status"], "FAIL")
+
     def test_accent_band_is_not_read_as_the_design(self):
         issues = json.dumps(_report(_FIXTURES["sc-striped-band-accent"])["issues"])
         self.assertNotIn("before the pattern names any colour", issues)
