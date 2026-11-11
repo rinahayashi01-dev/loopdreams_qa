@@ -1,0 +1,338 @@
+{
+ "fringe_sc_border": [
+  {
+   "row_number": 1,
+   "stitch_count": 8,
+   "instructions": "Ch 9, turn."
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 8,
+   "instructions": "Skip the first chain from the hook (it doesn't count as a stitch). Sc in the next chain and in each ch across. Ch 1, turn."
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 11,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 12,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 13,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 14,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 15,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 16,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 17,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 18,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 19,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 20,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across, ch 1, turn."
+  },
+  {
+   "row_number": 21,
+   "stitch_count": 8,
+   "instructions": "Sc in each st across. Fasten off, weave in ends. Body measures approximately 5 in / 13 cm."
+  },
+  {
+   "row_number": 22,
+   "stitch_count": 8,
+   "instructions": "Fringe: Prepare the first end for the fringe, which is knotted on last. With RS facing, join yarn to the foundation chain at the right-hand corner, ch 1. Working into the unused loops on the underside of the foundation chain, sc in the same ch and in each ch across, ending at the opposite corner (8 sc; don't work into the slip knot). Fasten off."
+  },
+  {
+   "row_number": 23,
+   "stitch_count": 8,
+   "instructions": "Fringe: Prepare the second end for the fringe, which is knotted on last. With RS facing, join yarn to the final row at the right-hand corner, ch 1. Sc in the same st and in each st across, ending at the opposite corner (8 sc). Fasten off."
+  },
+  {
+   "row_number": 24,
+   "stitch_count": 64,
+   "instructions": "Border: With RS facing, join yarn at either end of the row you just finished — that row is the stitch edge, not row-ends. Ch 1, 2 sc in same corner st (first corner begun), sc in each st across flat edge to the next corner st, 3 sc in corner st, working 1 sc per row-end along side edge to the next corner st, skipping the row-ends of the first and last rows (the corners cover them), 3 sc in corner st, sc in each st across flat edge to the next corner st, 3 sc in corner st, working 1 sc per row-end along side edge to the next corner st, skipping the row-ends of the first and last rows (the corners cover them), sc in same corner st as the beginning (first corner completed). Join with sl st to first sc. Fasten off, weave in ends. (64 sts)"
+  },
+  {
+   "row_number": 25,
+   "stitch_count": 8,
+   "instructions": "Fringe: Cut 24 strands of yarn, each 13 in / 33 cm long, for a fringe about 6 in / 15 cm long. Holding 3 strands together, fold them in half. With WS facing, insert your hook from back to front through the centre st of the border's corner at one end of the scarf, pull the folded loop through, then pull the loose ends through the loop and tighten. Knot a bundle in the centre st of the border's other corner at that end the same way, then space the rest evenly along the border sts between them, about every 3/4 in / 2 cm (about every 3 sts): 4 bundles across the end. Repeat across the other end. Trim ends even."
+  }
+ ],
+ "tassels_dc_crab_rounded": [
+  {
+   "row_number": 1,
+   "stitch_count": 7,
+   "instructions": "Ch 9, turn."
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 7,
+   "instructions": "Skip the first 3 chains from the hook (they count as this row's first stitch, so the foundation chain is one shorter than this row's stitch count). Dc in the next chain and in each ch across. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Ch 3 (counts as first dc), turn."
+  },
+  {
+   "row_number": 11,
+   "stitch_count": 7,
+   "instructions": "Skip first st (the chain already ‘fills’ that slot), dc in each st across, at the end of the row, dc in top of the ch-3. Fasten off, weave in ends. Body measures approximately 5 in / 13 cm."
+  },
+  {
+   "row_number": 12,
+   "stitch_count": 7,
+   "instructions": "Tassels: Prepare the first end for the tassels, which are attached last. With RS facing, join yarn to the foundation chain at the right-hand corner, ch 1. Working into the unused loops on the underside of the foundation chain, sc in the same ch and in each ch across, ending at the opposite corner (7 sc; don't work into the slip knot). Fasten off."
+  },
+  {
+   "row_number": 13,
+   "stitch_count": 7,
+   "instructions": "Tassels: Prepare the second end for the tassels, which are attached last. With RS facing, join yarn to the final row at the right-hand corner, ch 1. Sc in the same st and in each st across, ending at the opposite corner (7 sc). Fasten off."
+  },
+  {
+   "row_number": 14,
+   "stitch_count": 64,
+   "instructions": "Border: With RS facing, rejoin yarn at either end of the row you just finished — that row is the stitch edge, not row-ends. Working left to right (do not turn), work reverse sc (crab st) in each st around — (reverse sc, reverse hdc, reverse dc) in same corner st (first corner begun), reverse sc in each st across flat edge to the next corner st, (reverse sc, reverse hdc, reverse dc, reverse hdc, reverse sc) in corner st, working about 17 reverse sc evenly along side edge (about 5 for every 3 row-ends: 2 reverse sc in each of 2 row-ends, 1 reverse sc in the next) to the next corner st, skipping the row-ends of the first and last rows (the corners cover them), (reverse sc, reverse hdc, reverse dc, reverse hdc, reverse sc) in corner st, reverse sc in each st across flat edge to the next corner st, (reverse sc, reverse hdc, reverse dc, reverse hdc, reverse sc) in corner st, working about 17 reverse sc evenly along side edge (about 5 for every 3 row-ends: 2 reverse sc in each of 2 row-ends, 1 reverse sc in the next) to the next corner st, skipping the row-ends of the first and last rows (the corners cover them), (reverse hdc, reverse sc) in same corner st as the beginning (first corner completed). Join with sl st to first reverse sc. Fasten off, weave in ends. (64 sts)"
+  },
+  {
+   "row_number": 15,
+   "stitch_count": 7,
+   "instructions": "Tassels: Make 4. Wrap yarn around a 4 1/2 in / 11 cm tall piece of cardboard 20-30 times (more wraps make a fuller tassel; wrap all 4 the same number of times). Thread a 12 in / 30 cm strand under the wraps along the top of the cardboard so its middle sits under them, then tie it tightly, leaving two tails about 5 in / 13 cm long (don't trim them; they attach the tassel). Slide the bundle off the cardboard, then wrap a 12 in / 30 cm strand tightly 3 or 4 times around the bundle about 1 in / 2.5 cm below the top, tie it, and tuck its ends down into the tassel to form the tassel head. Cut through the loops at the bottom."
+  },
+  {
+   "row_number": 16,
+   "stitch_count": 7,
+   "instructions": "Tassels: Attach one tassel to each of the 4 corners. Thread one of a tassel's two top tails onto a yarn needle. With RS facing, push the needle through the centre st of a corner of the border from front to back and take it off the tail. Pull the tail until the tassel head sits snug against the corner. Tie the two tails together just above the tassel head in a double knot (one knot, then a second on top) and pull it tight. Thread each tail onto the needle in turn and take it down through the tassel head so it comes out among the strands. Repeat at the other 3 corners. Trim the bottom of each tassel even."
+  }
+ ],
+ "fringe_shell_no_border": [
+  {
+   "row_number": 1,
+   "stitch_count": 13,
+   "instructions": "Foundation: Ch 14, turn."
+  },
+  {
+   "row_number": 2,
+   "stitch_count": 13,
+   "instructions": "Skip the first chain from the hook (it doesn't count as a stitch). Sc in the next chain and in each ch across. Ch 1, turn."
+  },
+  {
+   "row_number": 3,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 4,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 5,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 6,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 7,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 8,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 9,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 10,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 11,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 12,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 13,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 14,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 15,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 16,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 17,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 18,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 19,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 20,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Ch 1, turn."
+  },
+  {
+   "row_number": 21,
+   "stitch_count": 13,
+   "instructions": "Sc in first st, *skip 2 sts, 5 dc in next st (shell made), skip 2 sts, sc in next st; rep from * 1 more time. Ch 3, turn."
+  },
+  {
+   "row_number": 22,
+   "stitch_count": 13,
+   "instructions": "2 dc in first sc (turning ch-3 counts as first dc; half shell made), *sc in centre dc of next shell, 5 dc in next sc; rep from * to last shell, 0 more times, sc in centre dc of last shell, 3 dc in last sc (half shell made). Fasten off, weave in ends. Body measures approximately 5.5 in / 14 cm."
+  },
+  {
+   "row_number": 23,
+   "stitch_count": 13,
+   "instructions": "Fringe: Prepare the first end for the fringe, which is knotted on last. With RS facing, join yarn to the foundation chain at the right-hand corner, ch 1. Working into the unused loops on the underside of the foundation chain, sc in the same ch and in each ch across, ending at the opposite corner (13 sc; don't work into the slip knot). Fasten off."
+  },
+  {
+   "row_number": 24,
+   "stitch_count": 13,
+   "instructions": "Fringe: Prepare the second end for the fringe, which is knotted on last. With RS facing, join yarn to the final row at the right-hand corner, ch 1. Sc in the same st and in each st across, ending at the opposite corner (13 sc). Fasten off."
+  },
+  {
+   "row_number": 25,
+   "stitch_count": 13,
+   "instructions": "Fringe: Cut 30 strands of yarn, each 13 in / 33 cm long, for a fringe about 6 in / 15 cm long. Holding 3 strands together, fold them in half. With WS facing, insert your hook from back to front through the first sc of one sc row, pull the folded loop through, then pull the loose ends through the loop and tighten. Knot a bundle in the last sc of that row the same way, then space the rest evenly between them, about every 3/4 in / 2 cm (about every 3 sts): 5 bundles across the end. Repeat across the other end. Trim ends even."
+  }
+ ]
+}

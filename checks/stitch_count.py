@@ -68,6 +68,8 @@ _DEDUPE_PREFIX = "Cannot verify stitch-count math for "
 # round after the Handle Round works into its chains as well as its sts.
 _TOTE_PICKUP_ROUND = re.compile(r"^(?:Border|Top Band) Round 1$")
 _TOTE_HANDLE_EDGING = re.compile(r"^Handle \d+ Edging$")
+# A scarf's fringe/tassels end-prep row (pattern_parser._RE_END_PREP_ROW).
+_END_PREP_LABEL = re.compile(r"^(?:Fringe|Tassels) prep, (first|second) end$")
 _TOTE_FINISH_LABEL = re.compile(r"^(?:(?:Border|Top Band|Strap) Round \d+|Handle Round|Edging Round|Handle \d+ Edging)$")
 
 
@@ -84,9 +86,29 @@ def check(pattern) -> list:
     total_rows = 0
 
     rim_width, rim_label = None, None
+    first_width, first_label = None, None
     for row in pattern.rows:
         if row.label == "Border":
             issues.extend(_check_border(row, body_width, total_rows, ratio_overrides))
+            continue
+
+        prep = _END_PREP_LABEL.match(row.label)
+        if prep:
+            # Worked into the edge it names: the first end into the unused
+            # loops of the foundation chain, under Row 1's sts; the second
+            # into the last row. Neither changes the running count.
+            if prep.group(1) == "first":
+                in_count, in_label = first_width, f"{first_label} (worked along its foundation edge)"
+            else:
+                in_count, in_label = prev_count, prev_label
+            if row.also_declared_count is not None and row.also_declared_count != row.declared_count:
+                issues.append(Issue(
+                    category="stitch_count", severity="error", location=row.label,
+                    message=(f"{row.label} states two different counts: {row.also_declared_count} in its "
+                             f"text and {row.declared_count} sts at the end."),
+                ))
+            elif in_count is not None:
+                issues.extend(_check_row(row, in_count, in_label, False, ratio_overrides))
             continue
 
         if _TOTE_FINISH_LABEL.match(row.label):
@@ -115,6 +137,8 @@ def check(pattern) -> list:
             continue
         if row.component is None and row.declared_count is not None:
             rim_width, rim_label = row.declared_count, row.label
+            if first_width is None and row.row_start > 0:
+                first_width, first_label = row.declared_count, row.label
         prev_chains = None
 
         # Real sample (sweater, Jul 12 batch): Back Panel/Front Panel/

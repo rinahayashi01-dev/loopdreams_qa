@@ -4823,3 +4823,58 @@ off.
 The #96 sweep missed this because it searched for lengths in the checkpoint
 and colour shapes, not inside the no-op note list. Every other "in" in the
 parser's patterns is a stitch position ("sc in next 3 sts"), not a length.
+
+## Scarf end-prep rows and the Cluster's yield (2026-11-11)
+
+After loopdreams#841 the batch matrix was 92 pass, 6 review. Every REVIEW had
+one of two causes, and both are now checked.
+
+**Fringe/Tassels end-prep rows (3 scarf cases).** A fringed or tasselled scarf
+works an sc row across each short end before the border (loopdreams
+`buildScarfEdgeScRow`). `_RE_FINISHING_LABEL_START` had no `Fringe`/`Tassels`
+label, so both rows went into one unlabelled chunk. Its "Fasten off" made the
+fallback keep the chunk as a row full of prose the tokenizer didn't know.
+`Fringe`/`Tassels` now start a chunk. `_RE_END_PREP_ROW` reads the
+generator's exact shape and nothing else: purpose sentence, join, position
+phrase, "sc in the same ch|st and in each ch|st across", the corner phrase
+with its "(N sc …)" and the "(N sts)" badge. The first end must join to the
+foundation chain and the second to the final row, and the stitch worked must
+be the stitch counted. Each row becomes `"<Label> prep, first|second end"`,
+tokenized as one sc in each st across. `stitch_count.check` checks the first
+end against Row 1's count, since it runs along the foundation edge under
+Row 1, and the second end against the last row. Neither changes the running
+count. The two stated counts must agree (`RoundRow.also_declared_count`).
+The fringe/tassel step itself ("Cut 72 strands …", "Make 4 …", "Attach …")
+is still unverified prose, as before.
+
+**The Cluster's yield (3 Granny Square Blanket cases, KNOWN_UNVERIFIABLE §1).**
+`abbreviations.one_stitch_tokens` reads the pattern's key. A named stitch
+whose definition says it is "worked together in the same st/space" makes one
+stitch in one place. `custom_compound_tokens` returns a `StitchVocab`, a
+frozenset of the same tokens that also carries `one_stitch`, and
+`_stitch_lookup` gives those tokens consumes 1, produces 1. Carrying it on
+the set means none of the tokenizer's helpers needed a new parameter.
+`tokenize_round` no longer re-wraps a frozenset, so the attribute survives.
+Without that phrase in the key nothing changes: "3 dc in the same space" (a
+granny "cluster" of separate dc) and "worked together over the next 2 sts"
+(a decrease) both still abstain.
+
+Replayed, old main against this branch, on the current generator:
+- 13 simple-stitch scarves: sc/hdc/dc, fringe/tassels, sc/crab/no border.
+  These include the three batch cases' parameters.
+- 12 compound scarves: moss, linen, waffle, sedge, shell and celtic, each
+  with fringe and with tassels.
+- 2 Granny motifs.
+All went REVIEW → PASS with no new warnings. Every mutation FAILs:
+- either end's count ±1;
+- the inline count disagreeing with the badge;
+- Round 3/4's count ±1;
+- a repeat count one short.
+A reworded prep row, or a "first end" joined to the final row, stays
+unverified.
+`test_travel_sl_st` asserted that Round 3 abstains for the Cluster. It now
+asserts that Round 3 verifies, and that a miscount there is an error.
+Coverage: tests/test_scarf_end_prep_rows.py and
+tests/test_cluster_yield_from_key.py. 12 of their 15 tests fail on main; the
+other 3 are abstain cases that held before too. Fixtures are current
+generator output.

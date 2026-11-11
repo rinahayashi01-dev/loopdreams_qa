@@ -576,9 +576,27 @@ _TOTE_TOP_FINISH_LABELS = (
 )
 _RE_FINISHING_LABEL_START = re.compile(
     r"^\s*(?:Row\s*\d+\s*:\s*)?"
-    r"(?:(?:" + _TOTE_TOP_FINISH_LABELS + r"|Border|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
+    r"(?:(?:" + _TOTE_TOP_FINISH_LABELS + r"|Border|Assembly|Fringe|Tassels|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
     r"|[A-Z][a-z]+\s*\(make\s+\d+\)\s*:"
     r"|Handles\s*\()",
+    re.I,
+)
+
+
+# A scarf's fringe/tassels end-prep row (see _parse_finishing). Strict: the
+# position and corner phrases must be the generator's own, and the stitch
+# named in the inline count must be the one worked.
+_RE_END_PREP_ROW = re.compile(
+    r"^(?:Row\s*\d+\s*:\s*)?(?P<label>Fringe|Tassels)\s*:\s*"
+    r"Prepare the (?P<end>first|second) end for the (?:fringe|tassels), which (?:is|are) "
+    r"(?:knotted on|attached) last\.\s*"
+    r"With RS facing, join yarn to (?:"
+    r"(?P<chain>the foundation chain) at the right-hand corner, ch 1\. Working into the unused loops "
+    r"on the underside of the foundation chain, (?P<st1>[a-z]+) in the same ch and in each ch across"
+    r"|the final row at the right-hand corner, ch 1\. (?P<st2>[A-Za-z]+) in the same st and in each st across"
+    r"), ending at the opposite corner \((?P<inline>\d+) (?P<st3>[a-z]+)"
+    r"(?:; don['’]t work into the slip knot)?\)\.\s*Fasten off\.\s*"
+    r"\(\s*(?P<badge>\d+)\s*sts?\s*\)\.?$",
     re.I,
 )
 
@@ -626,6 +644,33 @@ def _parse_finishing(section: Section, pattern: Pattern):
                           declared_count=declared, declared_count_is_approx=is_approx,
                           declared_chains=int(m.group(5)) if m.group(5) else None)
             rr.clauses = tokenize_round(instr_text, custom_compound)
+            pattern.rows.append(rr)
+            continue
+
+        # A scarf's fringe or tassels start with an sc row across each short
+        # end (loopdreams buildScarfEdgeScRow), worked before the border:
+        # "Fringe: Prepare the first end for the fringe, which is knotted on
+        # last. With RS facing, join yarn to the foundation chain at the
+        # right-hand corner, ch 1. Working into the unused loops on the
+        # underside of the foundation chain, sc in the same ch and in each ch
+        # across, ending at the opposite corner (32 sc; don't work into the
+        # slip knot). Fasten off. (32 sts)". The second end joins "to the
+        # final row" and works "in the same st and in each st across". One
+        # stitch in each stitch (or chain) of that edge, so it is checked as
+        # "sc in each st across" against the row it is worked into: the first
+        # end against Row 1, the second against the last row. Only this exact
+        # shape is read; anything else falls through and stays unverified.
+        prep = _RE_END_PREP_ROW.match(blob)
+        st = prep and (prep.group("st1") or prep.group("st2")).lower()
+        if prep and st == prep.group("st3").lower() and (
+                (prep.group("end").lower() == "first") == bool(prep.group("chain"))):
+            badge = int(prep.group("badge"))
+            inline = int(prep.group("inline"))
+            rr = RoundRow(label=f"{prep.group('label').title()} prep, {prep.group('end').lower()} end",
+                          row_start=-1, row_end=-1, raw_text=blob, declared_count=badge,
+                          also_declared_count=inline)
+            rr.clauses = tokenize_round(f"Join yarn, ch 1, {st} in each st across. Fasten off",
+                                        custom_compound)
             pattern.rows.append(rr)
             continue
 
