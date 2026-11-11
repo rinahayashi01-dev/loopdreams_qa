@@ -4804,3 +4804,22 @@ plus the units branch and replayed through main and this branch. 17 were
 identical. Throw waffle and Tote bobble went from error/warning to clean.
 A throw mutation (row 200 opened in the wrong colour) is still caught.
 Coverage: tests/test_colour_note_rows.py (4 of 5 fail on main).
+
+## The tote strap-chain check with cm (2026-11-11)
+
+loopdreams#839 deployed, and the batch matrix flagged two built-in-handle tote
+cases PASS → REVIEW. The tote's top-finish note "If a strap chain measures well
+short of 14 in flat then rework it …" is matched exactly by
+`_RE_TOTE_FINISH_NOTE` so that a real stitch clause can't slip through as a
+note. That exact match required "N in flat", and the generator now writes
+"14 in / 36 cm flat". The note became an unrecognized clause, and the Handle
+Round lost its stitch-count check.
+
+The fix accepts the same optional `/ N cm` as the body checkpoint above, and
+nothing else. `test_strap_length_may_carry_cm` uses the deployed wording,
+fails without the fix, and still FAILs a Handle Round skip count that is one
+off.
+
+The #96 sweep missed this because it searched for lengths in the checkpoint
+and colour shapes, not inside the no-op note list. Every other "in" in the
+parser's patterns is a stitch position ("sc in next 3 sts"), not a length.

@@ -277,7 +277,8 @@ _RE_TOTE_FINISH_NOTE = re.compile(
     r"|each\s+ch\s+\d+\s+below\s+is\s+a\s+strap"
     r"|the\s+\d+\s+sts\s+skipped\s+after\s+each\s+strap\s+are\s+its\s+handle\s+opening"
     r"|keep\s+the\s+count\s+at\s+\d+\s+ch"
-    r"|if\s+a\s+strap\s+chain\s+measures\s+well\s+short\s+of\s+[\d.]+\s+in\s+flat\s+then\s+rework\s+it\s+more\s+loosely\s+or\s+with\s+a\s+larger\s+hook"
+    # The length may carry its cm since loopdreams#839: "14 in / 36 cm flat".
+    r"|if\s+a\s+strap\s+chain\s+measures\s+well\s+short\s+of\s+[\d.]+\s+in(?:\s*/\s*[\d.]+\s*cm)?\s+flat\s+then\s+rework\s+it\s+more\s+loosely\s+or\s+with\s+a\s+larger\s+hook"
     r"|this\s+round\s+puts\s+1\s+sc\s+in\s+each\s+ch\s+of\s+the\s+straps"
     r"|each\s+sc2tog\s+joins\s+the\s+first\s+or\s+last\s+ch\s+of\s+a\s+strap\s+to\s+the\s+rim\s+st\s+beside\s+it"
     r"|this\s+round\s+goes\s+along\s+the\s+\d+\s+skipped\s+sts\s+of\s+the\s+opening\s+and\s+then\s+along\s+the\s+underside\s+of\s+the\s+strap"
