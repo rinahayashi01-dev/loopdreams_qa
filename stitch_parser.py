@@ -492,7 +492,7 @@ class _Patterns:
         "turning_chain_credit",
         "centre_dc", "around_post", "top_of_chain", "simple_positional",
         "stitch_in_ch1_space", "foundation_ordinal_single",
-        "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "bare_stitch",
+        "multi_into_each", "held_gusset_resume", "evenly_across_bridge", "corner_gap", "bare_stitch",
         "each_st_to_marker", "each_st_to_last", "same_st",
         "ring_literal", "foundation_ordinal_and_next_chs", "each_of_next_chs",
         "skip_first_chains_from_hook", "skip_first_chains_counting",
@@ -695,6 +695,16 @@ class _Patterns:
         # _RE_BRIDGE_CHAIN), not consuming any previous-round stitches.
         self.evenly_across_bridge = re.compile(
             rf"^(?:then\s+)?({stitch_alt})\s+(\d+)\s+sts\s+evenly\s+across\s+the\s+bridge\s+chain$", re.I
+        )
+        # "sc in the gap at the corner" / "...at the other corner" -- one new
+        # st worked into the gap where a mitten's bridge chain meets the
+        # skipped gusset sts, on the thumb pickup round (loopdreams
+        # fix/mitten-gusset-and-top, 2026-11-18). Like the bridge pickup it
+        # works into a gap, not a st of the previous round: produces 1,
+        # consumes 0. Only the single-st form: "2 sc in the gap" is not
+        # written and would need its own count.
+        self.corner_gap = re.compile(
+            rf"^({stitch_alt})\s+in\s+the\s+gap\s+at\s+the\s+(?:other\s+)?corner$", re.I
         )
         # Bare stitch token with no positional phrase at all -- e.g.
         # "sc2tog" used alone inside a repeat group ("*sc2tog, sc in each
@@ -1753,6 +1763,16 @@ def _classify(part: str, patterns: _Patterns, custom_compound: frozenset) -> Sti
         produces = (prod * n) if prod is not None else None
         return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
                              explicit_count=n, consumes=0, produces=produces, is_compound=is_compound,
+                             unverifiable_reason=None if prod is not None else
+                             f"'{canon}' has no fixed consumes/produces ratio")
+
+    # "sc in the gap at the (other) corner" -- 1 new st in a gap, consuming
+    # no previous-round st (see the pattern's definition).
+    m = patterns.corner_gap.match(p)
+    if m:
+        canon, is_compound, c, prod = _stitch_lookup(m.group(1), custom_compound)
+        return StitchClause(raw=raw_part, stitch=canon, clause_type="literal_count",
+                             explicit_count=1, consumes=0, produces=prod, is_compound=is_compound,
                              unverifiable_reason=None if prod is not None else
                              f"'{canon}' has no fixed consumes/produces ratio")
 
