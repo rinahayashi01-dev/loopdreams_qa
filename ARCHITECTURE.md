@@ -4878,3 +4878,30 @@ Coverage: tests/test_scarf_end_prep_rows.py and
 tests/test_cluster_yield_from_key.py. 12 of their 15 tests fail on main; the
 other 3 are abstain cases that held before too. Fixtures are current
 generator output.
+
+---
+
+## Mitten thumb corner stitches (2026-11-18)
+
+loopdreams fix/mitten-gusset-and-top changes the mitten's thumb pickup. It
+now adds one sc in the gap at each corner where the bridge chain meets the
+skipped gusset sts, the usual place for holes, and takes them out on the
+next round:
+
+"…Sc in each of the 12 skipped gusset sts (…), sc in the gap at the corner,
+then sc 4 sts evenly across the bridge chain (…), sc in the gap at the other
+corner. … (18 sc)"
+
+`stitch_parser.py` gains a `corner_gap` clause, `<stitch> in the gap at the
+(other) corner`, which produces 1 and consumes 0. It is the same kind of
+clause as the bridge pickup: a new st worked into a gap, not into a st of
+the previous round. Only the single-st form is read; "2 sc in the gap" is
+not written and would need its own count. Before this, the two clauses were
+unrecognised and the pickup round was REVIEW. The pickup is a
+`held_gusset_resume` row, so its own produced total is what gets checked.
+
+Replayed on the branch's generator output, 9×8.5, 8.5×8.5, 6×6,
+10.5×11, 7×7.5 and 2×4 in at 3–5 sts/in, plus a 2-colour cuff: REVIEW (4
+warnings each) → PASS. A ±1 on the gusset, split, top-decrease, pickup and
+corner rounds each FAILs. Coverage: tests/test_mitten_thumb_corner_gap.py;
+all three of its tests fail on main.
