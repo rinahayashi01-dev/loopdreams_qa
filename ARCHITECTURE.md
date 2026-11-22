@@ -4925,7 +4925,13 @@ top edge moves down to an even row, but never to fewer than 2 rows; the
 topmost stripe takes what is left. Even stripes are untouched, a painted
 3-row band stays in place as 2 or 4 rows, and a stripe grid saved before
 this (one grid row per worked row) has each step doubled rather than half
-its steps dropped.
+its steps dropped; the steps that no longer fit drop off the top. Below 3
+target rows the plain resample stands (at 2 the first stripe would take both
+rows). The wizard now writes each step twice at the stitch's full row count,
+so for its grids the evening is close to a no-op.
+
+Runs are compared on raw cells, before `_labelled` maps off-palette colours
+to "White", exactly as the generator compares hexes.
 
 `_resize_nn(grid, cols, rows, even_stripes)` mirrors it with
 `_even_stripe_rows`. `_compare` passes `even_stripes` only for a panel with

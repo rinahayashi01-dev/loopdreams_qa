@@ -95,7 +95,11 @@ def _even_stripe_rows(grid):
     """evenStripeRows: a stripe grid (top row first) with every stripe but the
     topmost an even number of rows. Bottom-up, each stripe's top edge moves
     down to an even row, but never below 2 rows above where it starts; the
-    topmost stripe takes what is left."""
+    topmost stripe takes what is left.
+
+    Runs are compared on the raw cell, as the generator does. _compare labels
+    off-palette colours "White" only after this, so two different off-palette
+    hexes stay two stripes here too."""
     total = len(grid)
     runs = []
     for i, row in enumerate(reversed(grid)):
@@ -125,7 +129,7 @@ def _resize_nn(grid, cols, rows, even_stripes=False):
     out an even number of rows counted from the bottom (the first worked row),
     as the generator's resizeGridNN does since 2026-11-21 (_even_stripe_rows)."""
     plain = _resize_plain_nn(grid, cols, rows)
-    if even_stripes and rows >= 2 and _is_horizontal_stripe_grid(grid):
+    if even_stripes and rows >= 3 and _is_horizontal_stripe_grid(grid):
         return _even_stripe_rows(plain)
     return plain
 

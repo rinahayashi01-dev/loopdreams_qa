@@ -2,6 +2,8 @@
 counted from the first worked row, so each colour returns to the edge it was
 left at (loopdreams resizeGridNN evenStripes / evenStripeRows, 2026-11-21).
 Garment panels and folded totes keep the plain resample."""
+import json
+import os
 import unittest
 
 from loopdreams_qa.checks import colourwork_orientation as co
@@ -23,7 +25,7 @@ class TestEvenStripeResample(unittest.TestCase):
     def test_every_stripe_but_the_top_one_is_even(self):
         for g in (3, 4, 7, 12, 30, 120):
             grid = [[(A, B, C)[i % 3]] * 5 for i in range(g)]
-            for rows in range(2, 160):
+            for rows in range(3, 160):   # below 3 the plain resample stands
                 out = co._resize_nn(grid, 5, rows, even_stripes=True)
                 self.assertEqual(len(out), rows)
                 runs = _runs(out)
@@ -65,6 +67,35 @@ class TestEvenStripeResample(unittest.TestCase):
         self.assertEqual(co._resize_nn(picture, 4, 14, even_stripes=True), co._resize_plain_nn(picture, 4, 14))
         one_colour = [[A] * 4] * 3
         self.assertEqual(co._resize_nn(one_colour, 4, 14, even_stripes=True), co._resize_plain_nn(one_colour, 4, 14))
+
+    def test_a_wizard_grid_keeps_its_order(self):
+        # The wizard writes each step twice at the stitch's full row count.
+        # Resampled to its own height, nothing moves; an odd grid's 1-row
+        # bottom step becomes 2 rows and the rest keep their order.
+        seq = [A, B, A, C]
+        for rows in (24, 25, 75):
+            grid = [[seq[(r // 2) % 4]] * 3 for r in range(rows)]
+            out = co._resize_nn(grid, 3, rows, even_stripes=True)
+            got = [c for c, _ in _runs(out)]
+            want = [c for c, _ in _runs(grid)]
+            self.assertEqual(got[:-1], want[:len(got) - 1], rows)
+            self.assertTrue(all(n == 2 for _, n in _runs(out)[:-1]), _runs(out))
+
+    def test_a_two_row_piece_keeps_both_colours(self):
+        self.assertEqual({r[0] for r in co._resize_nn([[A], [B]], 1, 2, even_stripes=True)}, {A, B})
+
+    def test_matches_the_generator_cell_for_cell(self):
+        # tests/data/even_stripe_resize_parity.json: 150 seeded grids run
+        # through loopdreams' resizeGridNN(grid, cols, rows, true). Regenerate
+        # it from the generator whenever either side changes.
+        path = os.path.join(os.path.dirname(__file__), "data", "even_stripe_resize_parity.json")
+        with open(path) as f:
+            data = json.load(f)
+        colours = data["colours"]
+        dec = lambda rows: [[colours[int(ch)] for ch in r] for r in rows]
+        for i, case in enumerate(data["cases"]):
+            out = co._resize_nn(dec(case["grid"]), case["cols"], case["rows"], even_stripes=True)
+            self.assertEqual(out, dec(case["out"]), f"case {i}")
 
 
 if __name__ == "__main__":
