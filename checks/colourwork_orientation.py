@@ -84,10 +84,57 @@ _RE_FINISHING_START = re.compile(
     r"|Border Round \d+|Top Band Round \d+|Strap Round \d+|Handle Round|Edging Round|Handle \d+ Edging):", re.I)
 
 
-def _resize_nn(grid, cols, rows):
+def _is_horizontal_stripe_grid(grid):
+    """Every row one colour, and at least two colours (isHorizontalStripeGrid)."""
+    if not grid or not all(row and all(c == row[0] for c in row) for row in grid):
+        return False
+    return len({row[0] for row in grid}) >= 2
+
+
+def _even_stripe_rows(grid):
+    """evenStripeRows: a stripe grid (top row first) with every stripe but the
+    topmost an even number of rows. Bottom-up, each stripe's top edge moves
+    down to an even row, but never below 2 rows above where it starts; the
+    topmost stripe takes what is left.
+
+    Runs are compared on the raw cell, as the generator does. _compare labels
+    off-palette colours "White" only after this, so two different off-palette
+    hexes stay two stripes here too."""
+    total = len(grid)
+    runs = []
+    for i, row in enumerate(reversed(grid)):
+        if runs and runs[-1][0][0] == row[0]:
+            runs[-1][1] = i + 1
+        else:
+            runs.append([row, i + 1])
+    out = []
+    pos = 0
+    for k, (row, end) in enumerate(runs):
+        if pos >= total:
+            break
+        new_end = total if k == len(runs) - 1 else min(total, max(pos + 2, end - end % 2))
+        while pos < new_end:
+            out.append(list(row))
+            pos += 1
+    return list(reversed(out))
+
+
+def _resize_nn(grid, cols, rows, even_stripes=False):
     """Nearest-neighbour resample -- must match resizeGridNN in the generator's
     colourwork.ts, or expected and actual disagree for reasons that have nothing
-    to do with orientation."""
+    to do with orientation.
+
+    even_stripes (a whole flat piece -- a sectionless, unfolded panel such as a
+    Blanket or Scarf; never a garment panel or a tote): horizontal stripes come
+    out an even number of rows counted from the bottom (the first worked row),
+    as the generator's resizeGridNN does since 2026-11-21 (_even_stripe_rows)."""
+    plain = _resize_plain_nn(grid, cols, rows)
+    if even_stripes and rows >= 3 and _is_horizontal_stripe_grid(grid):
+        return _even_stripe_rows(plain)
+    return plain
+
+
+def _resize_plain_nn(grid, cols, rows):
     src_rows = len(grid)
     if src_rows == 0 or cols <= 0 or rows <= 0:
         return []
@@ -457,12 +504,12 @@ def _rot180(g):
 _RE_FOLDED = re.compile(r"Fold it in half", re.I)
 
 
-def _candidate_expectations(design, width, rows, folded):
+def _candidate_expectations(design, width, rows, folded, even_stripes=False):
     """The working-order fabric each plausible layout would produce. The first
     is correct; the rest exist only to name the failure when it is one of the
     known orientation mistakes rather than arbitrary noise."""
     def flat(g):
-        return to_working_order(_resize_nn(g, width, rows))
+        return to_working_order(_resize_nn(g, width, rows, even_stripes))
 
     def panel(g, rotate=True):
         # One design per face, the first-worked face rotated so both read the
@@ -485,7 +532,7 @@ def _candidate_expectations(design, width, rows, folded):
     build = panel if folded else flat
     cands = [("the design", build(design))]
     if not folded:
-        resized = _resize_nn(design, width, rows)
+        resized = _resize_nn(design, width, rows, even_stripes)
         # Stored order: the exact #474 bug -- no bottom-up, no per-row reversal.
         cands.append(("the design fed in stored order (upside down, and every other row mirrored)",
                       [list(r) for r in resized]))
@@ -979,13 +1026,16 @@ def _compare(pattern, design, actual, width, folded, unread=(), directs=None, dr
     rows = len(actual)
 
     directs = list(directs) if directs is not None else [False] * len(actual)
-    base = dict(_candidate_expectations(labelled, width, rows, folded))
-    names = [name for name, _ in _candidate_expectations(labelled, width, rows, folded)]
+    # A whole flat piece's horizontal stripes come in row pairs (resizeGridNN's
+    # evenStripes); a garment panel or a folded tote is resampled plainly.
+    even = section is None and not folded
+    base = dict(_candidate_expectations(labelled, width, rows, folded, even))
+    names = [name for name, _ in _candidate_expectations(labelled, width, rows, folded, even)]
     if drops and any(d > 0 for d in drops):
         base = {name: _shape_expectation(g, drops, section) for name, g in base.items()}
     # Only the single-resample rows need their own expectation grid.
     resolutions = {len(a) for a, d in zip(actual, directs) if a is not None and d}
-    per_res = {res: dict(_candidate_expectations(labelled, res, rows, folded)) for res in resolutions}
+    per_res = {res: dict(_candidate_expectations(labelled, res, rows, folded, even)) for res in resolutions}
 
     # A narrowed direct row (sedge, shell) of a V-neck Front. The generator lays
     # the design out at the panel's FULL width, cuts the V's cells from the
@@ -1022,7 +1072,7 @@ def _compare(pattern, design, actual, width, folded, unread=(), directs=None, dr
             at_end = (section == "Right Front") == (i % 2 == 0)
             tidied = _tidy_neck_edge(expected, at_end, 2 if textured else 3)
             if len(a) not in per_res:
-                per_res[len(a)] = dict(_candidate_expectations(labelled, len(a), rows, folded))
+                per_res[len(a)] = dict(_candidate_expectations(labelled, len(a), rows, folded, even))
             grid = [list(r) for r in per_res[len(a)][names[0]]]
             grid[i] = tidied
             per_res[len(a)][names[0]] = grid

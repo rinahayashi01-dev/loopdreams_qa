@@ -4905,3 +4905,46 @@ Replayed on the branch's generator output, 9×8.5, 8.5×8.5, 6×6,
 warnings each) → PASS. A ±1 on the gusset, split, top-decrease, pickup and
 corner rounds each FAILs. Coverage: tests/test_mitten_thumb_corner_gap.py;
 all three of its tests fail on main.
+
+---
+
+## Even-row stripes on flat pieces (2026-11-21)
+
+loopdreams feat/even-row-flat-stripes makes a whole flat piece's horizontal
+stripes (Blanket, Scarf, Placemat, Dishcloth, Square Coaster) an even number
+of rows, counted from the first worked row, so each colour comes back to the
+edge it was left at and is carried up the side. Garments already did this.
+Before it, plain NN gave a stripe step whatever rows it landed on: a striped
+worsted dc Blanket was 1-row stripes, bobble and shell mixed 1 and 2, and tr
+dropped steps.
+
+The generator's `resizeGridNN` takes `evenStripes` from the flat builders.
+For a grid where every row is one colour and there are at least two colours,
+it resamples plainly and then runs `evenStripeRows`: bottom-up, each stripe's
+top edge moves down to an even row, but never to fewer than 2 rows; the
+topmost stripe takes what is left. Even stripes are untouched, a painted
+3-row band stays in place as 2 or 4 rows, and a stripe grid saved before
+this (one grid row per worked row) has each step doubled rather than half
+its steps dropped; the steps that no longer fit drop off the top. Below 3
+target rows the plain resample stands (at 2 the first stripe would take both
+rows). The wizard now writes each step twice at the stitch's full row count,
+so for its grids the evening is close to a no-op.
+
+Runs are compared on raw cells, before `_labelled` maps off-palette colours
+to "White", exactly as the generator compares hexes.
+
+`_resize_nn(grid, cols, rows, even_stripes)` mirrors it with
+`_even_stripe_rows`. `_compare` passes `even_stripes` only for a panel with
+no section that isn't folded: a garment's column slice can be one colour per
+row by chance and must keep the plain resample, and the tote's two faces are
+resampled separately. 3,000 random stripe grids (1–40 rows, 1–130 target
+rows, 2–4 colours) give identical cells from both sides.
+
+**Order matters.** Merge this before the loopdreams change deploys. On main,
+2 of 9 batch-style striped Blankets (stored 12-row grids) FAIL against the
+evened fabric; on this branch all 9 PASS. A wrong colour in an evened stripe
+still FAILs.
+
+Fixtures: both Scarf fixtures in tests/test_scarf_colour_finishing.py were
+regenerated verbatim from the new generator (the ribbed body is now A A B B,
+from A B B A). Coverage: tests/test_even_flat_stripes.py.
