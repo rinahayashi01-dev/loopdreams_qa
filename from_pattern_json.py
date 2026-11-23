@@ -175,7 +175,7 @@ _TOTE_TOP_FINISH_LABELS = (
 _FINISHING_ROW_RE = re.compile(
     r"^\s*(?:" + _TOTE_TOP_FINISH_LABELS + r")\s*:"
     r"|^\s*(?:Border|Fringe|Tassels|Assembly|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
-    r"|^\s*Attaching\s+Handle\s+\d+\s*:"
+    r"|^\s*Attaching\s+(?:Handle\s+\d+|the\s+Pocket)\s*:"
     r"|^\s*Handles\s*\("
     r"|^\s*Handle\s+\d+\s*[:(]",
     re.I,
