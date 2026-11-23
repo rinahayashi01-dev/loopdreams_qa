@@ -578,9 +578,16 @@ _RE_FINISHING_LABEL_START = re.compile(
     r"^\s*(?:Row\s*\d+\s*:\s*)?"
     r"(?:(?:" + _TOTE_TOP_FINISH_LABELS + r"|Border|Assembly|Fringe|Tassels|Pocket|Adding\s+a\s+(?:Zipper\s+and\s+Liner|Zipper|Liner))\s*:"
     r"|[A-Z][a-z]+\s*\(make\s+\d+\)\s*:"
+    r"|Attaching\s+the\s+Pocket\s*:"
     r"|Handles\s*\()",
     re.I,
 )
+# A tote's pocket sewn onto the flat panel before Assembly (loopdreams,
+# 2026-11-23): "Attaching the Pocket: Lay the finished panel flat ... whip
+# stitch the pocket's sides and bottom to the panel ...". Sewing, not
+# stitches, like "Reinforcing the Straps": it starts a chunk of its own, and is
+# never read as the counted "Pocket:" piece its own label contains.
+_RE_ATTACHING_POCKET = re.compile(r"^\s*(?:Row\s*\d+\s*:\s*)?Attaching\s+the\s+Pocket\s*:", re.I)
 
 
 # A scarf's fringe/tassels end-prep row (see _parse_finishing). Strict: the
@@ -634,6 +641,8 @@ def _parse_finishing(section: Section, pattern: Pattern):
         # chains are not stitches, so only the sts are the declared count.
         # The tote's "Reinforcing the Straps" is sewing, not stitches: it starts
         # a chunk (above) but isn't checked as a counted piece.
+        if _RE_ATTACHING_POCKET.match(blob):
+            continue
         m = re.search(r"(" + _TOTE_TOP_FINISH_LABELS.replace("|Reinforcing\\s+the\\s+Straps", "") + r"|Border|Pocket)\s*:\s*(.*?)\(\s*(~?)\s*(\d+)\s*sts?(?:\s*,\s*(\d+)\s*ch)?\s*\)\.?", blob, re.I)
         if m:
             label = re.sub(r"\s+", " ", m.group(1))

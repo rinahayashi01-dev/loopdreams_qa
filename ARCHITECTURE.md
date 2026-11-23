@@ -4984,3 +4984,30 @@ change, which leaves a counted ch 3 in the old colour, FAILs on all 11 that
 count it. 97 other saved generator payloads give identical results on main
 and this branch. Coverage: tests/test_shell_flattened_top.py (fixtures copied
 verbatim from buildShellStitchColourRows).
+
+## The tote's pocket, sewn on before Assembly (2026-11-23)
+
+loopdreams now makes a tote's pocket as its own piece (a "Pocket" section:
+"Foundation: Ch N." then one worked row), and sews it to the flat panel in a
+section-less row just before Assembly: "Attaching the Pocket: Lay the finished
+panel flat with the side that will be the outside (or inside) of the bag ...
+whip stitch the pocket's sides and bottom to the panel ...". An inside pocket
+on a lined bag goes on the liner instead, inside "Adding a Liner".
+
+Two gaps read that row wrongly. `_FINISHING_ROW_RE` didn't know the label, so
+the backward walk stopped at it and it stayed a numbered row with a declared
+count. Once it was finishing, `_parse_finishing` searched the chunk for
+"Pocket:", found it inside "Attaching the Pocket:", and checked the sewing
+prose as a counted piece: a REVIEW warning ("Cannot verify stitch-count math
+for Pocket") on every tote whose pocket is sewn to the crochet.
+
+`_FINISHING_ROW_RE` now takes "Attaching the Pocket:" beside "Attaching
+Handle N:". `_RE_FINISHING_LABEL_START` starts a chunk at it, and
+`_RE_ATTACHING_POCKET` skips that chunk, like "Reinforcing the Straps":
+sewing, not stitches. The older counted "Pocket: Ch N. ... (N sts)" row that
+saved patterns carry is read as before.
+
+Checks: 13 builder payloads (outside/inside, with and without liner and
+zipper, hdc, bobble, built-in handles) all PASS; 6 were REVIEW before this.
+A pocket piece declaring one stitch too many still FAILs. Coverage:
+tests/test_tote_attaching_pocket.py.
