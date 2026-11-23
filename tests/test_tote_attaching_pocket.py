@@ -7,11 +7,12 @@ from loopdreams_qa.cli import run_for_pattern
 from loopdreams_qa.from_pattern_json import build_raw_text
 from loopdreams_qa.pattern_parser import parse
 
-ATTACH = ("Attaching the Pocket: Lay the finished panel flat with the side that will be the outside of the bag "
-          "(RS) facing up. On the half that starts at the foundation chain (this half becomes the front), place "
-          "the pocket with its last row at the top, centered side to side, its top edge 2 in / 5 cm below the "
-          "foundation chain edge. Pin, then whip stitch the pocket's sides and bottom to the panel, leaving the "
-          "top edge open as the pocket opening.")
+ATTACH = ('Attaching the Pocket: Lay the finished panel flat with the side that will be the outside of the bag '
+          '(RS) facing up. On the half that starts at the foundation chain (this half becomes the front), place'
+          ' the pocket with its last row at the top, centered side to side, its top edge 2 in / 5 cm below the '
+          'foundation chain edge. Pin, then with a length of the same yarn and a yarn needle, whip stitch the p'
+          "ocket's sides and bottom to the panel, leaving the top edge open as the pocket opening. The pocket n"
+          'ow marks the right side: in Assembly, lay the panel with the pocket underneath.')
 POCKET = ("Skip the first chain from the hook (it doesn't count as a stitch). Sc in the next chain and each ch "
           "across. Ch 1, turn. Work 19 more rows of sc (20 rows total). Fasten off. ({n} sts)")
 
