@@ -259,6 +259,62 @@ def _shell_row_colours(body, target, carried):
         return None, f"shell row places {len(colours)} colour positions, expected {target}"
     return colours, cur
 
+# ── Shell Flattened top ─────────────────────────────────────────────────────
+# The straight-edge last row of a shell piece (loopdreams buildShellStraightEdge
+# Row / formatShellStraightEdgeRow) works 1-for-1 into the shell row below:
+# the opening position rises to a dc, each shell's five sts become "hdc, sc,
+# sc, sc, hdc" and each sc point a dc. It replaces a half-shell row and keeps
+# its cluster resolution: one colour for the opening position, one per
+# five-st group and one per dc, so 1 + 2 x shells positions, like a shell row.
+# It names no "(shell made)", so until 2026-11-23 it was read stitch by stitch
+# (25 positions where the generator wrote 7) and every coloured one with
+# blocks smaller than a shell FAILed against the finer resample.
+#
+# The opening position is either the counted ch 3, "skip first st (the chain
+# already 'fills' that slot as a dc)" (loopdreams #884), made at the end of the
+# row below in the colour on the hook then, whatever "With" the row opens
+# with; or, where the colour changes straight after it, "dc in first st (the
+# ch-3 does not count as a st on this row)" worked in the row's own colour.
+_RE_SHELL_TOP_ROW = re.compile(r"hdc in next st, sc in next st, sc in next st, sc in next st, hdc in next st", re.I)
+
+_SHELL_TOP_TOKENS = re.compile(
+    r"(?P<with>With\s+(?:Colour\s+\w+|White))"
+    r"|(?P<change>changing to\s+(?:Colour\s+\w+|White)\s+in the last st)"
+    r"|(?P<chain>skip first st \(the chain already .fills. that slot(?: as a dc)?\))"
+    r"|(?P<first_dc>dc in first st \(the ch-3 does not count as a st on this row\))"
+    r"|(?P<group>hdc in next st, sc in next st, sc in next st, sc in next st, hdc in next st)"
+    r"|(?P<dc>\bdc in next st)",
+    re.I,
+)
+
+
+def _shell_top_row_colours(body, target, carried):
+    """Colours a shell Flattened top places, one per cluster position.
+
+    Same contract as _row_colours. None rather than a guess when the phrases
+    don't add up to the row's own position count."""
+    # A one-colour top keeps its "*...; rep from * N more times" bracket (the
+    # Flattened row after a cut-colour note, say); expand it the way the run
+    # grammar does. A coloured top is written out longhand and has none.
+    if "rep from" in body.lower():
+        expanded, reason = _expand_repeats(body)
+        if expanded is None:
+            return None, reason
+        body = expanded
+    colours, cur = [], carried
+    for m in _SHELL_TOP_TOKENS.finditer(body):
+        kind = m.lastgroup
+        if kind in ("with", "change"):
+            cur = _RE_COLOUR_NAME.search(m.group()).group(1).title()
+            continue
+        # The counted chain was made before this row's "With", in the colour
+        # the row below ended in.
+        colours.append(carried if kind == "chain" else cur)
+    if len(colours) != target:
+        return None, f"shell top row places {len(colours)} colour positions, expected {target}"
+    return colours, cur
+
+
 # The three things a sedge row places, each worth exactly one colour position.
 # "in the last chain" as well as "in the last st": row 1 is worked into the
 # foundation chain and says so throughout.
@@ -339,7 +395,7 @@ def _colour_positions(body, width):
     colours per real stitch. A turning chain of 2+ is itself the row's first
     stitch and is made in the previous row, so the row's own text accounts for
     one fewer."""
-    if _RE_SHELL_ROW.search(body):
+    if _RE_SHELL_ROW.search(body) or _RE_SHELL_TOP_ROW.search(body):
         # Stitch count is 6n + 1 for n shells; the colour columns are the
         # opening position plus one per shell and one per sc between them.
         return 1 + 2 * round((width - 1) / 6)
@@ -401,7 +457,9 @@ def _row_colours(text, width, carried):
     # Resolution first: it decides how long a SOLID row is too, so it has to be
     # settled before the shortcut below and not just before the tokenizer.
     target = _colour_positions(body, width)
-    chain_counts = bool(_RE_CHAIN_COUNTS.search(body)) and not _RE_OFFSET_ROW.search(body)
+    shell_top = bool(_RE_SHELL_TOP_ROW.search(body))
+    # A shell top's counted chain is one of its own cluster positions already.
+    chain_counts = bool(_RE_CHAIN_COUNTS.search(body)) and not _RE_OFFSET_ROW.search(body) and not shell_top
 
     # A row that names no colour and changes to none is worked entirely in the
     # colour already on the hook — whatever its construction. That is as true of
@@ -424,6 +482,9 @@ def _row_colours(text, width, carried):
     # to the previous row's last st. Their waffle and bobble repeats are
     # outside the run grammar, so without this the row was a hole, and on a
     # waffle throw every row after it read as naming no colour (a FAIL).
+    if shell_top:
+        return _shell_top_row_colours(body, target, carried)
+
     lead = _RE_LEAD_WITH.match(body)
     end = _RE_BODY_END_CHANGE.search(body)
     if (lead or end) and len(_RE_WITH.findall(body)) == (1 if lead else 0) \
@@ -779,7 +840,7 @@ def _check_panel(pattern, design, source) -> list:
         # A narrowed row of a V-neck Front is the design laid out at the
         # panel's full width, cut, and only THEN resampled to this row's own
         # colour columns (see _compare for how each kind of row is matched).
-        directs.append(bool(_RE_SEDGE_ROW.search(text) or _RE_SHELL_ROW.search(text)))
+        directs.append(bool(_RE_SEDGE_ROW.search(text) or _RE_SHELL_ROW.search(text) or _RE_SHELL_TOP_ROW.search(text)))
         drops.append(width - count)
         carried = ending
 
