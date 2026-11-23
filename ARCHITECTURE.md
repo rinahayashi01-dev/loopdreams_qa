@@ -4948,3 +4948,39 @@ still FAILs.
 Fixtures: both Scarf fixtures in tests/test_scarf_colour_finishing.py were
 regenerated verbatim from the new generator (the ribbed body is now A A B B,
 from A B B A). Coverage: tests/test_even_flat_stripes.py.
+
+## Shell's Flattened top in colour (2026-11-23)
+
+The Flattened (straight-edge) last row of a shell piece, the default top on a
+shell Blanket, works 1-for-1 into the shell row below: the opening position
+rises to a dc, each shell's five sts become "hdc, sc, sc, sc, hdc", each sc
+point a dc. The generator colours it at the half-shell row's cluster
+resolution (one colour per opening position, per five-st group and per dc:
+1 + 2 x shells, the same as a shell row), resampling the design once,
+straight to cluster columns.
+
+It names no "(shell made)", so `_RE_SHELL_ROW` missed it. It was read stitch
+by stitch (25 positions where the generator wrote 7) and compared with a
+finer resample, so a coloured top with blocks smaller than a shell FAILed:
+13 of 48 shell Flattened payloads (checker, diagonal, halves at 8 x 50 in),
+on loopdreams main before and after #884. Every failure was on the top row.
+
+`_RE_SHELL_TOP_ROW` matches its "hdc in next st, sc in next st, sc in next
+st, sc in next st, hdc in next st" group, which no other row writes.
+`_shell_top_row_colours` reads it per position, in `_colour_positions`
+(1 + 2 x shells) and as a direct row (`directs`). The opening position is
+either the counted ch 3, "skip first st (the chain already 'fills' that slot
+as a dc)" (loopdreams #884), which takes the colour `carried` in from the
+row below whatever "With" the row opens with, because the chain was made at
+the end of that row; or "dc in first st (the ch-3 does not count as a st on
+this row)", worked in the row's own colour. A one-colour top after a
+cut-colour note keeps its "rep from *" bracket, so it is expanded with
+`_expand_repeats` first. `chain_counts` is off for these rows: the counted
+chain is already one of their positions.
+
+Checks: the 48 payloads all PASS (both generator versions); swapping the
+top's colours FAILs on every coloured one, and dropping the row below's final
+change, which leaves a counted ch 3 in the old colour, FAILs on all 11 that
+count it. 97 other saved generator payloads give identical results on main
+and this branch. Coverage: tests/test_shell_flattened_top.py (fixtures copied
+verbatim from buildShellStitchColourRows).
